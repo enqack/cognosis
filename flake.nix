@@ -45,6 +45,15 @@
           if ! ${pg}/bin/psql -h "$COGNOSIS_SOCKDIR" -p 5434 -d cognosis -c "" >/dev/null 2>&1; then
             ${pg}/bin/createdb -h "$COGNOSIS_SOCKDIR" -p 5434 cognosis
           fi
+          # Create pgvector in the public schema up front. The daemon's migration
+          # also does this, but `go test ./...` runs packages in parallel against
+          # one database with per-schema isolation, and CREATE EXTENSION is a
+          # per-database singleton: concurrent creators race on
+          # pg_extension_name_index, and whoever wins puts the vector type in a
+          # private test schema the others can't see. Having it in public (on
+          # every schema's search_path) before any test runs avoids both.
+          ${pg}/bin/psql -h "$COGNOSIS_SOCKDIR" -p 5434 -d cognosis \
+            -c 'create extension if not exists vector' >/dev/null
           echo "Postgres up: $COGNOSIS_DSN"
         '';
 

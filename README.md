@@ -11,9 +11,7 @@ reciprocal rank), fetch it whole.
 
 Everything below is implemented and proven by feature-scoped end-to-end checks
 (`scripts/checks/*.sh`, run together via `scripts/check-all.sh` / `mage check`)
-plus a `-race` test suite. Post-v1 hardening (the single-instance lock,
-surfaced vault history, and soft-delete hygiene below) is covered by the same
-checks. The one explicitly deferred item is the Slack/Discord bridge.
+plus a `-race` test suite.
 
 New here? See [docs/setup-guide.md](docs/setup-guide.md) for full setup.
 
