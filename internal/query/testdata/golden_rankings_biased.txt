@@ -1,0 +1,4 @@
+notes/scoped.md
+entries/pg.md
+entries/vault.md
+entries/garden.md

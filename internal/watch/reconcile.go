@@ -1,0 +1,248 @@
+// Package watch owns out-of-band edit detection: boot-time reconciliation
+// (mtime/size fast path + BLAKE3 drift confirmation), the live fsnotify
+// watcher, and the periodic sweep that closes the drift windows the other
+// two can't see. Confirmed drift is committed to the vault history repo as
+// found.
+package watch
+
+import (
+	"context"
+	"encoding/hex"
+	"fmt"
+	"io/fs"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/zeebo/blake3"
+
+	"github.com/enqack/cognosis/internal/config"
+	"github.com/enqack/cognosis/internal/store"
+	"github.com/enqack/cognosis/internal/vault"
+	"github.com/enqack/cognosis/internal/write"
+)
+
+// Watcher implements daemon.Reconciler and daemon.Runner.
+type Watcher struct {
+	cfg  *config.Config
+	log  *slog.Logger
+	hist *vault.History
+
+	// MakeIndexer builds the indexing core once the store is connected; the
+	// daemon wires in the embedding provider here so hand-edits index (and
+	// embed) identically to sanctioned writes. nil falls back to a bare
+	// indexer with no embeddings.
+	MakeIndexer func(s *store.Store) *write.Indexer
+
+	mu sync.Mutex
+	st *store.Store
+	ix *write.Indexer
+
+	// suppressed paths are being written by Cognosis itself right now; their
+	// disk events are dropped (write-conflict handling). The periodic
+	// sweep is what bounds the drift this can cause.
+	suppressed sync.Map
+
+	// HashCount counts BLAKE3 hashes computed — tests assert the fast path
+	// via this counter, never via timing.
+	HashCount atomic.Int64
+}
+
+func New(cfg *config.Config, log *slog.Logger) *Watcher {
+	return &Watcher{
+		cfg:  cfg,
+		log:  log.With("component", "watch"),
+		hist: vault.NewHistory(cfg.KBPath),
+	}
+}
+
+// Suppress marks a vault-relative path as being written by Cognosis; the
+// watcher ignores its events until Unsuppress. (The write pipeline is the
+// caller.)
+func (w *Watcher) Suppress(rel string)   { w.suppressed.Store(rel, true) }
+func (w *Watcher) Unsuppress(rel string) { w.suppressed.Delete(rel) }
+
+// Reconcile is the boot-time integrity check: fast path compares
+// mtime+size against the stored state; only differing files get hashed
+// (worker pool) and, on confirmed drift, re-validated and re-indexed.
+func (w *Watcher) Reconcile(ctx context.Context, s *store.Store) error {
+	w.mu.Lock()
+	w.st = s
+	if w.MakeIndexer != nil {
+		w.ix = w.MakeIndexer(s)
+	} else {
+		w.ix = &write.Indexer{Store: s}
+	}
+	w.mu.Unlock()
+	return w.reconcile(ctx, false)
+}
+
+// reconcile walks the vault once. forceHash bypasses the mtime/size fast path
+// — the periodic sweep uses it to catch editors that preserve both.
+func (w *Watcher) reconcile(ctx context.Context, forceHash bool) error {
+	s := w.store()
+	states, err := s.FileStates(ctx)
+	if err != nil {
+		return err
+	}
+
+	type candidate struct {
+		rel   string
+		abs   string
+		mtime time.Time
+		size  int64
+	}
+	var candidates []candidate
+	onDisk := map[string]bool{}
+
+	root := w.cfg.KBPath
+	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if d.Name() == ".git" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".md") {
+			return nil
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		if vault.IsReserved(rel) {
+			return nil
+		}
+		if _, ok := vault.StageOf(rel); !ok {
+			return nil
+		}
+		onDisk[rel] = true
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		if !forceHash {
+			if st, known := states[rel]; known && st.Size == info.Size() && st.Mtime.Equal(info.ModTime().UTC().Truncate(time.Microsecond)) {
+				return nil // fast path: unchanged on both, skip (no hash)
+			}
+		}
+		candidates = append(candidates, candidate{rel, path, info.ModTime(), info.Size()})
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	// Hash candidates in a worker pool; only confirmed drift gets re-indexed.
+	type drifted struct {
+		candidate
+		hash    string
+		content []byte
+	}
+	var (
+		driftMu sync.Mutex
+		drifts  []drifted
+	)
+	sem := make(chan struct{}, runtime.NumCPU())
+	var wg sync.WaitGroup
+	for _, c := range candidates {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(c candidate) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			content, err := os.ReadFile(c.abs)
+			if err != nil {
+				w.log.Error("reconcile read failed", "path", c.rel, "reason", err)
+				return
+			}
+			sum := blake3.Sum256(content)
+			w.HashCount.Add(1)
+			hash := hex.EncodeToString(sum[:])
+			if st, known := states[c.rel]; known && st.Blake3 == hash {
+				return // mtime/size differed but content didn't — refresh nothing
+			}
+			driftMu.Lock()
+			drifts = append(drifts, drifted{c, hash, content})
+			driftMu.Unlock()
+		}(c)
+	}
+	wg.Wait()
+
+	changed := 0
+	for _, d := range drifts {
+		if err := w.indexFile(ctx, d.rel, d.content, d.mtime, d.size, d.hash); err == nil {
+			changed++
+		}
+	}
+
+	// Deletions: indexed paths that no longer exist on disk.
+	for rel := range states {
+		if !onDisk[rel] {
+			if err := s.DeleteNote(ctx, rel); err != nil {
+				w.log.Error("reconcile delete failed", "path", rel, "reason", err)
+				continue
+			}
+			w.log.Info("note removed (file gone)", "path", rel)
+			changed++
+		}
+	}
+
+	if changed > 0 {
+		// Commit the drift as found — hand-edits get history too.
+		if err := w.hist.CommitAll(ctx, fmt.Sprintf("reconcile: %d file(s) drifted out-of-band", changed)); err != nil {
+			w.log.Error("history commit failed", "reason", err)
+		}
+		w.log.Info("reconciliation applied", "changed", changed, "hashed", len(candidates))
+	}
+	return nil
+}
+
+// indexFile validates one file and routes it through the shared indexing
+// core (chunks, embeddings, links — identical to a sanctioned write). Invalid
+// frontmatter is logged as a sync error and NOT indexed — the previous DB
+// state survives.
+func (w *Watcher) indexFile(ctx context.Context, rel string, content []byte, mtime time.Time, size int64, hash string) error {
+	n, err := vault.ParseNote(rel, content)
+	if err != nil {
+		w.log.Error("sync error: unparseable note", "path", rel, "reason", err)
+		return err
+	}
+	if probs := vault.Validate(rel, n.Frontmatter, n.Frontmatter != nil); len(probs) > 0 {
+		for _, p := range probs {
+			w.log.Error("sync error: contract violation", "path", rel, "field", p.Field, "reason", p.Reason)
+		}
+		return fmt.Errorf("contract violation in %s", rel)
+	}
+	meta := write.FileMeta{Mtime: mtime, Size: size, Blake3: hash}
+	if err := w.indexer().Index(ctx, n, meta); err != nil {
+		w.log.Error("sync error: index failed", "path", rel, "reason", err)
+		return err
+	}
+	w.log.Info("note indexed", "path", rel)
+	return nil
+}
+
+func (w *Watcher) store() *store.Store {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.st
+}
+
+func (w *Watcher) indexer() *write.Indexer {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.ix
+}

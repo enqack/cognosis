@@ -1,0 +1,39 @@
+name: ci
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  cognosis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v30
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      # All targets run through mage inside the flake's dev shell, so CI uses
+      # the exact toolchain (Go, mage, Postgres+pgvector, a C compiler for
+      # -race) the flake pins — no separate setup-go/service-container drift.
+
+      - name: lint
+        run: nix develop --command mage lint
+
+      - name: build
+        run: nix develop --command mage build
+
+      # Start the flake's dev Postgres so the store/query/lifecycle integration
+      # tests run for real; COGNOSIS_TEST_DSN is what they key on (falls back to
+      # the flake's short-path DSN if the shellHook didn't export it). The
+      # Ollama-backed tests self-skip since no embedding server runs here.
+      - name: test
+        run: |
+          nix develop --command bash -c '
+            set -euo pipefail
+            pg-start
+            export COGNOSIS_TEST_DSN="${COGNOSIS_DSN:-postgres:///cognosis?host=$PWD/.pg-data&port=5434}"
+            mage test
+          '

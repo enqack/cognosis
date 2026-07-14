@@ -1,0 +1,31 @@
+name: release-archives
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  archives:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v30
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      # Cross-compile version-stamped binaries through the flake toolchain.
+      # `mage release` reads the version from GITHUB_REF_NAME (the tag), builds
+      # per-platform archives into dist/, and writes SHA256SUMS.
+      - name: build release artifacts
+        run: nix develop --command mage release
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/*.tar.xz
+            dist/SHA256SUMS

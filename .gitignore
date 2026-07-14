@@ -1,0 +1,4 @@
+bin/
+.pg-data/
+.pg-socket-path
+*.test

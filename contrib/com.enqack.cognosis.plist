@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- launchd agent for the Cognosis daemon. Install:
+       cp contrib/com.enqack.cognosis.plist ~/Library/LaunchAgents/
+       launchctl load ~/Library/LaunchAgents/com.enqack.cognosis.plist
+     Adjust ProgramArguments[0] to wherever the cognosis binary lives.
+     The agent invokes the self-managed CLI in foreground mode; launchd only
+     supervises it. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.enqack.cognosis</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/cognosis</string>
+    <string>start</string>
+    <string>--foreground</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+</dict>
+</plist>

@@ -1,0 +1,17 @@
+version: "2"
+
+# Static analysis for cognosis. Pinned, explicit linter set (no exclusions) so
+# `golangci-lint run` is reproducible and a green run means every finding was
+# addressed in code, not silenced by config. Run via `mage lint` (and in CI).
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+# Report every finding (no capping) so the suite is honest and green-means-clean.
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

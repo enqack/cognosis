@@ -1,0 +1,16 @@
+# systemd user unit for the Cognosis daemon. Install:
+#   cp contrib/cognosis.service ~/.config/systemd/user/
+#   systemctl --user enable --now cognosis
+# The unit invokes the self-managed CLI in foreground mode — lifecycle logic
+# lives in one place (the binary); systemd only supervises it.
+[Unit]
+Description=Cognosis memory daemon
+After=network.target
+
+[Service]
+ExecStart=%h/go/bin/cognosis start --foreground
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
