@@ -168,8 +168,10 @@ Automatic session context uses Claude Code hooks, wired in `.claude/settings.jso
 
 - **SessionStart** → `hooks/session-start-inject.sh` runs `cognosis context inject` and injects a
   project-scoped knowledge index. Budget via `COGNOSIS_INJECT_BUDGET` (default 2000).
-- **SessionEnd** → `hooks/session-end-nudge.sh` runs one headless `claude` turn nudging the agent to
-  persist anything durable (needs the `claude` CLI logged in; exits quietly if not).
+- **SessionEnd** → `hooks/session-end-nudge.sh` resumes the ending session (via the `session_id` on the
+  hook's stdin) for one headless `claude` turn nudging the agent to persist anything durable — resuming
+  so the turn sees what happened, and guarding against re-entry so the nested run can't loop (needs the
+  `claude` CLI logged in; exits quietly if not).
 
 Both are **marker-gated**: they no-op unless a `.cognosis-project` file exists at (or above) the repo
 root, so a stopped daemon never blocks unrelated sessions. Inside a marked repo a stopped daemon makes

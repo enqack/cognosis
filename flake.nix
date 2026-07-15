@@ -72,6 +72,7 @@
             pkgs.mage
             pkgs.golangci-lint  # `mage lint` static analysis
             pkgs.xz             # `mage release` streams .tar.xz through xz(1)
+            pkgs.jq             # hooks/session-end-nudge.sh parses the SessionEnd payload
             pkgs.ollama
             pg
             pg-start
