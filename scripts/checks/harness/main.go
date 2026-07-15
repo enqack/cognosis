@@ -23,6 +23,11 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+// version is the harness's advertised MCP client version. It stays "dev" for the
+// usual `go run ./scripts/checks/harness` invocation and can be stamped at link
+// time via -ldflags "-X main.version=<v>".
+var version = "dev"
+
 func main() {
 	os.Exit(run())
 }
@@ -421,7 +426,7 @@ func connect(ctx context.Context) (*mcp.ClientSession, error) {
 		}
 		token = strings.TrimSpace(string(b))
 	}
-	client := mcp.NewClient(&mcp.Implementation{Name: "harness", Version: "0.1.0"}, nil)
+	client := mcp.NewClient(&mcp.Implementation{Name: "harness", Version: version}, nil)
 	return client.Connect(ctx, &mcp.StreamableClientTransport{
 		Endpoint:   endpoint,
 		HTTPClient: &http.Client{Transport: &bearerTransport{token: token, base: http.DefaultTransport}},
