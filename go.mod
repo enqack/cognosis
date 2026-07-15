@@ -2,6 +2,8 @@ module github.com/enqack/cognosis
 
 go 1.25.10
 
+toolchain go1.26.5
+
 require (
 	github.com/adrg/xdg v0.5.3
 	github.com/fsnotify/fsnotify v1.10.1

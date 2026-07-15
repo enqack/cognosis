@@ -1,8 +1,17 @@
 version: "2"
 
-# Static analysis for cognosis. Pinned, explicit linter set (no exclusions) so
-# `golangci-lint run` is reproducible and a green run means every finding was
-# addressed in code, not silenced by config. Run via `mage lint` (and in CI).
+# Static analysis for cognosis. Pinned, explicit linter set so `golangci-lint
+# run` is reproducible and a green run means every finding was addressed in
+# code, not silenced by a per-line `//nolint`. Run via `mage lint` (and in
+# CI). Two documented carve-outs to that rule, both explained where they're
+# configured below:
+#   - gosec.excludes scopes off five rule IDs (G107/G204/G304/G703/G704) that
+#     are heuristics gosec can't resolve for a local, single-operator daemon —
+#     not per-instance suppressions, a rule-level decision with rationale.
+#   - contextcheck is deliberately not enabled at all (see the comment by
+#     itself below) — both of its findings in this codebase flag idiomatic
+#     Go (graceful shutdown, a struct-held long-lived context in a stress
+#     test), not bugs.
 linters:
   enable:
     - errcheck
@@ -10,6 +19,61 @@ linters:
     - ineffassign
     - staticcheck
     - unused
+    - bodyclose
+    - rowserrcheck
+    - nilerr
+    - nilnesserr
+    - unconvert
+    - reassign
+    - musttag
+    - loggercheck
+    - spancheck
+    - errorlint
+    - exhaustive
+    - gocritic
+    - nilnil
+    - noctx
+    - prealloc
+    - predeclared
+    - sloglint
+    - sqlclosecheck
+    - unparam
+    - wastedassign
+    - gosec
+  # contextcheck is intentionally NOT enabled: both findings it produced
+  # during evaluation were false positives against idiomatic Go —
+  # mcpserver.Run's shutdown context.WithTimeout(context.Background(), ...)
+  # (the standard net/http graceful-shutdown idiom, required because the
+  # incoming ctx is already Done()), and a stress test that intentionally
+  # runs real work off a long-lived struct-held context while a separate
+  # context governs only the load loop's own stop condition.
+  settings:
+    gosec:
+      # Every other gosec finding got a real code fix (tightened file/dir
+      # permissions, an explicit bounds check, a widening-only numeric
+      # conversion, crypto/rand for test schema names). These four rule IDs
+      # are scoped off project-wide, not per-line, because they fire on
+      # inherently safe, internally-constructed inputs with no attacker in
+      # the threat model:
+      #   G304 (file inclusion via variable) — every hit is a filepath.Join
+      #     under a config-controlled root (vault dir, state dir, log
+      #     paths) or a test fixture, never external input.
+      #   G204 (subprocess launched with variable) — git-subcommand
+      #     wrappers and the daemon's own self-exec via os.Executable(),
+      #     all internally-constructed argv.
+      #   G107/G704 (HTTP request with variable URL) — locally configured
+      #     service endpoints (COGNOSIS_MCP_URL, the ollama URL), not
+      #     external/attacker input.
+      #   G703 (path traversal via taint analysis) — the one hit
+      #     (scripts/checks/harness reading COGNOSIS_TOKEN_FILE) is an
+      #     operator-supplied path with no fixed root to scope an os.Root
+      #     read to, same category as G304 above.
+      excludes:
+        - G107
+        - G204
+        - G304
+        - G703
+        - G704
 
 # Report every finding (no capping) so the suite is honest and green-means-clean.
 issues:

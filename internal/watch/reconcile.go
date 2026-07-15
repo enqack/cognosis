@@ -22,6 +22,7 @@ import (
 	"github.com/zeebo/blake3"
 
 	"github.com/enqack/cognosis/internal/config"
+	"github.com/enqack/cognosis/internal/daemon"
 	"github.com/enqack/cognosis/internal/store"
 	"github.com/enqack/cognosis/internal/vault"
 	"github.com/enqack/cognosis/internal/write"
@@ -163,6 +164,9 @@ func (w *Watcher) reconcile(ctx context.Context, forceHash bool) error {
 		go func(c candidate) {
 			defer wg.Done()
 			defer func() { <-sem }()
+			defer daemon.RecoverPanic(w.log, "watch.reconcile hash worker", func(error) {
+				w.log.Error("reconcile hash worker recovered from panic", "path", c.rel)
+			})
 			content, err := os.ReadFile(c.abs)
 			if err != nil {
 				w.log.Error("reconcile read failed", "path", c.rel, "reason", err)

@@ -188,7 +188,7 @@ func TestListDecaying(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(got) != 1 || got[0].Path != "notes/stale.md" {
-		var ps []string
+		ps := make([]string, 0, len(got))
 		for _, d := range got {
 			ps = append(ps, d.Path)
 		}

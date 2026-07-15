@@ -1,7 +1,11 @@
 // Package daemon owns the process lifecycle: a linear fatal-error startup
 // sequence, the single-instance lock, self-daemonization, and graceful
 // shutdown. It fails loudly and completely — no degraded mode where some
-// tools work and others don't.
+// tools work and others don't: a panic in a primary runner (the MCP server or
+// the file watcher) still brings the whole daemon down. The one nuance is
+// per-item background work — a single reconcile-sweep file, a fire-and-forget
+// lazy-migration batch — where a panic is recovered and logged (RecoverPanic)
+// so one bad item can't crash the process; the tool surface stays all-or-nothing.
 package daemon
 
 import (
@@ -153,7 +157,14 @@ func Run(ctx context.Context, cfg *config.Config, log *slog.Logger, opts Options
 
 	errCh := make(chan error, len(runners))
 	for _, r := range runners {
-		go func(r Runner) { errCh <- r.Run(runCtx) }(r)
+		go func(r Runner) {
+			var runErr error
+			func() {
+				defer RecoverPanic(log, fmt.Sprintf("%T.Run", r), func(err error) { runErr = err })
+				runErr = r.Run(runCtx)
+			}()
+			errCh <- runErr
+		}(r)
 	}
 
 	select {

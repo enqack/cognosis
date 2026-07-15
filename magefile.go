@@ -32,8 +32,9 @@ func Test() error {
 	return sh.RunV("go", "test", "-race", "./...")
 }
 
-// Lint runs gofmt (check mode) and golangci-lint (which subsumes go vet plus
-// errcheck/staticcheck/ineffassign/unused — see .golangci.yml).
+// Lint runs gofmt (check mode) and golangci-lint over the correctness +
+// security linter set configured in .golangci.yml (govet, errcheck,
+// staticcheck, gosec, and more) — see that file for the authoritative list.
 func Lint() error {
 	out, err := sh.Output("gofmt", "-l", ".")
 	if err != nil {
@@ -80,7 +81,7 @@ func Release() error {
 	if err := os.RemoveAll("dist"); err != nil {
 		return err
 	}
-	if err := os.MkdirAll("dist", 0o755); err != nil {
+	if err := os.MkdirAll("dist", 0o750); err != nil {
 		return err
 	}
 	flags := fmt.Sprintf("-X main.version=%s", v)

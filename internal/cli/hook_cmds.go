@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 	"path/filepath"
@@ -39,7 +40,7 @@ func newHookCmd() *cobra.Command {
 				return err
 			}
 
-			hash, subject, files, err := latestCommit()
+			hash, subject, files, err := latestCommit(cmd.Context())
 			if err != nil {
 				// A hook must not break the commit it observes.
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "cognosis hook post-commit: %v (commit not captured)\n", err)
@@ -82,8 +83,8 @@ Files:
 
 // latestCommit reads the hooked repo's newest commit — read-only, run by the
 // operator's own git invocation.
-func latestCommit() (hash, subject, files string, err error) {
-	out, err := exec.Command("git", "log", "-1", "--format=%H%n%s").Output()
+func latestCommit(ctx context.Context) (hash, subject, files string, err error) {
+	out, err := exec.CommandContext(ctx, "git", "log", "-1", "--format=%H%n%s").Output()
 	if err != nil {
 		return "", "", "", fmt.Errorf("git log: %w", err)
 	}
@@ -93,7 +94,7 @@ func latestCommit() (hash, subject, files string, err error) {
 	}
 	hash, subject = lines[0], lines[1]
 
-	fout, err := exec.Command("git", "show", "--name-only", "--format=", "HEAD").Output()
+	fout, err := exec.CommandContext(ctx, "git", "show", "--name-only", "--format=", "HEAD").Output()
 	if err != nil {
 		return "", "", "", fmt.Errorf("git show: %w", err)
 	}

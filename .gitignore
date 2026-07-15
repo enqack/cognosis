@@ -1,4 +1,8 @@
 bin/
+dist/
 .pg-data/
 .pg-socket-path
 *.test
+
+# IDE / editor
+.idea/

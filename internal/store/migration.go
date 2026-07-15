@@ -124,7 +124,7 @@ func (s *Store) FinishMigration(ctx context.Context, id uuid.UUID, status string
 // BumpMigrationCounter adds n to one of the progress counters.
 func (s *Store) BumpMigrationCounter(ctx context.Context, id uuid.UUID, counter string, n int) error {
 	const op = "store.BumpMigrationCounter"
-	col := ""
+	var col string
 	switch counter {
 	case "backfill":
 		col = "chunks_backfill"
@@ -143,8 +143,12 @@ func (s *Store) BumpMigrationCounter(ctx context.Context, id uuid.UUID, counter 
 }
 
 // RecordMigrationError stores the most recent worker error for the report.
-func (s *Store) RecordMigrationError(ctx context.Context, id uuid.UUID, msg string) {
-	_, _ = s.pool.Exec(ctx, `update migration_state set last_error = $2 where id = $1`, id, msg)
+func (s *Store) RecordMigrationError(ctx context.Context, id uuid.UUID, msg string) error {
+	const op = "store.RecordMigrationError"
+	if _, err := s.pool.Exec(ctx, `update migration_state set last_error = $2 where id = $1`, id, msg); err != nil {
+		return cogerr.E(op, cogerr.Internal, err)
+	}
+	return nil
 }
 
 // ChunkRef is one back-fill work item.
@@ -169,19 +173,26 @@ func (s *Store) MissingChunkBatch(ctx context.Context, table string, limit int) 
 	if err != nil {
 		return nil, cogerr.E(op, cogerr.Internal, err)
 	}
+	out, err := scanChunkRefs(rows)
+	if err != nil {
+		return nil, cogerr.E(op, cogerr.Internal, err)
+	}
+	return out, nil
+}
+
+// scanChunkRefs drains a chunk-id/content result set into ChunkRefs, closing
+// rows on every path — the shared tail of every ChunkRef query below.
+func scanChunkRefs(rows pgx.Rows) ([]ChunkRef, error) {
 	defer rows.Close()
 	var out []ChunkRef
 	for rows.Next() {
 		var c ChunkRef
 		if err := rows.Scan(&c.ID, &c.Content); err != nil {
-			return nil, cogerr.E(op, cogerr.Internal, err)
+			return nil, err
 		}
 		out = append(out, c)
 	}
-	if rows.Err() != nil {
-		return nil, cogerr.E(op, cogerr.Internal, rows.Err())
-	}
-	return out, nil
+	return out, rows.Err()
 }
 
 // MissingCount reports how many chunks still lack an embedding in the table.
@@ -209,17 +220,9 @@ func (s *Store) ChunkRefsForNote(ctx context.Context, path string) ([]ChunkRef, 
 	if err != nil {
 		return nil, cogerr.E(op, cogerr.Internal, err)
 	}
-	defer rows.Close()
-	var out []ChunkRef
-	for rows.Next() {
-		var c ChunkRef
-		if err := rows.Scan(&c.ID, &c.Content); err != nil {
-			return nil, cogerr.E(op, cogerr.Internal, err)
-		}
-		out = append(out, c)
-	}
-	if rows.Err() != nil {
-		return nil, cogerr.E(op, cogerr.Internal, rows.Err())
+	out, err := scanChunkRefs(rows)
+	if err != nil {
+		return nil, cogerr.E(op, cogerr.Internal, err)
 	}
 	return out, nil
 }
@@ -250,17 +253,9 @@ func (s *Store) MissingAmong(ctx context.Context, table string, ids []uuid.UUID)
 	if err != nil {
 		return nil, cogerr.E(op, cogerr.Internal, err)
 	}
-	defer rows.Close()
-	var out []ChunkRef
-	for rows.Next() {
-		var c ChunkRef
-		if err := rows.Scan(&c.ID, &c.Content); err != nil {
-			return nil, cogerr.E(op, cogerr.Internal, err)
-		}
-		out = append(out, c)
-	}
-	if rows.Err() != nil {
-		return nil, cogerr.E(op, cogerr.Internal, rows.Err())
+	out, err := scanChunkRefs(rows)
+	if err != nil {
+		return nil, cogerr.E(op, cogerr.Internal, err)
 	}
 	return out, nil
 }

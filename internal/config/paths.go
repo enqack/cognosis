@@ -45,7 +45,7 @@ func (p Paths) TokenFile() string   { return filepath.Join(p.StateDir, "local-to
 // daemon start calls this rather than assuming they pre-exist.
 func (p Paths) EnsureDirs() error {
 	for _, d := range []string{p.ConfigDir, p.DataDir, p.StateDir, p.CacheDir, p.KBDir()} {
-		if err := os.MkdirAll(d, 0o755); err != nil {
+		if err := os.MkdirAll(d, 0o750); err != nil {
 			return err
 		}
 	}

@@ -64,7 +64,7 @@ func TestMiddlewareLifecycle(t *testing.T) {
 	defer srv.Close()
 
 	call := func(token string) int {
-		req, _ := http.NewRequest(http.MethodPost, srv.URL, nil)
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, srv.URL, nil)
 		if token != "" {
 			req.Header.Set("Authorization", "Bearer "+token)
 		}

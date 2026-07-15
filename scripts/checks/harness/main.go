@@ -24,9 +24,13 @@ import (
 )
 
 func main() {
+	os.Exit(run())
+}
+
+func run() int {
 	if len(os.Args) != 2 {
 		fmt.Fprintln(os.Stderr, "usage: harness <memory-loop|retrieval|knowledge|platform|migration>")
-		os.Exit(2)
+		return 2
 	}
 	slice := os.Args[1]
 	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
@@ -42,13 +46,14 @@ func main() {
 	fn, ok := slices[slice]
 	if !ok {
 		fmt.Fprintf(os.Stderr, "unknown slice %q\n", slice)
-		os.Exit(2)
+		return 2
 	}
 	if err := fn(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "harness %s: %v\n", slice, err)
-		os.Exit(1)
+		return 1
 	}
 	fmt.Printf("harness %s: OK\n", slice)
+	return 0
 }
 
 // --- memory-loop: write -> hybrid query -> get -> list, + contract + auth ----
@@ -56,7 +61,12 @@ func main() {
 func memoryLoop(ctx context.Context) error {
 	endpoint := envOr("COGNOSIS_MCP_URL", "http://127.0.0.1:7433")
 	// Auth is enforced even locally: a tokenless request must 401.
-	if resp, err := http.Post(endpoint, "application/json", strings.NewReader("{}")); err == nil {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader("{}"))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if resp, err := http.DefaultClient.Do(req); err == nil {
 		_ = resp.Body.Close()
 		if resp.StatusCode != http.StatusUnauthorized {
 			return fmt.Errorf("tokenless request got %s, want 401", resp.Status)
@@ -108,7 +118,7 @@ func memoryLoop(ctx context.Context) error {
 	}); err == nil {
 		return fmt.Errorf("invalid frontmatter was accepted")
 	} else if !strings.Contains(err.Error(), "id") {
-		return fmt.Errorf("rejection does not name the field: %v", err)
+		return fmt.Errorf("rejection does not name the field: %w", err)
 	}
 	return nil
 }

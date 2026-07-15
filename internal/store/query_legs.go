@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/pgvector/pgvector-go"
 
 	"github.com/enqack/cognosis/internal/cogerr"
@@ -69,12 +70,7 @@ func asOfParams(f Filter) (any, string) {
 	return f.AsOf.UTC(), f.AsOf.Format("2006-01-02 15:04:05")
 }
 
-func scanRanked(rows interface {
-	Next() bool
-	Scan(...any) error
-	Err() error
-	Close()
-}) ([]RankedChunk, error) {
+func scanRanked(rows pgx.Rows) ([]RankedChunk, error) {
 	defer rows.Close()
 	var out []RankedChunk
 	for rows.Next() {
@@ -187,7 +183,7 @@ func (s *Store) RankGraph(ctx context.Context, seeds []uuid.UUID,
 func (s *Store) ArchivedLinkers(ctx context.Context, noteIDs []uuid.UUID) (map[uuid.UUID]bool, error) {
 	const op = "store.ArchivedLinkers"
 	if len(noteIDs) == 0 {
-		return nil, nil
+		return map[uuid.UUID]bool{}, nil
 	}
 	rows, err := s.pool.Query(ctx, `
 		select distinct l.src_note_id

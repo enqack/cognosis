@@ -94,7 +94,7 @@ func (s *Server) addTools(srv *mcp.Server) {
 		if args.AsOf != "" {
 			t, err := vault.ParseTime(args.AsOf)
 			if err != nil {
-				return nil, nil, fmt.Errorf("as_of: %v", err)
+				return nil, nil, fmt.Errorf("as_of: %w", err)
 			}
 			asOf = &t
 		}
@@ -287,12 +287,12 @@ func Format(results []query.Result) string {
 // snippet caps content at 700 chars, preferring to cut at a newline unless
 // that would drop more than half the budget.
 func snippet(s string) string {
-	const max = 700
-	if len(s) <= max {
+	const snippetMax = 700
+	if len(s) <= snippetMax {
 		return s
 	}
-	cut := s[:max]
-	if i := strings.LastIndexByte(cut, '\n'); i >= max/2 {
+	cut := s[:snippetMax]
+	if i := strings.LastIndexByte(cut, '\n'); i >= snippetMax/2 {
 		cut = cut[:i]
 	}
 	return cut + "\n…"

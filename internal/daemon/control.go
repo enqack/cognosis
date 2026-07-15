@@ -21,7 +21,7 @@ import (
 // returns the child PID and exits; the child is the actual daemon. Baseline
 // self-managed lifecycle as the baseline — platform service files just skip this by
 // running `start --foreground` themselves.
-func Daemonize(paths config.Paths) (int, error) {
+func Daemonize(ctx context.Context, paths config.Paths) (int, error) {
 	const op = "daemon.Daemonize"
 	if err := paths.EnsureDirs(); err != nil {
 		return 0, cogerr.E(op, cogerr.Internal, err)
@@ -34,7 +34,7 @@ func Daemonize(paths config.Paths) (int, error) {
 			"another cognosis daemon is running (pid %d, lock %s)", pid, paths.LockFile())
 	}
 	logPath := filepath.Join(paths.StateDir, "daemon.log")
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		return 0, cogerr.E(op, cogerr.Internal, err)
 	}
@@ -44,7 +44,7 @@ func Daemonize(paths config.Paths) (int, error) {
 	if err != nil {
 		return 0, cogerr.E(op, cogerr.Internal, err)
 	}
-	cmd := exec.Command(exe, "start", "--foreground")
+	cmd := exec.CommandContext(ctx, exe, "start", "--foreground")
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
@@ -136,7 +136,10 @@ func Status(ctx context.Context, cfg *config.Config) []Check {
 
 	// MCP server listening (only meaningful when the daemon runs).
 	if pid, err := ReadLockPID(cfg.Paths().LockFile()); err == nil && processAlive(pid) {
-		conn, err := net.DialTimeout("tcp", cfg.BindAddress, 2*time.Second)
+		dialCtx, dialCancel := context.WithTimeout(ctx, 2*time.Second)
+		var d net.Dialer
+		conn, err := d.DialContext(dialCtx, "tcp", cfg.BindAddress)
+		dialCancel()
 		if err != nil {
 			checks = append(checks, Check{"mcp", false, fmt.Sprintf("not listening on %s: %v", cfg.BindAddress, err)})
 		} else {

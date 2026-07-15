@@ -43,7 +43,11 @@ func ollamaAvailable(t *testing.T) string {
 		url = "http://localhost:11434"
 	}
 	c := &http.Client{Timeout: 2 * time.Second}
-	resp, err := c.Get(url + "/api/version")
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, url+"/api/version", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := c.Do(req)
 	if err != nil {
 		t.Skipf("ollama not reachable at %s: %v", url, err)
 	}

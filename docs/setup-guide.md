@@ -22,7 +22,8 @@ rather than running degraded.
 
 ## Path A — Nix dev shell (recommended for development)
 
-The flake pins the whole toolchain: Go, Postgres + pgvector, Ollama, mage, golangci-lint, xz.
+The flake provides the whole toolchain: Go, Postgres + pgvector, Ollama, mage, golangci-lint, xz.
+(The authoritative Go version pin lives in `go.mod` via its `toolchain` directive, not in the flake.)
 
 ```sh
 cd cognosis
@@ -50,6 +51,9 @@ With Go 1.25+:
 ```sh
 go install github.com/enqack/cognosis/cmd/cognosis@latest   # or: mage install
 ```
+
+`go.mod` pins `toolchain go1.26.5` (a stdlib security fix), so building on an older Go 1.25
+toolchain will transparently fetch and use Go 1.26.5 — this is expected, not an error.
 
 Or download a release archive (`cognosis-<version>-<os>-<arch>.tar.gz`) and place `cognosis` on `PATH`.
 

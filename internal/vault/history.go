@@ -63,7 +63,7 @@ func (h *History) EnsureRepo(ctx context.Context) error {
 	if _, err := os.Stat(filepath.Join(h.dir, ".git")); err == nil {
 		return nil
 	}
-	if err := os.MkdirAll(h.dir, 0o755); err != nil {
+	if err := os.MkdirAll(h.dir, 0o750); err != nil {
 		return cogerr.E(op, cogerr.Internal, err)
 	}
 	if _, err := h.git(ctx, "init", "-q"); err != nil {

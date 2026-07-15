@@ -34,7 +34,7 @@ func newStartCmd() *cobra.Command {
 			}
 			foreground, _ := cmd.Flags().GetBool("foreground")
 			if !foreground {
-				pid, err := daemon.Daemonize(cfg.Paths())
+				pid, err := daemon.Daemonize(cmd.Context(), cfg.Paths())
 				if err != nil {
 					return err
 				}

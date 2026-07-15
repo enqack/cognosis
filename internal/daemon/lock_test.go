@@ -38,7 +38,7 @@ func TestLockLifecycle(t *testing.T) {
 func TestStaleLockReclaimed(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "daemon.lock")
 	// A PID that cannot be alive: max pid on darwin/linux is far below this.
-	if err := os.WriteFile(path, []byte("999999999\n"), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte("999999999\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	l, err := AcquireLock(path)
@@ -50,7 +50,7 @@ func TestStaleLockReclaimed(t *testing.T) {
 
 func TestCorruptLockNotReclaimedSilently(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "daemon.lock")
-	if err := os.WriteFile(path, []byte("not-a-pid\n"), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte("not-a-pid\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	// Unreadable PID → treated as stale (holder unverifiable) and reclaimed;

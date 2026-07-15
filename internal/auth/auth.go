@@ -10,6 +10,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"fmt"
+	"math"
 	"net/http"
 	"os"
 	"strings"
@@ -83,7 +84,11 @@ func VerifySecret(secret, stored string) bool {
 	if err != nil {
 		return false
 	}
-	got := argon2.IDKey([]byte(secret), salt, t, m, p, uint32(len(want)))
+	wantLen := len(want)
+	if wantLen < 0 || wantLen > math.MaxUint32 {
+		return false
+	}
+	got := argon2.IDKey([]byte(secret), salt, t, m, p, uint32(wantLen))
 	return subtle.ConstantTimeCompare(got, want) == 1
 }
 

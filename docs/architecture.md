@@ -57,6 +57,10 @@ Startup is a linear, fail-fast sequence — any failure in the first steps is fa
 6. embedding-provider reachability + table provisioning
 7. serve: MCP server + file watcher + migration worker
 
+In the serve phase, per-item background work in the file watcher and migration worker recovers from
+panics (logged and isolated to that one item) rather than crashing the daemon; a panic in a primary
+runner still brings the whole process down.
+
 **Reconciliation** keeps the derived index in step with hand-edits (Obsidian, a text editor, git):
 a live `fsnotify` watcher plus a boot-time `mtime`/size pre-check backed by BLAKE3 hashing, plus a
 periodic sweep. Cognosis's own writes suppress the watcher for the file being written, so it never

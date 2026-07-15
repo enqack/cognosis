@@ -11,7 +11,7 @@ import (
 func testHistory(t *testing.T) (*History, string, context.Context) {
 	t.Helper()
 	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root, "entries"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(root, "entries"), 0o750); err != nil {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
@@ -26,13 +26,13 @@ func TestRestoreRoundTrip(t *testing.T) {
 	h, root, ctx := testHistory(t)
 	p := filepath.Join(root, "entries", "a.md")
 
-	if err := os.WriteFile(p, []byte("version one\n"), 0o644); err != nil {
+	if err := os.WriteFile(p, []byte("version one\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.CommitAll(ctx, "write v1"); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(p, []byte("version two\n"), 0o644); err != nil {
+	if err := os.WriteFile(p, []byte("version two\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.CommitAll(ctx, "write v2"); err != nil {
@@ -67,13 +67,13 @@ func TestLogAllAndDashboard(t *testing.T) {
 	a := filepath.Join(root, "entries", "a.md")
 	b := filepath.Join(root, "entries", "b.md")
 
-	if err := os.WriteFile(a, []byte("one\n"), 0o644); err != nil {
+	if err := os.WriteFile(a, []byte("one\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.CommitAll(ctx, "add a"); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(b, []byte("two\n"), 0o644); err != nil {
+	if err := os.WriteFile(b, []byte("two\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.CommitAll(ctx, "add b"); err != nil {
@@ -119,14 +119,14 @@ func TestPurgePathErasesHistory(t *testing.T) {
 		secret: "the secret content\n",
 		keep:   "unrelated survivor\n",
 	} {
-		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if err := h.CommitAll(ctx, "both"); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(secret, []byte("more secret content\n"), 0o644); err != nil {
+	if err := os.WriteFile(secret, []byte("more secret content\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.CommitAll(ctx, "update secret"); err != nil {

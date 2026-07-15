@@ -3,6 +3,8 @@ package write
 import (
 	"context"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -249,16 +251,30 @@ func TestCrashBetweenFileAndDBConverges(t *testing.T) {
 // reconcileVault is a minimal stand-in for the watcher's boot pass: index
 // every stage file on disk through the shared core.
 func reconcileVault(ctx context.Context, p *Pipeline, root string) error {
-	return filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() || !strings.HasSuffix(path, ".md") {
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = r.Close() }()
+
+	return fs.WalkDir(r.FS(), ".", func(rel string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(rel, ".md") {
 			return err
 		}
-		rel, _ := filepath.Rel(root, path)
 		rel = filepath.ToSlash(rel)
 		if _, ok := vault.StageOf(rel); !ok {
 			return nil
 		}
-		content, err := os.ReadFile(path)
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		f, err := r.Open(rel)
+		if err != nil {
+			return err
+		}
+		content, err := io.ReadAll(f)
+		_ = f.Close()
 		if err != nil {
 			return err
 		}

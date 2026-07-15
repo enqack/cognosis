@@ -66,8 +66,12 @@ func (e *Engine) move(ctx context.Context, n *vault.Note, dest string) error {
 	if _, err := os.Stat(absDest); err == nil {
 		return cogerr.Ef(op, cogerr.Conflict, "move %s: destination %s already exists", src, dest)
 	}
+	stage, ok := vault.StageOf(dest)
+	if !ok {
+		return cogerr.Ef(op, cogerr.Internal, "move destination %q is not a valid vault stage path", dest)
+	}
 	n.Path = dest
-	n.Stage, _ = vault.StageOf(dest)
+	n.Stage = stage
 	if err := e.rewrite(ctx, n, dest); err != nil {
 		return err
 	}
@@ -84,12 +88,15 @@ func (e *Engine) move(ctx context.Context, n *vault.Note, dest string) error {
 // appendLog appends the run report to the vault's append-only log.md.
 func (e *Engine) appendLog(r *Report) error {
 	const op = "lifecycle.appendLog"
-	f, err := os.OpenFile(filepath.Join(e.VaultDir, "log.md"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	f, err := os.OpenFile(filepath.Join(e.VaultDir, "log.md"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return cogerr.E(op, cogerr.Internal, err)
 	}
 	defer func() { _ = f.Close() }()
 	if _, err := f.WriteString("\n" + r.String()); err != nil {
+		return cogerr.E(op, cogerr.Internal, err)
+	}
+	if err := f.Close(); err != nil {
 		return cogerr.E(op, cogerr.Internal, err)
 	}
 	return nil

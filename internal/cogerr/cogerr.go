@@ -21,6 +21,8 @@ const (
 
 func (k Kind) String() string {
 	switch k {
+	case Internal:
+		return "internal"
 	case NotFound:
 		return "not_found"
 	case Conflict:

@@ -37,7 +37,7 @@ func TestSeedIsIdempotentAndShipsDeepThoughts(t *testing.T) {
 	}
 	// Seeding never overwrites an existing dir (user files are theirs).
 	custom := filepath.Join(dir, "custom.md")
-	if err := os.WriteFile(custom, []byte("mine"), 0o644); err != nil {
+	if err := os.WriteFile(custom, []byte("mine"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := Seed(dir); err != nil {

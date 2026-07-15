@@ -22,6 +22,7 @@ import (
 	"github.com/enqack/cognosis/internal/auth"
 	"github.com/enqack/cognosis/internal/cogerr"
 	"github.com/enqack/cognosis/internal/config"
+	"github.com/enqack/cognosis/internal/daemon"
 	"github.com/enqack/cognosis/internal/lifecycle"
 	"github.com/enqack/cognosis/internal/migrate"
 	"github.com/enqack/cognosis/internal/persona"
@@ -137,11 +138,16 @@ func (s *Server) Run(ctx context.Context) error {
 
 	errCh := make(chan error, 1)
 	go func() {
-		if s.tls.Enabled() {
-			errCh <- httpSrv.ListenAndServeTLS(s.tls.CertFile, s.tls.KeyFile)
-			return
-		}
-		errCh <- httpSrv.ListenAndServe()
+		var serveErr error
+		func() {
+			defer daemon.RecoverPanic(s.log, "mcpserver.Run listener", func(err error) { serveErr = err })
+			if s.tls.Enabled() {
+				serveErr = httpSrv.ListenAndServeTLS(s.tls.CertFile, s.tls.KeyFile)
+				return
+			}
+			serveErr = httpSrv.ListenAndServe()
+		}()
+		errCh <- serveErr
 	}()
 	s.log.Info("mcp server listening", "addr", s.bind, "tls", s.tls.Enabled())
 

@@ -23,7 +23,7 @@ func testWatcher(t *testing.T) (*Watcher, *store.Store, string, context.Context)
 	s, _ := storetest.New(t)
 	root := t.TempDir()
 	for _, d := range []string{"entries", "notes", "reflections", "archive"} {
-		if err := os.MkdirAll(filepath.Join(root, d), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Join(root, d), 0o750); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -51,7 +51,7 @@ Raw capture body.
 func writeEntry(t *testing.T, root, rel, content string) string {
 	t.Helper()
 	p := filepath.Join(root, filepath.FromSlash(rel))
-	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(p, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return p
@@ -96,7 +96,7 @@ func TestSweepCatchesMtimePreservingEdit(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Same byte length, same mtime restored afterwards.
-	if err := os.WriteFile(p, []byte(entryContent(id)+"tampered tail\n"), 0o644); err != nil {
+	if err := os.WriteFile(p, []byte(entryContent(id)+"tampered tail\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Chtimes(p, info.ModTime(), info.ModTime()); err != nil {
@@ -146,7 +146,7 @@ func TestBrokenHandEditIsolated(t *testing.T) {
 	}
 
 	// Hand-edit that breaks the contract (drops required fields).
-	if err := os.WriteFile(p, []byte("---\nid: not-even-a-uuid\n---\nbroken\n"), 0o644); err != nil {
+	if err := os.WriteFile(p, []byte("---\nid: not-even-a-uuid\n---\nbroken\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := w.reconcile(ctx, false); err != nil {

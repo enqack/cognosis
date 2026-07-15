@@ -8,6 +8,7 @@ package vault
 
 import (
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -131,7 +132,7 @@ func (n *Note) Serialize() ([]byte, error) {
 func WriteFileAtomic(path string, content []byte) error {
 	const op = "vault.WriteFileAtomic"
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return cogerr.E(op, cogerr.Internal, err)
 	}
 	tmp, err := os.CreateTemp(dir, ".cognosis-write-*")
@@ -172,20 +173,30 @@ func Walk(root string) ([]*Note, error) {
 	var notes []*Note
 	var problems []string
 
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+	// os.Root confines every read inside this walk to root, closing the
+	// symlink-swap TOCTOU window a plain filepath.WalkDir + os.ReadFile
+	// pair leaves open between the directory scan and the file open.
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, cogerr.E(op, cogerr.Internal, err)
+	}
+	defer func() { _ = r.Close() }()
+
+	err = fs.WalkDir(r.FS(), ".", func(rel string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if d.IsDir() || !strings.HasSuffix(path, ".md") {
+		if d.IsDir() || !strings.HasSuffix(rel, ".md") {
 			return nil
-		}
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
 		}
 		rel = filepath.ToSlash(rel)
 
-		content, err := os.ReadFile(path)
+		f, err := r.Open(rel)
+		if err != nil {
+			return err
+		}
+		content, err := io.ReadAll(f)
+		_ = f.Close()
 		if err != nil {
 			return err
 		}

@@ -4,6 +4,7 @@
 package config
 
 import (
+	"errors"
 	"strings"
 	"time"
 
@@ -81,7 +82,8 @@ func Load() (*Config, error) {
 	if err := v.ReadInConfig(); err != nil {
 		// A missing config file is the normal first-run state; anything else
 		// (unreadable, invalid YAML) is a real error.
-		if _, ok := err.(*viper.ConfigParseError); ok {
+		var parseErr *viper.ConfigParseError
+		if errors.As(err, &parseErr) {
 			return nil, cogerr.E(op, cogerr.Validation, err)
 		}
 	}

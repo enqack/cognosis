@@ -39,8 +39,7 @@ type Chunk struct {
 // Split chunks a parsed note by its stage.
 func Split(n *vault.Note) []Chunk {
 	var raw []section
-	switch n.Stage {
-	case vault.StageReflection:
+	if n.Stage == vault.StageReflection {
 		// Embed the description, never the styled body.
 		desc, _ := n.Frontmatter["description"].(string)
 		desc = strings.TrimSpace(desc)
@@ -51,7 +50,7 @@ func Split(n *vault.Note) []Chunk {
 			return nil
 		}
 		raw = []section{{content: desc}}
-	default:
+	} else {
 		raw = splitAtH2(n.Body)
 	}
 

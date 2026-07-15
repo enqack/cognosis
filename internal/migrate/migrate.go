@@ -21,6 +21,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/enqack/cognosis/internal/cogerr"
+	"github.com/enqack/cognosis/internal/daemon"
 	"github.com/enqack/cognosis/internal/embed"
 	"github.com/enqack/cognosis/internal/store"
 	"github.com/enqack/cognosis/internal/write"
@@ -224,6 +225,7 @@ func (c *Coordinator) GetStatus(ctx context.Context) (*Status, error) {
 // same anti-join the worker uses, so this never duplicates work.
 func (c *Coordinator) LazyEnsure(ids []uuid.UUID) {
 	go func() {
+		defer daemon.RecoverPanic(c.log(), "migrate.LazyEnsure", nil)
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 		m, err := c.Store.ActiveMigration(ctx)
@@ -231,7 +233,11 @@ func (c *Coordinator) LazyEnsure(ids []uuid.UUID) {
 			return // no migration: nothing to do
 		}
 		missing, err := c.Store.MissingAmong(ctx, m.ToTable, ids)
-		if err != nil || len(missing) == 0 {
+		if err != nil {
+			c.log().Warn("lazy migration precheck failed", "reason", err)
+			return
+		}
+		if len(missing) == 0 {
 			return
 		}
 		if err := c.embedBatch(ctx, m, missing, "lazy"); err != nil {

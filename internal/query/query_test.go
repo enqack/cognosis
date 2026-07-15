@@ -31,7 +31,7 @@ const (
 // fixture builds the deterministic corpus: pinned stub vectors, one note
 // reachable only through the link graph (garden — never embedded, no keyword
 // overlap), and one falsified note (moon).
-func fixture(t *testing.T) (*query.Engine, *store.Store, string, context.Context) {
+func fixture(t *testing.T) (*query.Engine, string, context.Context) {
 	t.Helper()
 	s, dsn := storetest.New(t)
 	ctx := context.Background()
@@ -53,23 +53,20 @@ func fixture(t *testing.T) (*query.Engine, *store.Store, string, context.Context
 	bare := &write.Indexer{Store: s} // no embeddings — graph-only reachability
 
 	// garden first so pg's [[garden]] wikilink resolves.
-	index(t, ctx, bare, "entries/garden.md", "", "", gardenBody)
-	index(t, ctx, ix, "entries/pg.md", "", "", pgBody)
-	index(t, ctx, ix, "entries/vault.md", "", "", vaultBody)
-	index(t, ctx, ix, "entries/moon.md", "", "falsified", moonBody)
+	index(t, ctx, bare, "entries/garden.md", "", gardenBody)
+	index(t, ctx, ix, "entries/pg.md", "", pgBody)
+	index(t, ctx, ix, "entries/vault.md", "", vaultBody)
+	index(t, ctx, ix, "entries/moon.md", "falsified", moonBody)
 	indexConcept(t, ctx, ix, "notes/scoped.md", "alpha", "Project-scoped capture about the index.")
 
 	e := &query.Engine{Store: s, Providers: []query.ProviderLeg{{Provider: stub, Table: table}}}
-	return e, s, dsn, ctx
+	return e, dsn, ctx
 }
 
-func index(t *testing.T, ctx context.Context, ix *write.Indexer, rel, project, status, body string) {
+func index(t *testing.T, ctx context.Context, ix *write.Indexer, rel, status, body string) {
 	t.Helper()
 	fm := "---\nid: " + uuid.NewString() + "\ncategory: entry\n" +
 		"created: \"2026-07-12 09:00:00\"\nupdated: \"2026-07-12 09:00:00\"\n"
-	if project != "" {
-		fm += "project: " + project + "\n"
-	}
 	if status != "" {
 		fm += "status: " + status + "\n"
 	}
@@ -103,7 +100,7 @@ func indexRaw(t *testing.T, ctx context.Context, ix *write.Indexer, rel, content
 }
 
 func paths(rs []query.Result) []string {
-	var out []string
+	out := make([]string, 0, len(rs))
 	for _, r := range rs {
 		out = append(out, r.Path)
 	}
@@ -113,7 +110,7 @@ func paths(rs []query.Result) []string {
 // TestGoldenRanking — the fused default-query ordering matches the committed
 // golden file exactly.
 func TestGoldenRanking(t *testing.T) {
-	e, _, _, ctx := fixture(t)
+	e, _, ctx := fixture(t)
 	rs, err := e.Run(ctx, queryText, query.Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -133,7 +130,7 @@ func TestGoldenRanking(t *testing.T) {
 // TestGraphOnlyNoteAppears — garden has no embedding and no keyword overlap;
 // only the link graph can reach it, and fusion must surface it.
 func TestGraphOnlyNoteAppears(t *testing.T) {
-	e, _, _, ctx := fixture(t)
+	e, _, ctx := fixture(t)
 	rs, err := e.Run(ctx, queryText, query.Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -147,7 +144,7 @@ func TestGraphOnlyNoteAppears(t *testing.T) {
 }
 
 func TestFalsifiedFiltered(t *testing.T) {
-	e, _, _, ctx := fixture(t)
+	e, _, ctx := fixture(t)
 
 	rs, err := e.Run(ctx, queryText, query.Options{})
 	if err != nil {
@@ -175,7 +172,7 @@ func TestFalsifiedFiltered(t *testing.T) {
 }
 
 func TestProjectScoping(t *testing.T) {
-	e, _, _, ctx := fixture(t)
+	e, _, ctx := fixture(t)
 	rs, err := e.Run(ctx, queryText, query.Options{Project: "alpha"})
 	if err != nil {
 		t.Fatal(err)
@@ -188,7 +185,7 @@ func TestProjectScoping(t *testing.T) {
 }
 
 func TestTopK(t *testing.T) {
-	e, _, _, ctx := fixture(t)
+	e, _, ctx := fixture(t)
 	rs, err := e.Run(ctx, queryText, query.Options{TopK: 1})
 	if err != nil {
 		t.Fatal(err)
@@ -202,7 +199,7 @@ func TestTopK(t *testing.T) {
 // the fixture corpus versus the unbiased run (golden files for both), without
 // excluding anything.
 func TestCategoryBiasReorders(t *testing.T) {
-	e, _, _, ctx := fixture(t)
+	e, _, ctx := fixture(t)
 
 	unbiased, err := e.Run(ctx, queryText, query.Options{})
 	if err != nil {
@@ -244,7 +241,7 @@ func TestCategoryBiasReorders(t *testing.T) {
 // disabled for the check since the planner would prefer them on a tiny
 // fixture corpus).
 func TestExplainVectorLegUsesHNSW(t *testing.T) {
-	_, _, dsn, ctx := fixture(t)
+	_, dsn, ctx := fixture(t)
 
 	u, err := url.Parse(dsn)
 	if err != nil {
@@ -266,11 +263,11 @@ func TestExplainVectorLegUsesHNSW(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := os.MkdirAll("testdata", 0o755); err != nil {
+	if err := os.MkdirAll("testdata", 0o750); err != nil {
 		t.Fatal(err)
 	}
 	artifact := filepath.Join("testdata", "explain_vector_leg.txt")
-	if err := os.WriteFile(artifact, []byte(plan), 0o644); err != nil {
+	if err := os.WriteFile(artifact, []byte(plan), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(plan, "hnsw_idx") {

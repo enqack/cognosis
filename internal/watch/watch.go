@@ -64,7 +64,9 @@ func (w *Watcher) handleEvent(ctx context.Context, fw *fsnotify.Watcher, ev fsno
 	if ev.Op.Has(fsnotify.Create) {
 		if info, err := os.Stat(ev.Name); err == nil && info.IsDir() {
 			if filepath.Base(ev.Name) != ".git" {
-				_ = addRecursive(fw, ev.Name)
+				if err := addRecursive(fw, ev.Name); err != nil {
+					w.log.Error("watch new directory failed", "path", ev.Name, "reason", err)
+				}
 			}
 			return
 		}

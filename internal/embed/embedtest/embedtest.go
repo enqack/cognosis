@@ -61,7 +61,9 @@ func (s *Stub) vec(text string) []float32 {
 		// Four bytes per component, wrapping over the digest.
 		off := (i * 4) % (len(sum) - 4)
 		bits := binary.LittleEndian.Uint32(sum[off : off+4])
-		f := float64(int32(bits)) / float64(math.MaxInt32)
+		// Map the full uint32 range to roughly [-1, 1] without a narrowing
+		// signed conversion (widening uint32->float64 only).
+		f := (float64(bits) - float64(math.MaxUint32)/2) / (float64(math.MaxUint32) / 2)
 		v[i] = float32(f)
 		norm += f * f
 	}

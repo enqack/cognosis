@@ -2,8 +2,9 @@ package store
 
 import (
 	"context"
+	crand "crypto/rand"
+	"encoding/binary"
 	"fmt"
-	"math/rand"
 	"net/url"
 	"os"
 	"testing"
@@ -23,7 +24,11 @@ func testStore(t *testing.T) (*Store, context.Context) {
 		t.Skip("COGNOSIS_TEST_DSN not set; store tests need a real Postgres (run pg-start in the dev shell)")
 	}
 	ctx := context.Background()
-	schema := fmt.Sprintf("cog_test_%d_%d", os.Getpid(), rand.Int63())
+	var suffix [8]byte
+	if _, err := crand.Read(suffix[:]); err != nil {
+		t.Fatalf("random schema suffix: %v", err)
+	}
+	schema := fmt.Sprintf("cog_test_%d_%d", os.Getpid(), binary.BigEndian.Uint64(suffix[:]))
 
 	admin, err := pgx.Connect(ctx, base)
 	if err != nil {

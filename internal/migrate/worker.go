@@ -101,7 +101,9 @@ func (w *Worker) step(ctx context.Context) (bool, error) {
 	if err := w.C.embedBatch(ctx, m, batch, "backfill"); err != nil {
 		// Transient failure: the batch stays missing and will be retried, so
 		// only the error is recorded — counters track chunks actually moved.
-		w.C.Store.RecordMigrationError(ctx, m.ID, err.Error())
+		if rerr := w.C.Store.RecordMigrationError(ctx, m.ID, err.Error()); rerr != nil {
+			w.C.log().Warn("recording migration error failed", "reason", rerr)
+		}
 		return false, err
 	}
 	return true, nil

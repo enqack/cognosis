@@ -56,10 +56,10 @@ func Seed(dir string) error {
 	if _, err := os.Stat(dir); err == nil {
 		return nil
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return cogerr.E(op, cogerr.Internal, err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "deep-thoughts.md"), deepThoughts, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "deep-thoughts.md"), deepThoughts, 0o600); err != nil {
 		return cogerr.E(op, cogerr.Internal, err)
 	}
 	return nil
@@ -120,9 +120,19 @@ func (r *Registry) load(id string) (Persona, error) {
 		return Persona{}, cogerr.Ef(op, cogerr.Validation, "persona %q has no frontmatter", id)
 	}
 	p := Persona{Body: n.Body}
-	p.ID, _ = n.Frontmatter["id"].(string)
-	p.Name, _ = n.Frontmatter["name"].(string)
-	p.Description, _ = n.Frontmatter["description"].(string)
+	var err2 error
+	p.ID, err2 = personaStringField(n.Frontmatter, "id")
+	if err2 != nil {
+		return Persona{}, cogerr.Ef(op, cogerr.Validation, "persona %q: %v", id, err2)
+	}
+	p.Name, err2 = personaStringField(n.Frontmatter, "name")
+	if err2 != nil {
+		return Persona{}, cogerr.Ef(op, cogerr.Validation, "persona %q: %v", id, err2)
+	}
+	p.Description, err2 = personaStringField(n.Frontmatter, "description")
+	if err2 != nil {
+		return Persona{}, cogerr.Ef(op, cogerr.Validation, "persona %q: %v", id, err2)
+	}
 	if p.ID != id {
 		return Persona{}, cogerr.Ef(op, cogerr.Validation,
 			"persona file %s.md declares id %q; file name and id must match", id, p.ID)
@@ -149,6 +159,21 @@ func (r *Registry) load(id string) (Persona, error) {
 		}
 	}
 	return p, nil
+}
+
+// personaStringField reads a frontmatter field as a string. A missing key
+// returns "" with no error (callers decide whether that's fatal); a present
+// key of the wrong type is an error rather than a silent empty default.
+func personaStringField(fm map[string]any, key string) (string, error) {
+	v, ok := fm[key]
+	if !ok {
+		return "", nil
+	}
+	s, ok := v.(string)
+	if !ok {
+		return "", fmt.Errorf("frontmatter field %q must be a string, got %T", key, v)
+	}
+	return s, nil
 }
 
 // WriteReflection lands a persona-authored note in reflections/ through the

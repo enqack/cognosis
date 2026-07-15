@@ -29,7 +29,7 @@ func testEngine(t *testing.T) (*Engine, *store.Store, string, context.Context) {
 	s, _ := storetest.New(t)
 	root := t.TempDir()
 	for _, d := range []string{"entries", "notes", "reflections", "archive"} {
-		if err := os.MkdirAll(filepath.Join(root, d), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Join(root, d), 0o750); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -98,7 +98,7 @@ sources:
 	fm += sp.extra
 	content := fm + "---\n" + sp.body
 	p := filepath.Join(root, filepath.FromSlash(rel))
-	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(p, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return sp.id
@@ -118,7 +118,7 @@ func reparse(t *testing.T, root, rel string) *vault.Note {
 }
 
 func kinds(r *Report) []string {
-	var out []string
+	out := make([]string, 0, len(r.Actions))
 	for _, a := range r.Actions {
 		out = append(out, a.Kind)
 	}
@@ -464,7 +464,7 @@ func TestRevertRunRestores(t *testing.T) {
 	// Revert the compile commit (product-domain git, inside the vault repo).
 	git := func(args ...string) {
 		t.Helper()
-		cmd := exec.Command("git", args...)
+		cmd := exec.CommandContext(t.Context(), "git", args...)
 		cmd.Dir = root
 		cmd.Env = append(os.Environ(),
 			"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null",
@@ -554,7 +554,7 @@ func TestLogAppended(t *testing.T) {
 
 func gitCommitCount(t *testing.T, root string) int {
 	t.Helper()
-	cmd := exec.Command("git", "rev-list", "--count", "HEAD")
+	cmd := exec.CommandContext(t.Context(), "git", "rev-list", "--count", "HEAD")
 	cmd.Dir = root
 	out, err := cmd.Output()
 	if err != nil {

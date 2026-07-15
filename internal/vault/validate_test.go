@@ -26,7 +26,7 @@ func validDecayingFM() map[string]any {
 }
 
 func fieldsOf(probs []Problem) []string {
-	var out []string
+	out := make([]string, 0, len(probs))
 	for _, p := range probs {
 		out = append(out, p.Field)
 	}

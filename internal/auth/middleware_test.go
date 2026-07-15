@@ -43,9 +43,10 @@ func mintInto(t *testing.T, f *fakeTokenStore) (plaintext string) {
 	return pt
 }
 
-func do(ts TokenStore, authHeader string) *httptest.ResponseRecorder {
+func do(t *testing.T, ts TokenStore, authHeader string) *httptest.ResponseRecorder {
+	t.Helper()
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
-	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", nil)
 	if authHeader != "" {
 		req.Header.Set("Authorization", authHeader)
 	}
@@ -57,7 +58,7 @@ func do(ts TokenStore, authHeader string) *httptest.ResponseRecorder {
 func TestMiddlewareAcceptsValidTokenAndTouches(t *testing.T) {
 	f := &fakeTokenStore{}
 	pt := mintInto(t, f)
-	rec := do(f, "Bearer "+pt)
+	rec := do(t, f, "Bearer "+pt)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("valid token: got %d, want 200", rec.Code)
 	}
@@ -76,7 +77,7 @@ func TestMiddlewareRejectsMissingAndMalformed(t *testing.T) {
 		{"no-bearer", "Basic xyz"},
 		{"malformed", "Bearer not-a-cog-token"},
 	} {
-		rec := do(f, tc.header)
+		rec := do(t, f, tc.header)
 		if rec.Code != http.StatusUnauthorized {
 			t.Errorf("%s: got %d, want 401", tc.name, rec.Code)
 		}
@@ -92,7 +93,7 @@ func TestMiddlewareRejectsRevokedToken(t *testing.T) {
 	pt := mintInto(t, f)
 	now := time.Now()
 	f.tok.RevokedAt = &now
-	rec := do(f, "Bearer "+pt)
+	rec := do(t, f, "Bearer "+pt)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("revoked token: got %d, want 401", rec.Code)
 	}

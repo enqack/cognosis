@@ -22,11 +22,11 @@ type Lock struct {
 // process holds it. A lock left by a dead process (stale PID) is reclaimed.
 func AcquireLock(path string) (*Lock, error) {
 	const op = "daemon.AcquireLock"
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return nil, cogerr.E(op, cogerr.Internal, err)
 	}
 	for range 2 {
-		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 		if err == nil {
 			if _, werr := fmt.Fprintf(f, "%d\n", os.Getpid()); werr != nil {
 				_ = f.Close()

@@ -11,7 +11,7 @@ import (
 // gitIn runs the product-domain git the hook depends on, inside a temp repo.
 func gitIn(t *testing.T, dir string, args ...string) {
 	t.Helper()
-	cmd := exec.Command("git", args...)
+	cmd := exec.CommandContext(t.Context(), "git", args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(),
 		"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null",
@@ -38,19 +38,19 @@ func TestPostCommitCapturesInMarkedRepo(t *testing.T) {
 		t.Setenv(k, filepath.Join(sandbox, k))
 	}
 	vaultDir := filepath.Join(sandbox, "XDG_DATA_HOME", "cognosis", "kb")
-	if err := os.MkdirAll(filepath.Join(vaultDir, "entries"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(vaultDir, "entries"), 0o750); err != nil {
 		t.Fatal(err)
 	}
 
 	repo := filepath.Join(sandbox, "repo")
-	if err := os.MkdirAll(repo, 0o755); err != nil {
+	if err := os.MkdirAll(repo, 0o750); err != nil {
 		t.Fatal(err)
 	}
 	gitIn(t, repo, "init", "-q")
-	if err := os.WriteFile(filepath.Join(repo, "main.go"), []byte("package main\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(repo, "main.go"), []byte("package main\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(repo, ".cognosis-project"), []byte("hooked-project\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(repo, ".cognosis-project"), []byte("hooked-project\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	gitIn(t, repo, "add", "-A")
@@ -84,7 +84,7 @@ func TestPostCommitUnmarkedIsSilent(t *testing.T) {
 		t.Setenv(k, filepath.Join(sandbox, k))
 	}
 	repo := filepath.Join(sandbox, "repo")
-	if err := os.MkdirAll(repo, 0o755); err != nil {
+	if err := os.MkdirAll(repo, 0o750); err != nil {
 		t.Fatal(err)
 	}
 	gitIn(t, repo, "init", "-q")
