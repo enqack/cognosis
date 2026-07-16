@@ -115,6 +115,7 @@ built-in TLS or a TLS-terminating reverse proxy — see
 ```sh
 mage build   # -> bin/cognosis (version-stamped from VERSION)
 mage test    # go test -race ./...
+mage testShort # go test -race -short ./... (skips the 5k-chunk load test)
 mage lint    # gofmt + golangci-lint (see .golangci.yml)
 mage check   # end-to-end feature checks (scripts/check-all.sh)
 mage release # cross-compiled, version-stamped archives + SHA256SUMS -> dist/
@@ -129,6 +130,7 @@ boots a daemon in a sandbox against the dev Postgres + Ollama:
 ./scripts/checks/retrieval.sh           # summaries, as_of, list_decaying, archived exclusion
 ./scripts/checks/knowledge.sh           # compile lifecycle + verify, personas, vault history
 ./scripts/checks/platform.sh            # auth/audit, context inject, commit capture, service files
+./scripts/checks/tls.sh                 # built-in TLS: non-loopback bind, handshake, auth still enforced
 ./scripts/checks/embedding-migration.sh # zero-downtime provider migration, under load
 ./scripts/check-all.sh                  # all of the above, in order
 ```
@@ -136,7 +138,9 @@ boots a daemon in a sandbox against the dev Postgres + Ollama:
 Integration tests need `COGNOSIS_TEST_DSN` pointing at a Postgres with
 pgvector (the dev shell provides one); Ollama-backed tests skip when no
 server is reachable. The `scripts/checks/*.sh` end-to-end checks additionally
-need `COGNOSIS_DSN` (e.g. `pg-start`) and a local Ollama with the pinned model.
+want `COGNOSIS_DSN` (e.g. `pg-start`) and a local Ollama with the pinned model —
+a check whose prerequisites are missing reports itself skipped, and `check-all.sh`
+carries on to the next one rather than failing the run.
 
 ## Documentation
 

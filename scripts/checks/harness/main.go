@@ -8,6 +8,13 @@
 // Env: COGNOSIS_MCP_URL, COGNOSIS_TOKEN_FILE (or COGNOSIS_TOKEN); the platform
 // slice also needs COGNOSIS_DSN for its audit-table assertions. The check
 // scripts under scripts/checks/ boot a daemon and call the matching slice.
+//
+// One mode is not an MCP slice:
+//
+//	go run ./scripts/checks/harness gen-cert <dir>
+//
+// writes the throwaway TLS trust chain the tls check needs, before any daemon
+// exists to talk to (see gencert.go).
 package main
 
 import (
@@ -32,10 +39,34 @@ func main() {
 	os.Exit(run())
 }
 
+// run returns 0 on success and 1 on any failure, including a usage error.
+//
+// It never returns 2, even though 2-means-usage is the usual CLI convention:
+// in this subsystem 2 already means "skip" — scripts/checks/_lib.sh's
+// require_env exits 2 for a missing prerequisite and check-all.sh reports that
+// check as skipped and carries on. A harness usage error is a programmer
+// mistake, the opposite of a skippable one, so it must never be able to wear
+// that number. Today `go run` collapses any non-zero exit to 1 and every caller
+// consumes the code with `|| fail`, which would hide the collision; both are
+// accidents, not guarantees.
 func run() int {
+	// gen-cert takes a directory, so it is dispatched ahead of the slices —
+	// they all share the one-arg, MCP-driving shape and it shares neither.
+	if len(os.Args) > 1 && os.Args[1] == "gen-cert" {
+		if len(os.Args) != 3 {
+			fmt.Fprintln(os.Stderr, "usage: harness gen-cert <dir>")
+			return 1
+		}
+		if err := genCert(os.Args[2]); err != nil {
+			fmt.Fprintf(os.Stderr, "harness gen-cert: %v\n", err)
+			return 1
+		}
+		fmt.Println("harness gen-cert: OK")
+		return 0
+	}
 	if len(os.Args) != 2 {
-		fmt.Fprintln(os.Stderr, "usage: harness <memory-loop|retrieval|knowledge|platform|migration>")
-		return 2
+		fmt.Fprintln(os.Stderr, "usage: harness <memory-loop|retrieval|knowledge|platform|migration> | gen-cert <dir>")
+		return 1
 	}
 	slice := os.Args[1]
 	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
@@ -51,7 +82,7 @@ func run() int {
 	fn, ok := slices[slice]
 	if !ok {
 		fmt.Fprintf(os.Stderr, "unknown slice %q\n", slice)
-		return 2
+		return 1
 	}
 	if err := fn(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "harness %s: %v\n", slice, err)

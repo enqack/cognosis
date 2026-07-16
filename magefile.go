@@ -27,9 +27,18 @@ func Build() error {
 	return sh.RunV("go", "build", "-ldflags", ldflags(), "-o", "bin/cognosis", "./cmd/cognosis")
 }
 
-// Test runs the full suite with the race detector.
+// Test runs the full suite with the race detector. This is the suite CI runs,
+// so the zero-downtime-under-load test (a 5k-chunk migration under concurrent
+// queries) is proven on every push.
 func Test() error {
 	return sh.RunV("go", "test", "-race", "./...")
+}
+
+// TestShort runs the suite with -short, skipping the tests that gate on it —
+// today just the 5k-chunk load test in internal/migrate. The fast inner-loop
+// suite; Test remains the one that proves the load claim.
+func TestShort() error {
+	return sh.RunV("go", "test", "-race", "-short", "./...")
 }
 
 // Lint runs gofmt (check mode) and golangci-lint over the correctness +

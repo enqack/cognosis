@@ -226,11 +226,12 @@ With the daemon up and registered, from your MCP client:
 2. `query_knowledge` for its text — it comes back hybrid-ranked with a score.
 3. `get_note` returns the exact content.
 
-Or run the full end-to-end feature checks (needs `COGNOSIS_DSN` + a local Ollama):
+Or run the full end-to-end feature checks (wants `COGNOSIS_DSN` + a local Ollama;
+a check whose prerequisites are missing reports itself skipped and the run goes on):
 
 ```sh
 mage check          # scripts/check-all.sh — daemon, memory-loop, retrieval,
-                    # knowledge, platform, embedding-migration
+                    # knowledge, platform, tls, embedding-migration
 ```
 
 ---

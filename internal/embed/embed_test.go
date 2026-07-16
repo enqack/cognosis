@@ -36,6 +36,12 @@ func TestKnownDimension(t *testing.T) {
 
 // ollamaAvailable gates the live integration tests: they run when a local
 // Ollama is reachable, and skip (never fail) when it isn't.
+//
+// scripts/checks/_lib.sh's require_env deliberately mirrors this probe for the
+// end-to-end checks — same COGNOSIS_TEST_OLLAMA override, same
+// http://localhost:11434 default, same /api/version endpoint. The duplication
+// is a language boundary (Go here, bash there), not an oversight: change one
+// and the other needs the same change.
 func ollamaAvailable(t *testing.T) string {
 	t.Helper()
 	url := os.Getenv("COGNOSIS_TEST_OLLAMA")
