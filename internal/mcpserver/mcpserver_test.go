@@ -1,14 +1,19 @@
 package mcpserver
 
 import (
+	"context"
 	"log/slog"
 	"os"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/enqack/cognosis/internal/cogerr"
 	"github.com/enqack/cognosis/internal/config"
 	"github.com/enqack/cognosis/internal/query"
+	"github.com/enqack/cognosis/internal/store"
 )
 
 func TestLoopbackEnforced(t *testing.T) {
@@ -79,5 +84,126 @@ func TestSnippet(t *testing.T) {
 	}
 	if !strings.HasSuffix(got, "…") {
 		t.Fatal("truncated snippet must end with ellipsis")
+	}
+}
+
+func TestRenderContextPreamble(t *testing.T) {
+	metas := []store.NoteMeta{
+		{Path: "entries/a.md", Category: "entry", Status: "active", Updated: time.Now()},
+		{Path: "notes/b.md", Category: "concept", Status: "active", Project: "cognosis", Updated: time.Now()},
+	}
+
+	out := renderContext(metas, "", 2000)
+	if !strings.HasPrefix(out, contextPreamble) {
+		t.Fatal("preamble must lead the payload — an index the agent reads before the framing is a list of paths with no stated purpose")
+	}
+	if i, j := strings.Index(out, contextPreamble), strings.Index(out, "# Cognosis knowledge index"); i > j {
+		t.Errorf("preamble must precede the index header (got %d > %d)", i, j)
+	}
+	for _, want := range []string{"entries/a.md", "notes/b.md", "project cognosis"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("index missing %q:\n%s", want, out)
+		}
+	}
+
+	// The empty vault is exactly when the write_note guidance matters most.
+	empty := renderContext(nil, "", 2000)
+	if !strings.HasPrefix(empty, contextPreamble) {
+		t.Error("empty vault must still get the preamble")
+	}
+	if !strings.Contains(empty, "(vault is empty)") {
+		t.Error("empty vault must still say so")
+	}
+
+	// The preamble is exempt from the budget, which governs the index alone. 50
+	// tokens (~200 chars) could not fit the preamble (~193 tokens) and a note
+	// line both, so the notes appearing is what proves the exemption: were the
+	// preamble counted, the allowance would be gone before the first line.
+	exempt := renderContext(metas, "", 50)
+	for _, want := range []string{"entries/a.md", "notes/b.md"} {
+		if !strings.Contains(exempt, want) {
+			t.Errorf("preamble must not consume the index budget — %q missing:\n%s", want, exempt)
+		}
+	}
+
+	// The budget still governs the index: too small for even one line collapses
+	// it while the preamble survives. This is the only place truncation is
+	// proven — scripts/checks/platform.sh injects against an empty vault, so it
+	// can only bound the output, not watch an index collapse.
+	tiny := renderContext(metas, "", 10)
+	if !strings.HasPrefix(tiny, contextPreamble) {
+		t.Error("preamble is exempt, so it must survive even a budget of 10")
+	}
+	if !strings.Contains(tiny, "truncated to budget") {
+		t.Errorf("budget 10 must truncate the index:\n%s", tiny)
+	}
+	if strings.Contains(tiny, "entries/a.md") {
+		t.Error("budget 10 must not fit a note line")
+	}
+}
+
+// registeredTools lists the live tool surface by asking the server over an
+// in-memory transport, rather than trusting a hand-copied list to stay honest.
+// Registration never touches the store, so nil dependencies are fine here.
+func registeredTools(t *testing.T) map[string]string {
+	t.Helper()
+	ctx := context.Background()
+
+	s := &Server{log: slog.New(slog.DiscardHandler)}
+	srv := mcp.NewServer(&mcp.Implementation{Name: "cognosis", Version: "test"}, nil)
+	s.addTools(srv)
+
+	st, ct := mcp.NewInMemoryTransports()
+	ss, err := srv.Connect(ctx, st, nil)
+	if err != nil {
+		t.Fatalf("server connect: %v", err)
+	}
+	t.Cleanup(func() { _ = ss.Close() })
+
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "test"}, nil).Connect(ctx, ct, nil)
+	if err != nil {
+		t.Fatalf("client connect: %v", err)
+	}
+	t.Cleanup(func() { _ = cs.Close() })
+
+	res, err := cs.ListTools(ctx, nil)
+	if err != nil {
+		t.Fatalf("list tools: %v", err)
+	}
+	out := map[string]string{}
+	for _, tool := range res.Tools {
+		out[tool.Name] = tool.Description
+	}
+	return out
+}
+
+// TestPreambleToolNamesExist guards the drift that makes the preamble worse than
+// useless: naming a tool the server does not register. The preamble is the first
+// thing an agent reads, so a stale name there points it at a tool that isn't there.
+func TestPreambleToolNamesExist(t *testing.T) {
+	tools := registeredTools(t)
+	if len(tools) == 0 {
+		t.Fatal("no tools registered")
+	}
+	// Pull every `backticked` token out of the preamble that looks like a tool name.
+	for _, tok := range strings.Split(contextPreamble, "`") {
+		if !strings.Contains(tok, "_") || strings.ContainsAny(tok, " /") {
+			continue
+		}
+		if _, ok := tools[tok]; !ok {
+			t.Errorf("preamble names %q, which is not a registered tool", tok)
+		}
+	}
+}
+
+// TestToolDescriptionsStateWhenToUse checks the property the descriptions exist
+// for: a tool the agent can see but never learns to reach for is dead surface.
+// Deliberately shallow — it catches a description reverted to a bare mechanism
+// blurb or emptied out, not prose quality.
+func TestToolDescriptionsStateWhenToUse(t *testing.T) {
+	for name, desc := range registeredTools(t) {
+		if len(desc) < 80 {
+			t.Errorf("%s: description too thin to say when to use it (%d chars): %q", name, len(desc), desc)
+		}
 	}
 }

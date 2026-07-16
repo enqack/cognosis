@@ -61,6 +61,12 @@ In the serve phase, per-item background work in the file watcher and migration w
 panics (logged and isolated to that one item) rather than crashing the daemon; a panic in a primary
 runner still brings the whole process down.
 
+**Many clients, one surface.** The MCP server serves concurrent clients over Streamable HTTP: each gets
+its own session, but they share a single tool registration, and identity is resolved per request from
+its bearer token rather than pinned to a connection. The tools hold no per-client state — everything
+durable lives in Postgres and the vault — so concurrency needs no coordination beyond the write
+serialization the vault history and single-instance sections describe.
+
 **Reconciliation** keeps the derived index in step with hand-edits (Obsidian, a text editor, git):
 a live `fsnotify` watcher plus a boot-time `mtime`/size pre-check backed by BLAKE3 hashing, plus a
 periodic sweep. Cognosis's own writes suppress the watcher for the file being written, so it never

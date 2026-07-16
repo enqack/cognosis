@@ -60,8 +60,10 @@ func textResult(s string) *mcp.CallToolResult {
 
 func (s *Server) addTools(srv *mcp.Server) {
 	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "write_note",
-		Description: "Write a markdown note into the Cognosis vault. Validates the frontmatter contract, versions the write, chunks, embeds, and indexes it atomically.",
+		Name: "write_note",
+		Description: "Persist a finding to the vault so it survives this session — decisions, gotchas, dead ends worth not re-walking, " +
+			"anything a future session would waste time rediscovering. Raw capture goes in entries/. " +
+			"Validates the frontmatter contract, versions the write, chunks, embeds, and indexes it atomically.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args writeNoteArgs) (*mcp.CallToolResult, any, error) {
 		if args.Path == "" || args.Content == "" {
 			return nil, nil, fmt.Errorf("path and content are required")
@@ -76,8 +78,10 @@ func (s *Server) addTools(srv *mcp.Server) {
 	})
 
 	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "query_knowledge",
-		Description: "Hybrid semantic + keyword + link-graph search over the Cognosis knowledge base.",
+		Name: "query_knowledge",
+		Description: "Search your own past findings before deciding something non-obvious — a previous session may have already " +
+			"settled it, or already been wrong about it. Hybrid semantic + keyword + link-graph retrieval, RRF-fused. " +
+			"Falsified notes are retained but excluded unless include_falsified.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args queryArgs) (*mcp.CallToolResult, any, error) {
 		if args.Text == "" {
 			return nil, nil, fmt.Errorf("text is required")
@@ -117,8 +121,9 @@ func (s *Server) addTools(srv *mcp.Server) {
 	})
 
 	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "list_notes",
-		Description: "List vault notes (path, category, status, project, updated) without content.",
+		Name: "list_notes",
+		Description: "Enumerate what the vault holds (path, category, status, project, updated) without content — the cheap way " +
+			"to see coverage, or to find a path worth passing to get_note. To search by meaning rather than browse, use query_knowledge.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args listNotesArgs) (*mcp.CallToolResult, any, error) {
 		metas, err := s.store.ListNotes(ctx, args.Project)
 		s.audit(ctx, "list_notes", args.Project, "", err)
@@ -171,8 +176,9 @@ func (s *Server) addTools(srv *mcp.Server) {
 	})
 
 	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "get_note",
-		Description: "Fetch one note's full raw content (frontmatter + body) by vault-relative path.",
+		Name: "get_note",
+		Description: "Read one note in full (frontmatter + body) once query_knowledge or list_notes has told you which path you want. " +
+			"Retrieval returns matching chunks; this returns the whole file.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args getNoteArgs) (*mcp.CallToolResult, any, error) {
 		if args.Path == "" {
 			return nil, nil, fmt.Errorf("path is required")
