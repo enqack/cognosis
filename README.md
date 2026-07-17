@@ -58,6 +58,9 @@ New here? See [docs/setup-guide.md](docs/setup-guide.md) for full setup.
   outside `.cognosis-project` repos, loud 2s failure inside them), a
   SessionEnd nudge script, vault `history`/`restore`, hard delete with
   history purge, and systemd/launchd service files.
+- **Nix flake**: `packages.default`/`apps.default` build and run the binary; `nixosModules.default`,
+  `darwinModules.default`, and `homeManagerModules.default` declare the service (same unit `contrib/`
+  documents for manual installs) without provisioning Postgres/Ollama themselves.
 - **Embedding migration**: `cognosis embeddings migrate --from <n>/<m> --to <n>/<m>` switches
   providers/models with the system fully queryable throughout — a background back-fill worker,
   lazy touch-migration of queried chunks, dual-embedding of new writes, and the query fan-out as

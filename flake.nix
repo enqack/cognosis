@@ -1,5 +1,9 @@
 {
-  description = "Cognosis dev environment: Go toolchain + Postgres/pgvector + Ollama (installation only — does not manage the running daemon's lifecycle)";
+  description = ''
+    Cognosis: dev shell (Go toolchain + Postgres/pgvector + Ollama), the cognosis
+    package/app, and NixOS/nix-darwin/home-manager service modules — the modules
+    run the daemon but never provision Postgres/pgvector or Ollama themselves
+  '';
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -7,7 +11,7 @@
   };
 
   outputs = { self, nixpkgs, flake-utils }:
-    flake-utils.lib.eachDefaultSystem (system:
+    (flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
         pg = pkgs.postgresql_16.withPackages (p: [ p.pgvector ]);
@@ -62,8 +66,43 @@
           ${pgEnv}
           ${pg}/bin/pg_ctl -D "$COGNOSIS_PGDATA" stop || true
         '';
+
+        # Kept in lockstep with go.mod's `go` line (the enforced minimum) and
+        # magefile.go's ldflags() (version stamping). pkgs.go here may trail
+        # go.mod's `toolchain` pin by a patch release — buildGoModule runs with
+        # GOTOOLCHAIN=local, which only enforces the `go` line minimum, so that
+        # lag doesn't break the build; it just means this binary misses
+        # whatever stdlib fix the toolchain patch carries.
+        version = pkgs.lib.removeSuffix "\n" (builtins.readFile ./VERSION);
+
+        cognosis = pkgs.buildGoModule {
+          pname = "cognosis";
+          inherit version;
+          # Excludes dotfiles/dirs (.git, .idea, the gitignored .pg-data, and
+          # any stray unreadable local state like a root-owned .cache) rather
+          # than allowlisting Go source dirs, so new source directories don't
+          # need a flake.nix edit to be picked up.
+          src = pkgs.lib.cleanSourceWith {
+            src = ./.;
+            filter = name: type:
+              let base = baseNameOf name; in
+              !(pkgs.lib.hasPrefix "." base) && base != "bin" && base != "dist";
+          };
+          vendorHash = "sha256-Y8IbLsajP9AruiTzD2DPYpgaBWSPY1Pj4SiKSToc1Zc=";
+          subPackages = [ "cmd/cognosis" ];
+          ldflags = [ "-X main.version=${version}" ];
+          doCheck = false; # full suite needs Postgres/Ollama; run via `mage check`, not the Nix build
+        };
       in
       {
+        packages.default = cognosis;
+        packages.cognosis = cognosis;
+
+        apps.default = {
+          type = "app";
+          program = "${cognosis}/bin/cognosis";
+        };
+
         devShells.default = pkgs.mkShell {
           packages = [
             pkgs.go
@@ -83,5 +122,13 @@
             echo "cognosis dev shell — pg-start / pg-stop; DSN in \$COGNOSIS_DSN"
           '';
         };
-      });
+      }))
+    // {
+      # Service modules, not per-system: each resolves its own default
+      # package via `self.packages.${pkgs.system}.default` at the point
+      # the consumer's host config applies it.
+      nixosModules.default = import ./nix/modules/nixos.nix { inherit self; };
+      darwinModules.default = import ./nix/modules/darwin.nix { inherit self; };
+      homeManagerModules.default = import ./nix/modules/home-manager.nix { inherit self; };
+    };
 }

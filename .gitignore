@@ -2,7 +2,13 @@ bin/
 dist/
 .pg-data/
 .pg-socket-path
+.cognosis-project
 *.test
+result
+result-*
+# The example flake intentionally floats on github:enqack/cognosis + nixpkgs
+# rather than pinning a lockfile a reader would need to keep in sync by hand.
+contrib/flake.lock
 
 # IDE / editor
 .idea/

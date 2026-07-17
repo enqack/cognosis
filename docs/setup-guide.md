@@ -1,9 +1,9 @@
 # Cognosis — Setup Guide
 
 Full setup for every part of a working Cognosis install: the `cognosis` daemon, its Postgres index, the
-Ollama embedding server, the markdown vault, and an MCP client (Claude Code). Two paths are covered —
-the Nix dev shell (fastest) and a manual/production install — followed by configuration, session hooks,
-running as a service, verification, and troubleshooting.
+Ollama embedding server, the markdown vault, and an MCP client (Claude Code). Three paths are covered —
+the Nix dev shell (fastest), a manual/production install, and a Nix flake install — followed by
+configuration, session hooks, running as a service, verification, and troubleshooting.
 
 ## What you're setting up
 
@@ -89,6 +89,64 @@ export COGNOSIS_DSN="postgres://user:pass@localhost:5432/cognosis"
 cognosis start
 cognosis status
 ```
+
+---
+
+## Path C — Nix flake install
+
+The flake also exposes a `cognosis` package/app and service modules, as an alternative to Path B for
+Nix users. It does **not** provision Postgres+pgvector or Ollama — point the module's `environment` at
+whatever already makes those reachable (your own `services.postgresql`/`services.ollama`, or a remote
+endpoint), the same way `dsn`/`embedding.url` work in [Configuration](#configuration).
+
+**Just the binary**, no service management:
+
+```sh
+nix run github:enqack/cognosis -- start --foreground
+nix profile install github:enqack/cognosis            # onto PATH, no service
+```
+
+**As a managed service**, import the module matching your setup into your own flake and set
+`services.cognosis`:
+
+```nix
+# NixOS
+{
+  imports = [ cognosis.nixosModules.default ];
+  services.cognosis = {
+    enable = true;
+    environment.COGNOSIS_DSN = "postgres:///cognosis?host=/run/postgresql";
+    environment.COGNOSIS_EMBEDDING_URL = "http://localhost:11434";
+  };
+}
+
+# nix-darwin
+{
+  imports = [ cognosis.darwinModules.default ];
+  services.cognosis = {
+    enable = true;
+    environment.COGNOSIS_DSN = "postgres://localhost/cognosis";
+  };
+}
+
+# home-manager (user-level; systemd --user on Linux, launchd on Darwin)
+{
+  imports = [ cognosis.homeManagerModules.default ];
+  services.cognosis = {
+    enable = true;
+    environment.COGNOSIS_DSN = "postgres://localhost/cognosis";
+  };
+}
+```
+
+All three modules generate the same `cognosis start --foreground` unit that
+[contrib/cognosis.service](../contrib/cognosis.service) / [contrib/com.enqack.cognosis.plist](../contrib/com.enqack.cognosis.plist)
+document for manual installs — use the Nix module *or* the manual copy-paste, not both. The `contrib/`
+files stay as the reference for non-Nix installs (Path B).
+
+For a complete single-host example wiring Postgres+pgvector, Ollama, and the service together —
+peer-authenticated, no passwords, the embedding model pre-pulled — see
+[contrib/flake.nix](../contrib/flake.nix).
 
 ---
 
