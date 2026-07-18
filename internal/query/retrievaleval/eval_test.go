@@ -1,8 +1,7 @@
 package retrievaleval
 
 import (
-	"fmt"
-	"net/url"
+	"context"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -106,39 +105,29 @@ func accessPath(plan, table string) string {
 	return "(embeddings relation not in plan)"
 }
 
-// evalDSN returns the corpus DSN with extra session GUCs appended to the
-// startup-packet options. Engine.Run has no per-query settings hook, so this is
-// how an end-to-end run gets non-default scan settings. Postgres accepts
-// dotted (extension-namespaced) GUC names as placeholders even before the
-// extension loads, which is what makes this work for hnsw.*.
-func evalDSN(t testing.TB, dsn string, set store.SessionSettings) string {
+// assertPoolsDiffer fails when two stores resolve the same hnsw.ef_search.
+//
+// Every comparison in this package rests on the two pools genuinely carrying
+// different scan settings, and that is not self-evident: pushing GUCs through
+// the DSN's startup-packet options *looks* like it works, but AfterConnect
+// runs afterwards and overwrites them. That silently collapsed both arms into
+// one configuration twice — once in the fused-overlap test (0/30 changed) and
+// once in the end-to-end benchmark (~0 delta). Both readings are perfectly
+// plausible and both were wrong. Assert the premise instead of trusting it.
+func assertPoolsDiffer(ctx context.Context, t testing.TB, a, b *store.Store) {
 	t.Helper()
-	u, err := url.Parse(dsn)
+	av, err := a.CurrentSetting(ctx, "hnsw.ef_search")
 	if err != nil {
 		t.Fatal(err)
 	}
-	q := u.Query()
-	opts := q.Get("options") // already carries -csearch_path=<schema>
-	keys := make([]string, 0, len(set))
-	for k := range set {
-		keys = append(keys, k)
+	bv, err := b.CurrentSetting(ctx, "hnsw.ef_search")
+	if err != nil {
+		t.Fatal(err)
 	}
-	sortStrings(keys)
-	for _, k := range keys {
-		opts += fmt.Sprintf(" -c%s=%s", k, set[k])
-	}
-	q.Set("options", strings.TrimSpace(opts))
-	u.RawQuery = q.Encode()
-	return u.String()
-}
-
-func sortStrings(xs []string) {
-	for i := range xs {
-		for j := i + 1; j < len(xs); j++ {
-			if xs[j] < xs[i] {
-				xs[i], xs[j] = xs[j], xs[i]
-			}
-		}
+	if av == bv {
+		t.Fatalf("both pools report hnsw.ef_search=%s — the arms are identically configured, "+
+			"so any measured difference is noise (did settings go through the DSN instead of "+
+			"ConnectWithScanSettings?)", av)
 	}
 }
 
@@ -183,6 +172,10 @@ func writeArtifact(t testing.TB, name, body string) {
 }
 
 // baselineSetting names the pre-fix row that every other row is compared
-// against. Referenced by name so a rename in gucSettings breaks compilation
-// rather than silently reading a zero value out of a results map.
+// against. It is a plain string compared against gucSettings[i].Name, so a
+// rename over there does NOT break compilation — it yields a missing map key,
+// which reads as 0 and produces a confident false failure. That exact thing
+// happened once already (every setting reporting recall 0.000 against a
+// baseline whose key no longer existed). TestBaselineSettingExists is what
+// actually holds the two in sync.
 const baselineSetting = "PRE-FIX(ef=40,off)"

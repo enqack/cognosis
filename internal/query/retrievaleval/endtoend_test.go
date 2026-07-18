@@ -46,6 +46,7 @@ func TestFusedTopKUnderCorrectedScan(t *testing.T) {
 		Store:     baseStore,
 		Providers: []query.ProviderLeg{{Provider: c.Provider, Table: c.Table}},
 	}
+	assertPoolsDiffer(ctx, t, baseStore, c.Store)
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "fused top-8 overlap, pre-fix vs shipped scan settings — %d chunks, %d queries\n",

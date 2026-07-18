@@ -2,6 +2,7 @@ package query_test
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -258,19 +259,68 @@ func TestExplainVectorLegUsesHNSW(t *testing.T) {
 	defer s2.Close()
 
 	table := embed.TableSlug("stub", "stub-model")
-	plan, err := s2.ExplainRankVector(ctx, table, []float32{1, 0, 0, 0, 0, 0, 0, 0})
-	if err != nil {
-		t.Fatal(err)
+	vec := []float32{1, 0, 0, 0, 0, 0, 0, 0}
+
+	// Record the production leg shape under both an unscoped and a
+	// project-scoped filter. The filter matters: it is what pulls the notes
+	// join and the status predicates into the plan, and those are exactly what
+	// an earlier stripped version of this query omitted.
+	var b strings.Builder
+	b.WriteString("EXPLAIN of the production vector leg (store.vectorLegSQL), recorded per scope.\n\n" +
+		"enable_seqscan is forced off: the 4-note fixture is far below the ~3k-chunk\n" +
+		"threshold at which the planner reaches for HNSW unaided, so without the flag\n" +
+		"this would record a seqscan and prove nothing about index usage.\n\n" +
+		"What the two scopes show is the point of recording both. Unscoped, the planner\n" +
+		"takes the HNSW index and gets approximate neighbours. Scoped to a project it\n" +
+		"declines HNSW — with the index still available — and instead drives from\n" +
+		"notes_project_idx through chunks to the embeddings pkey, sorting exactly. That\n" +
+		"is the access-path switch by scope selectivity, and the previous version of this\n" +
+		"artifact could not show it: it explained a query with no notes join and no WHERE.\n\n" +
+		"Magnitudes (how much recall the approximate path loses, and where) are measured\n" +
+		"in internal/query/retrievaleval on a corpus large enough for the question to be\n" +
+		"real. This artifact is the cheap structural check that the shapes are right.\n")
+
+	for _, sc := range []struct {
+		name string
+		// wantHNSW is the expected access path. Scoped queries legitimately
+		// do NOT use HNSW — the planner pre-filters and sorts exactly, which
+		// is better, not worse. Asserting HNSW everywhere would be asserting
+		// a defect.
+		wantHNSW bool
+		mustHave string
+		filter   store.Filter
+	}{
+		{"unscoped", true, "hnsw_idx", store.Filter{}},
+		{"project=alpha", false, "project = 'alpha'", store.Filter{Project: "alpha"}},
+	} {
+		plan, err := s2.ExplainRankVector(ctx, table, vec, sc.filter, 10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Fprintf(&b, "\n=== scope: %s ===\n%s", sc.name, plan)
+
+		if got := strings.Contains(plan, "hnsw_idx"); got != sc.wantHNSW {
+			t.Errorf("scope %s: HNSW used = %v, want %v; plan:\n%s", sc.name, got, sc.wantHNSW, plan)
+		}
+		if !strings.Contains(plan, sc.mustHave) {
+			t.Errorf("scope %s: plan is missing %q — the filter did not reach the plan:\n%s",
+				sc.name, sc.mustHave, plan)
+		}
+		// The production leg joins notes; a plan without it is the stripped
+		// query this test used to explain, which could say nothing about
+		// filtered scans.
+		if !strings.Contains(plan, "notes") {
+			t.Errorf("scope %s: plan has no notes relation — this is not the production leg:\n%s",
+				sc.name, plan)
+		}
 	}
 
 	if err := os.MkdirAll("testdata", 0o750); err != nil {
 		t.Fatal(err)
 	}
 	artifact := filepath.Join("testdata", "explain_vector_leg.txt")
-	if err := os.WriteFile(artifact, []byte(plan), 0o600); err != nil {
+	if err := os.WriteFile(artifact, []byte(b.String()), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(plan, "hnsw_idx") {
-		t.Fatalf("vector leg does not use the HNSW index; plan (recorded at %s):\n%s", artifact, plan)
-	}
+	t.Logf("recorded %s", artifact)
 }

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -249,28 +250,34 @@ func (s *Store) ArchivedLinkers(ctx context.Context, noteIDs []uuid.UUID) (map[u
 
 // ExplainRankVector captures the planner's strategy for the vector leg — the
 // test suite records it as an artifact proving the HNSW index is used.
-func (s *Store) ExplainRankVector(ctx context.Context, table string, vec []float32) (string, error) {
+//
+// It explains the *production* leg SQL, filters and all. An earlier version
+// explained a stripped query (no notes join, no WHERE, `select c.id`, a
+// hardcoded limit) and so could not show the thing most worth knowing: the
+// planner chooses a different access path depending on scope selectivity —
+// HNSW on a broad scope, a pkey scan plus exact Sort on a narrow one. An
+// artifact from the unfiltered query cannot catch a regression in the filtered
+// one, which is where filtered-ANN recall actually lives.
+func (s *Store) ExplainRankVector(ctx context.Context, table string, vec []float32,
+	f Filter, limit int) (string, error) {
 	const op = "store.ExplainRankVector"
 	if !tableNameRe.MatchString(table) {
 		return "", cogerr.Ef(op, cogerr.Validation, "bad embedding table name %q", table)
 	}
-	rows, err := s.pool.Query(ctx, fmt.Sprintf(`
-		explain
-		select c.id from chunks c
-		join %s e on e.chunk_id = c.id
-		order by e.embedding <=> $1
-		limit 10`, table), pgvector.NewVector(vec))
+	rows, err := s.pool.Query(ctx, "explain "+vectorLegSQL(table, false),
+		vectorLegArgs(vec, f, limit)...)
 	if err != nil {
 		return "", cogerr.E(op, cogerr.Internal, err)
 	}
 	defer rows.Close()
-	var plan string
+	var plan strings.Builder
 	for rows.Next() {
 		var line string
 		if err := rows.Scan(&line); err != nil {
 			return "", cogerr.E(op, cogerr.Internal, err)
 		}
-		plan += line + "\n"
+		plan.WriteString(line)
+		plan.WriteByte('\n')
 	}
-	return plan, rows.Err()
+	return plan.String(), rows.Err()
 }

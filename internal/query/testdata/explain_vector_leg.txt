@@ -1,6 +1,44 @@
-Limit  (cost=12.46..15.09 rows=10 width=24)
-  ->  Nested Loop  (cost=12.46..293.89 rows=1070 width=24)
-        ->  Index Scan using embeddings_stub_stub_model_hnsw_idx on embeddings_stub_stub_model e  (cost=12.31..66.72 rows=1070 width=48)
-              Order By: (embedding <=> '[1,0,0,0,0,0,0,0]'::vector)
-        ->  Index Only Scan using chunks_pkey on chunks c  (cost=0.15..0.21 rows=1 width=16)
-              Index Cond: (id = e.chunk_id)
+EXPLAIN of the production vector leg (store.vectorLegSQL), recorded per scope.
+
+enable_seqscan is forced off: the 4-note fixture is far below the ~3k-chunk
+threshold at which the planner reaches for HNSW unaided, so without the flag
+this would record a seqscan and prove nothing about index usage.
+
+What the two scopes show is the point of recording both. Unscoped, the planner
+takes the HNSW index and gets approximate neighbours. Scoped to a project it
+declines HNSW — with the index still available — and instead drives from
+notes_project_idx through chunks to the embeddings pkey, sorting exactly. That
+is the access-path switch by scope selectivity, and the previous version of this
+artifact could not show it: it explained a query with no notes join and no WHERE.
+
+Magnitudes (how much recall the approximate path loses, and where) are measured
+in internal/query/retrievaleval on a corpus large enough for the question to be
+real. This artifact is the cheap structural check that the shapes are right.
+
+=== scope: unscoped ===
+Limit  (cost=12.60..18.21 rows=10 width=200)
+  ->  Nested Loop  (cost=12.60..604.04 rows=1054 width=200)
+        ->  Nested Loop  (cost=12.46..291.21 rows=1070 width=144)
+              ->  Index Scan using embeddings_stub_stub_model_hnsw_idx on embeddings_stub_stub_model e  (cost=12.31..66.72 rows=1070 width=48)
+                    Order By: (embedding <=> '[1,0,0,0,0,0,0,0]'::vector)
+              ->  Index Scan using chunks_pkey on chunks c  (cost=0.15..0.21 rows=1 width=112)
+                    Index Cond: (id = e.chunk_id)
+        ->  Index Scan using notes_pkey on notes n  (cost=0.14..0.29 rows=1 width=112)
+              Index Cond: (path = c.note_path)
+              Filter: ((status IS DISTINCT FROM 'falsified'::text) AND (status <> ALL ('{faded,archived}'::text[])))
+
+=== scope: project=alpha ===
+Limit  (cost=18.35..18.36 rows=5 width=200)
+  ->  Sort  (cost=18.35..18.36 rows=5 width=200)
+        Sort Key: ((e.embedding <=> '[1,0,0,0,0,0,0,0]'::vector))
+        ->  Nested Loop  (cost=4.46..18.29 rows=5 width=200)
+              ->  Nested Loop  (cost=4.31..17.69 rows=2 width=192)
+                    ->  Index Scan using notes_project_idx on notes n  (cost=0.14..8.17 rows=1 width=112)
+                          Index Cond: (project = 'alpha'::text)
+                          Filter: ((status IS DISTINCT FROM 'falsified'::text) AND (status <> ALL ('{faded,archived}'::text[])))
+                    ->  Bitmap Heap Scan on chunks c  (cost=4.16..9.50 rows=2 width=112)
+                          Recheck Cond: (note_path = n.path)
+                          ->  Bitmap Index Scan on chunks_note_path_ordinal_key  (cost=0.00..4.16 rows=2 width=0)
+                                Index Cond: (note_path = n.path)
+              ->  Index Scan using embeddings_stub_stub_model_pkey on embeddings_stub_stub_model e  (cost=0.15..0.29 rows=1 width=48)
+                    Index Cond: (chunk_id = c.id)

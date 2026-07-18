@@ -53,32 +53,42 @@ func BenchmarkFTSLeg(b *testing.B) {
 }
 
 // BenchmarkRunEndToEnd is the number that actually matters: fan-out plus
-// fusion, default scan settings versus corrected. The delta is the cost of the
+// fusion, pre-fix scan settings versus shipped. The delta is the cost of the
 // fix as an agent would experience it.
+//
+// The baseline arm must be built with ConnectWithScanSettings, not by pushing
+// GUCs through the DSN: AfterConnect runs after the startup packet and
+// overwrites them, which silently made both arms identical and this benchmark
+// report a ~0 delta. c.Engine is the *shipped* configuration, not a default.
 func BenchmarkRunEndToEnd(b *testing.B) {
 	requireEval(b)
 	ctx := context.Background()
 	c := Build(b, evalSpec(b))
 
-	corrected := store.SessionSettings{
-		"hnsw.ef_search": "200", "hnsw.iterative_scan": "relaxed_order",
-	}
-	fixedStore, err := store.Connect(ctx, evalDSN(b, c.DSN, corrected))
+	baseStore, err := store.ConnectWithScanSettings(ctx, c.DSN, []string{
+		"set hnsw.ef_search = 40",
+		"set hnsw.iterative_scan = 'off'",
+	})
 	if err != nil {
 		b.Fatal(err)
 	}
-	defer fixedStore.Close()
-	fixedEngine := &query.Engine{
-		Store:     fixedStore,
+	defer baseStore.Close()
+	baseEngine := &query.Engine{
+		Store:     baseStore,
 		Providers: []query.ProviderLeg{{Provider: c.Provider, Table: c.Table}},
 	}
+
+	// A comparison benchmark whose two arms are configured identically should
+	// fail, not quietly report no difference. This is the guard that would
+	// have caught the DSN-override bug immediately.
+	assertPoolsDiffer(ctx, b, baseStore, c.Store)
 
 	for _, tc := range []struct {
 		name string
 		eng  *query.Engine
 	}{
-		{"default", c.Engine},
-		{"corrected", fixedEngine},
+		{"prefix", baseEngine},
+		{"shipped", c.Engine},
 	} {
 		for _, scope := range []struct {
 			name string

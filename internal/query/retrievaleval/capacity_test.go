@@ -21,11 +21,15 @@ func TestVectorLegCapacity(t *testing.T) {
 	var b strings.Builder
 	fmt.Fprintf(&b, "vector leg capacity — %d notes x %d chunks = %d chunks, pool=%d\n\n",
 		spec.Notes, spec.ChunksPerNote, spec.Notes*spec.ChunksPerNote, 50)
-	fmt.Fprintf(&b, "%-14s %-24s %9s %9s  %s\n", "SCOPE", "SETTING", "REQUESTED", "RETURNED", "EMBEDDINGS ACCESS")
+	fmt.Fprintf(&b, "%-14s %-24s %9s %9s %10s  %s\n",
+		"SCOPE", "SETTING", "REQUESTED", "RETURNED", "SHORT", "EMBEDDINGS ACCESS")
 
 	// returned[scope][setting]
 	returned := map[string]map[string]int{}
 	hnswSeen := map[string]bool{}
+	// How many of the query set came back short, per cell. The average alone
+	// hides whether a cell is uniformly short or occasionally catastrophic.
+	truncatedBy := map[string]int{}
 
 	for _, scope := range c.ScopeNames() {
 		filter := c.Scopes()[scope]
@@ -33,7 +37,7 @@ func TestVectorLegCapacity(t *testing.T) {
 		for _, gs := range gucSettings {
 			// Average behavior over several queries: HNSW is not
 			// deterministic per-query, so a single probe is anecdote.
-			var sumReturned int
+			var sumReturned, truncated int
 			var plan string
 			for _, q := range c.Queries {
 				vec, err := c.Provider.EmbedQuery(ctx, q.Text)
@@ -48,18 +52,23 @@ func TestVectorLegCapacity(t *testing.T) {
 					plan = p.Plan
 				}
 				sumReturned += len(p.Rows)
+				if p.Truncated() {
+					truncated++
+				}
 				if len(p.Rows) > p.Requested {
 					t.Fatalf("%s/%s returned %d rows for a limit of %d",
 						scope, gs.Name, len(p.Rows), p.Requested)
 				}
 			}
 			avg := sumReturned / len(c.Queries)
+			truncatedBy[scope+"/"+gs.Name] = truncated
 			returned[scope][gs.Name] = avg
 			if usedHNSW(plan) {
 				hnswSeen[scope] = true
 			}
-			fmt.Fprintf(&b, "%-14s %-24s %9d %9d  %s\n",
-				scope, gs.Name, 50, avg, accessPath(plan, c.Table))
+			fmt.Fprintf(&b, "%-14s %-24s %9d %9d %9d/%d  %s\n",
+				scope, gs.Name, 50, avg, truncatedBy[scope+"/"+gs.Name], len(c.Queries),
+				accessPath(plan, c.Table))
 		}
 	}
 
