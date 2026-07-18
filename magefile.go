@@ -41,6 +41,16 @@ func TestShort() error {
 	return sh.RunV("go", "test", "-race", "-short", "./...")
 }
 
+// Bench runs the retrieval-evaluation benchmarks (internal/query/retrievaleval).
+// Local/dev only — needs COGNOSIS_TEST_DSN and COGNOSIS_EVAL_DSN set, and
+// deliberately runs WITHOUT -race: race instrumentation makes latency numbers
+// meaningless. Feed the output to benchstat to compare default against
+// corrected scan settings.
+func Bench() error {
+	return sh.RunV("go", "test", "-run", "^$", "-bench", ".", "-benchtime", "20x",
+		"-timeout", "30m", "./internal/query/retrievaleval/")
+}
+
 // Lint runs gofmt (check mode) and golangci-lint over the correctness +
 // security linter set configured in .golangci.yml (govet, errcheck,
 // staticcheck, gosec, and more) — see that file for the authoritative list.

@@ -11,7 +11,7 @@ cd "$(dirname "$0")/.."
 CHECKS_DIR="scripts/checks"
 
 # daemon first (no Ollama needed), then the MCP-driven feature checks.
-order=(daemon memory-loop retrieval knowledge platform tls embedding-migration)
+order=(daemon memory-loop retrieval knowledge platform tls embedding-migration retrieval-eval)
 
 skipped=()
 

@@ -85,6 +85,38 @@ func scanRanked(rows pgx.Rows) ([]RankedChunk, error) {
 
 const rankedCols = `c.id, n.id, n.path, n.category, coalesce(c.heading_path, ''), c.content, n.summary`
 
+// vectorLegSQL renders the vector leg. Callers must have validated table
+// against tableNameRe first — it is interpolated, not parameterized.
+//
+// exact defeats index matching on the order-by expression: pgvector only
+// matches the bare `<=>` operator to an HNSW index, so `+ 0.0` forces an exact
+// scan regardless of GUCs or cost estimates. That is how the retrieval
+// evaluation harness gets brute-force ground truth over a byte-identical
+// filter scope — scoring the approximate leg against a differently-shaped
+// query would measure something that is not the vector leg.
+func vectorLegSQL(table string, exact bool) string {
+	order := "e.embedding <=> $1"
+	if exact {
+		order = "(e.embedding <=> $1) + 0.0"
+	}
+	return fmt.Sprintf(`
+		select `+rankedCols+`
+		from chunks c
+		join notes n on n.path = c.note_path
+		join %s e on e.chunk_id = c.id
+		where ($2 = '' or n.project = $2)
+		  and `+timeFilterSQL("$3", "$7", "$5", "$6")+`
+		order by %s
+		limit $4`, table, order)
+}
+
+// vectorLegArgs are the bind parameters for vectorLegSQL, in $1..$7 order.
+func vectorLegArgs(vec []float32, f Filter, limit int) []any {
+	asOfTS, asOfText := asOfParams(f)
+	return []any{pgvector.NewVector(vec), f.Project, f.IncludeFalsified,
+		limit, asOfTS, asOfText, f.IncludeArchived}
+}
+
 // RankVector is the semantic leg: cosine distance over one provider table.
 func (s *Store) RankVector(ctx context.Context, table string, vec []float32,
 	f Filter, limit int) ([]RankedChunk, error) {
@@ -92,17 +124,7 @@ func (s *Store) RankVector(ctx context.Context, table string, vec []float32,
 	if !tableNameRe.MatchString(table) {
 		return nil, cogerr.Ef(op, cogerr.Validation, "bad embedding table name %q", table)
 	}
-	asOfTS, asOfText := asOfParams(f)
-	rows, err := s.pool.Query(ctx, fmt.Sprintf(`
-		select `+rankedCols+`
-		from chunks c
-		join notes n on n.path = c.note_path
-		join %s e on e.chunk_id = c.id
-		where ($2 = '' or n.project = $2)
-		  and `+timeFilterSQL("$3", "$7", "$5", "$6")+`
-		order by e.embedding <=> $1
-		limit $4`, table),
-		pgvector.NewVector(vec), f.Project, f.IncludeFalsified, limit, asOfTS, asOfText, f.IncludeArchived)
+	rows, err := s.pool.Query(ctx, vectorLegSQL(table, false), vectorLegArgs(vec, f, limit)...)
 	if err != nil {
 		return nil, cogerr.E(op, cogerr.Internal, err)
 	}
@@ -113,23 +135,33 @@ func (s *Store) RankVector(ctx context.Context, table string, vec []float32,
 	return out, nil
 }
 
-// RankFTS is the keyword leg: websearch-style full-text match ranked by
-// ts_rank_cd.
-func (s *Store) RankFTS(ctx context.Context, text string,
-	f Filter, limit int) ([]RankedChunk, error) {
-	const op = "store.RankFTS"
-	asOfTS, asOfText := asOfParams(f)
-	rows, err := s.pool.Query(ctx, `
-		select `+rankedCols+`
+// ftsLegSQL renders the keyword leg.
+func ftsLegSQL() string {
+	return `
+		select ` + rankedCols + `
 		from chunks c
 		join notes n on n.path = c.note_path,
 		websearch_to_tsquery('english', $1) q
 		where c.fts @@ q
 		  and ($2 = '' or n.project = $2)
-		  and `+timeFilterSQL("$3", "$7", "$5", "$6")+`
+		  and ` + timeFilterSQL("$3", "$7", "$5", "$6") + `
 		order by ts_rank_cd(c.fts, q) desc
-		limit $4`,
-		text, f.Project, f.IncludeFalsified, limit, asOfTS, asOfText, f.IncludeArchived)
+		limit $4`
+}
+
+// ftsLegArgs are the bind parameters for ftsLegSQL, in $1..$7 order.
+func ftsLegArgs(text string, f Filter, limit int) []any {
+	asOfTS, asOfText := asOfParams(f)
+	return []any{text, f.Project, f.IncludeFalsified,
+		limit, asOfTS, asOfText, f.IncludeArchived}
+}
+
+// RankFTS is the keyword leg: websearch-style full-text match ranked by
+// ts_rank_cd.
+func (s *Store) RankFTS(ctx context.Context, text string,
+	f Filter, limit int) ([]RankedChunk, error) {
+	const op = "store.RankFTS"
+	rows, err := s.pool.Query(ctx, ftsLegSQL(), ftsLegArgs(text, f, limit)...)
 	if err != nil {
 		return nil, cogerr.E(op, cogerr.Internal, err)
 	}
@@ -138,6 +170,26 @@ func (s *Store) RankFTS(ctx context.Context, text string,
 		return nil, cogerr.E(op, cogerr.Internal, err)
 	}
 	return out, nil
+}
+
+// graphLegSQL renders the graph leg.
+func graphLegSQL() string {
+	return `
+		select ` + rankedCols + `
+		from links l
+		join notes n on n.id = l.dst_note_id
+		join chunks c on c.note_path = n.path
+		where l.src_note_id = any($1)
+		  and ` + timeFilterSQL("$2", "$6", "$4", "$5") + `
+		group by c.id, n.id, n.path, n.category, c.heading_path, c.content, n.summary
+		order by count(distinct l.src_note_id) desc
+		limit $3`
+}
+
+// graphLegArgs are the bind parameters for graphLegSQL, in $1..$6 order.
+func graphLegArgs(seeds []uuid.UUID, f Filter, limit int) []any {
+	asOfTS, asOfText := asOfParams(f)
+	return []any{seeds, f.IncludeFalsified, limit, asOfTS, asOfText, f.IncludeArchived}
 }
 
 // RankGraph is the graph leg: one hop out along links from the seed notes
@@ -152,18 +204,7 @@ func (s *Store) RankGraph(ctx context.Context, seeds []uuid.UUID,
 	if len(seeds) == 0 {
 		return nil, nil
 	}
-	asOfTS, asOfText := asOfParams(f)
-	rows, err := s.pool.Query(ctx, `
-		select `+rankedCols+`
-		from links l
-		join notes n on n.id = l.dst_note_id
-		join chunks c on c.note_path = n.path
-		where l.src_note_id = any($1)
-		  and `+timeFilterSQL("$2", "$6", "$4", "$5")+`
-		group by c.id, n.id, n.path, n.category, c.heading_path, c.content, n.summary
-		order by count(distinct l.src_note_id) desc
-		limit $3`,
-		seeds, f.IncludeFalsified, limit, asOfTS, asOfText, f.IncludeArchived)
+	rows, err := s.pool.Query(ctx, graphLegSQL(), graphLegArgs(seeds, f, limit)...)
 	if err != nil {
 		return nil, cogerr.E(op, cogerr.Internal, err)
 	}

@@ -1,0 +1,35 @@
+vector leg recall vs exact KNN — 8000 chunks, k=50, averaged over 30 queries
+
+SCOPE          SETTING                  RETURNED   RECALL     NDCG  KENDALL
+all            PRE-FIX(ef=40,off)             35    0.719    0.948    1.000
+all            session(inherits Connect)       50    1.000    1.000    1.000
+all            ef_search=200,iter=off         50    1.000    1.000    1.000
+all            ef=40,iterative=relaxed        50    1.000    1.000    0.998
+all            ef=40,iterative=strict         50    0.997    0.998    1.000
+all            ef_search=200+relaxed          50    1.000    1.000    1.000
+all            ef_search=200+strict           50    1.000    1.000    1.000
+all            SHIPPED(ef=100+relaxed)        50    1.000    1.000    1.000
+narrow         PRE-FIX(ef=40,off)             50    1.000    1.000    1.000
+narrow         session(inherits Connect)       50    1.000    1.000    1.000
+narrow         ef_search=200,iter=off         50    1.000    1.000    1.000
+narrow         ef=40,iterative=relaxed        50    1.000    1.000    1.000
+narrow         ef=40,iterative=strict         50    1.000    1.000    1.000
+narrow         ef_search=200+relaxed          50    1.000    1.000    1.000
+narrow         ef_search=200+strict           50    1.000    1.000    1.000
+narrow         SHIPPED(ef=100+relaxed)        50    1.000    1.000    1.000
+wide           PRE-FIX(ef=40,off)             10    0.205    0.535    1.000
+wide           session(inherits Connect)       50    0.978    0.995    0.995
+wide           ef_search=200,iter=off         44    0.881    0.977    1.000
+wide           ef=40,iterative=relaxed        50    0.969    0.994    0.995
+wide           ef=40,iterative=strict         50    0.955    0.989    1.000
+wide           ef_search=200+relaxed          50    0.983    0.997    0.995
+wide           ef_search=200+strict           50    0.965    0.992    1.000
+wide           SHIPPED(ef=100+relaxed)        50    0.978    0.995    0.995
+with_archived  PRE-FIX(ef=40,off)             40    0.800    0.973    1.000
+with_archived  session(inherits Connect)       50    1.000    1.000    1.000
+with_archived  ef_search=200,iter=off         50    1.000    1.000    1.000
+with_archived  ef=40,iterative=relaxed        50    1.000    1.000    0.996
+with_archived  ef=40,iterative=strict         50    0.996    0.998    1.000
+with_archived  ef_search=200+relaxed          50    1.000    1.000    1.000
+with_archived  ef_search=200+strict           50    1.000    1.000    1.000
+with_archived  SHIPPED(ef=100+relaxed)        50    1.000    1.000    1.000

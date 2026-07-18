@@ -72,6 +72,15 @@ EOF
 boot_daemon
 for _ in $(seq 1 100); do grep -q "note indexed.*handedit" "$LOG" && break; sleep 0.1; done
 grep -q "note indexed.*handedit" "$LOG" || fail "hand-edited note was not reconciled on boot"
+# The history commit lands *after* the "note indexed" line, so it needs its own
+# wait. Asserting it immediately was a latent race: it happened to win while
+# connection setup was cheap, and started losing consistently when store.Connect
+# gained a per-connection SET. Every other step here already polls; this one
+# was the exception.
+for _ in $(seq 1 100); do
+  git -C "$KB" log --oneline -- entries/handedit.md | grep -q . && break
+  sleep 0.1
+done
 git -C "$KB" log --oneline -- entries/handedit.md | grep -q . \
   || fail "drift not committed to the vault history repo"
 pass "hand-edit reconciled on boot and committed to vault history"

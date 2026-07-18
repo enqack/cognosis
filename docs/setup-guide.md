@@ -70,6 +70,13 @@ You do **not** need to run `CREATE EXTENSION` yourself — the daemon's migratio
 (they run `create extension if not exists vector`). The connecting role must be allowed to create
 extensions (superuser, or a role granted `CREATE` on the DB with pgvector trusted).
 
+**pgvector 0.8 or newer is strongly recommended.** The daemon sets `hnsw.iterative_scan` on each
+connection, which older versions do not have. Without it the semantic leg under-returns on any
+project-scoped or archive-filtered query — measurably so: a scope holding a quarter of the corpus
+retrieved 20% of the correct results. The daemon still starts on an older pgvector, logging a
+warning per connection; retrieval degrades rather than failing. No `shared_preload_libraries` entry
+or other server-level configuration is needed — these are ordinary session settings.
+
 ### 3. Ollama + the embedding model
 
 ```sh

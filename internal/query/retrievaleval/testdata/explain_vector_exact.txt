@@ -1,0 +1,18 @@
+EXPLAIN of the exact-KNN ground-truth probe (vectorLegSQL with exact=true).
+The `+ 0.0` on the order-by defeats pgvector's index matching. A Seq Scan on the
+embeddings relation below is the proof that brute force really is brute force —
+without it, "exact ground truth" would be an assumption rather than a measurement.
+
+Limit  (cost=1204.89..1205.02 rows=50 width=225)
+  ->  Sort  (cost=1204.89..1222.71 rows=7125 width=225)
+        Sort Key: (((e.embedding <=> '[<768-dim vector elided>]'::vector) + '0'::double precision))
+        ->  Hash Join  (cost=448.81..968.21 rows=7125 width=225)
+              Hash Cond: (c.id = e.chunk_id)
+              ->  Hash Join  (cost=201.81..666.87 rows=7125 width=195)
+                    Hash Cond: (c.note_path = n.path)
+                    ->  Seq Scan on chunks c  (cost=0.00..444.00 rows=8000 width=149)
+                    ->  Hash  (cost=184.00..184.00 rows=1425 width=62)
+                          ->  Seq Scan on notes n  (cost=0.00..184.00 rows=1425 width=62)
+                                Filter: ((status IS DISTINCT FROM 'falsified'::text) AND (status <> ALL ('{faded,archived}'::text[])))
+              ->  Hash  (cost=147.00..147.00 rows=8000 width=34)
+                    ->  Seq Scan on embeddings_synth_synth_d768_c40 e  (cost=0.00..147.00 rows=8000 width=34)

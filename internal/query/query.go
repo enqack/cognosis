@@ -78,6 +78,65 @@ type ProviderLeg struct {
 	Table    string
 }
 
+// Tuning overrides the fusion constants for the retrieval evaluation harness
+// (internal/query/retrievaleval). A zero field keeps the package default, so
+// the zero Tuning is exactly current behavior.
+//
+// This is deliberately not reachable from config, CLI flags, or MCP: cognosis
+// has no retrieval-tuning surface, and this does not create one. It is an
+// unexported-in-spirit seam that exists so a sweep can vary one constant at a
+// time without the harness reimplementing Run — which would measure something
+// that is not the retrieval engine.
+//
+// archivedLinkPenalty is deliberately absent. It is not a tuning knob but an
+// epistemics guarantee with its own tests; making it sweepable invites someone
+// to sweep it.
+type Tuning struct {
+	RRFK          int
+	CandidatePool int
+	// TopK is the harness default. opts.TopK still wins when set — Options is
+	// the caller surface, Tuning is the harness surface, and that precedence
+	// must not be ambiguous.
+	TopK int
+	// GraphWeight scales the graph leg; 0 keeps the package default.
+	GraphWeight float64
+	// DisableGraph skips the graph leg entirely, which is NOT the same as
+	// GraphWeight=0 and is the distinction that matters for the "does the
+	// graph leg mask vector-leg truncation" experiment. FuseRRF accumulates
+	// `weight/(k+rank)`, so a zero-weighted leg still *inserts* its items into
+	// the fused set at score 0 — they contribute nothing yet still occupy
+	// top-K slots. Only skipping the leg removes them.
+	DisableGraph bool
+}
+
+func (t Tuning) rrfK() int {
+	if t.RRFK > 0 {
+		return t.RRFK
+	}
+	return rrfK
+}
+
+func (t Tuning) candidatePool() int {
+	if t.CandidatePool > 0 {
+		return t.CandidatePool
+	}
+	return candidatePool
+}
+
+func (t Tuning) graphWeight() float64 {
+	if t.GraphWeight > 0 {
+		return t.GraphWeight
+	}
+	return graphWeight
+}
+
+func (t Tuning) topK() int {
+	if t.TopK > 0 {
+		return t.TopK
+	}
+	return DefaultTopK
+}
+
 // Engine runs hybrid retrieval over one store and N provisioned providers.
 type Engine struct {
 	Store *store.Store
@@ -90,6 +149,9 @@ type Engine struct {
 	// Lazy, when set, receives the hit chunk ids after each run — the
 	// migration's touch-migration hook. Fire-and-forget on the callee's side.
 	Lazy func(ids []uuid.UUID)
+	// Tuning is the retrieval-evaluation seam; the zero value is production
+	// behavior. Nothing in the request path sets it.
+	Tuning Tuning
 }
 
 // legs resolves the vector legs for one run.
@@ -120,8 +182,9 @@ func (e *Engine) Run(ctx context.Context, text string, opts Options) ([]Result, 
 	}
 	topK := opts.TopK
 	if topK <= 0 {
-		topK = DefaultTopK
+		topK = e.Tuning.topK()
 	}
+	pool := e.Tuning.candidatePool()
 
 	var legs []Leg[store.RankedChunk]
 
@@ -144,7 +207,7 @@ func (e *Engine) Run(ctx context.Context, text string, opts Options) ([]Result, 
 			if err != nil {
 				return cogerr.E(op, cogerr.Unavailable, err)
 			}
-			items, err := e.Store.RankVector(gctx, pl.Table, vec, opts.filter(), candidatePool)
+			items, err := e.Store.RankVector(gctx, pl.Table, vec, opts.filter(), pool)
 			if err != nil {
 				return err
 			}
@@ -154,7 +217,7 @@ func (e *Engine) Run(ctx context.Context, text string, opts Options) ([]Result, 
 	}
 	ftsIdx := len(providerLegs)
 	g.Go(func() error {
-		kw, err := e.Store.RankFTS(gctx, text, opts.filter(), candidatePool)
+		kw, err := e.Store.RankFTS(gctx, text, opts.filter(), pool)
 		if err != nil {
 			return err
 		}
@@ -177,13 +240,15 @@ func (e *Engine) Run(ctx context.Context, text string, opts Options) ([]Result, 
 			}
 		}
 	}
-	graph, err := e.Store.RankGraph(ctx, seeds, opts.filter(), candidatePool)
-	if err != nil {
-		return nil, err
+	if !e.Tuning.DisableGraph {
+		graph, err := e.Store.RankGraph(ctx, seeds, opts.filter(), pool)
+		if err != nil {
+			return nil, err
+		}
+		legs = append(legs, Leg[store.RankedChunk]{Items: graph, Weight: e.Tuning.graphWeight()})
 	}
-	legs = append(legs, Leg[store.RankedChunk]{Items: graph, Weight: graphWeight})
 
-	fused := FuseRRF(rrfK, func(c store.RankedChunk) uuid.UUID { return c.ChunkID }, legs)
+	fused := FuseRRF(e.Tuning.rrfK(), func(c store.RankedChunk) uuid.UUID { return c.ChunkID }, legs)
 
 	// Archived-link penalty: a chunk whose parent note still references a
 	// soft-deleted note is depressed so a dense stale description of a shelved

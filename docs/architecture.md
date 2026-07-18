@@ -86,6 +86,35 @@ order. Optional lenses ride on top without changing the contract: `as_of` (reaso
 timestamps — "what did the KB believe at time T"), `persona_filter` (category-bias reweighting),
 project scoping, and cached one-line summaries returned with each hit.
 
+### Scan settings for the vector leg
+
+Every pooled connection sets `hnsw.ef_search` and `hnsw.iterative_scan` (`store.Connect`). These
+are not tuning preferences; without them the vector leg silently under-returns.
+
+pgvector's scope filters (`project`, `include_archived`, `as_of`) are applied in the same statement
+as the ANN order-by, but the index walk itself is unaware of them: HNSW produces one `ef_search`-sized
+candidate list and the predicate is applied to *that*. With `iterative_scan = off` the scan then
+stops, so a filtered query returns however few of those candidates survived. Measured on an
+8k-chunk corpus asking for 50 candidates, a scope holding a quarter of the notes returned **10 rows,
+recall 0.205** against exact KNN — and 8 rows at 20k chunks, so it worsens as a vault grows.
+
+`iterative_scan = relaxed_order` is the fix: the scan resumes until the `LIMIT` is met. Raising
+`ef_search` alone does not fix it (0.881 at `ef_search=200`) — it only enlarges the list being
+filtered down. `ef_search = 100` is kept as headroom above the 50-candidate pool.
+
+`relaxed_order` over `strict_order` is deliberate: relaxed admits slightly out-of-distance-order
+rows (Kendall ~0.995 vs 1.000) but retrieves more true neighbours (0.978 vs 0.965 recall on the
+worst scope). RRF consumes rank position with `k=60` damping, so rank 1 scores `1/61` and rank 50
+scores `1/110` — the whole rank range spans 1.8x, while a missing row contributes exactly 0.
+Recall dominates ordering under this fusion.
+
+The measurement harness behind these numbers is `internal/query/retrievaleval` (local-tier; run
+`scripts/checks/retrieval-eval.sh`, artifacts under its `testdata/`). `TestCandidatePoolWithinScanCapacity`
+guards the invariant in CI.
+
+**Requires pgvector ≥ 0.8** for `iterative_scan`. On older versions the settings fail with a logged
+warning and retrieval degrades to the previous under-returning behavior rather than breaking.
+
 ## Knowledge lifecycle
 
 `compile_lifecycle` is an explicit, agent-driven pass (never a timer). It reinforces, decays,

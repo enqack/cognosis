@@ -21,6 +21,13 @@ import (
 // schema. Skips the test when COGNOSIS_TEST_DSN is unset.
 func New(t *testing.T) (*store.Store, string) {
 	t.Helper()
+	return NewTB(t)
+}
+
+// NewTB is New over testing.TB, so benchmarks can build a schema too. New
+// remains the spelling for ordinary tests.
+func NewTB(t testing.TB) (*store.Store, string) {
+	t.Helper()
 	base := os.Getenv("COGNOSIS_TEST_DSN")
 	if base == "" {
 		t.Skip("COGNOSIS_TEST_DSN not set; integration tests need a real Postgres (run pg-start in the dev shell)")
