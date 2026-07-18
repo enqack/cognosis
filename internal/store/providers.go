@@ -136,20 +136,17 @@ func (s *Store) UpsertEmbeddings(ctx context.Context, table string, vecs map[uui
 	return nil
 }
 
-// InsertEmbeddingsIfAbsent inserts vectors without overwriting existing rows
+// insertEmbeddingsIfAbsentTx inserts vectors without overwriting existing rows
 // and reports how many actually landed — the migration paths' primitive, so
 // a chunk racing between back-fill and lazy migration is counted exactly once
 // (whoever gets there first wins; the loser's insert is a no-op).
-func (s *Store) InsertEmbeddingsIfAbsent(ctx context.Context, table string, vecs map[uuid.UUID][]float32) (int, error) {
-	const op = "store.InsertEmbeddingsIfAbsent"
-	if !tableNameRe.MatchString(table) {
-		return 0, cogerr.Ef(op, cogerr.Validation, "bad embedding table name %q", table)
-	}
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return 0, cogerr.E(op, cogerr.Unavailable, err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
+//
+// Transaction-scoped on purpose: the count it returns is what the migration's
+// progress counter is bumped by, and the two must commit together or not at
+// all. See RecordMigratedBatch.
+func insertEmbeddingsIfAbsentTx(ctx context.Context, tx pgxTx, table string,
+	vecs map[uuid.UUID][]float32) (int, error) {
+	const op = "store.insertEmbeddingsIfAbsent"
 	sql := fmt.Sprintf(`
 		insert into %s (chunk_id, embedding) values ($1, $2)
 		on conflict (chunk_id) do nothing`, table)
@@ -160,9 +157,6 @@ func (s *Store) InsertEmbeddingsIfAbsent(ctx context.Context, table string, vecs
 			return 0, cogerr.E(op, cogerr.Internal, err)
 		}
 		inserted += int(tag.RowsAffected())
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return 0, cogerr.E(op, cogerr.Internal, err)
 	}
 	return inserted, nil
 }

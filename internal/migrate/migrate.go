@@ -267,14 +267,12 @@ func (c *Coordinator) embedBatch(ctx context.Context, m store.Migration, batch [
 	for i, ch := range batch {
 		byID[ch.ID] = vecs[i]
 	}
-	inserted, err := c.Store.InsertEmbeddingsIfAbsent(ctx, m.ToTable, byID)
-	if err != nil {
-		return err
-	}
-	if inserted == 0 {
-		return nil
-	}
-	return c.Store.BumpMigrationCounter(ctx, m.ID, counter, inserted)
+	// One call, one transaction: the rows and the credit for them commit
+	// together. Splitting these was the bug — a cancel between the write and
+	// the counter bump left the embeddings committed and permanently
+	// uncounted, because nothing revisits a chunk that already has a row.
+	_, err = c.Store.RecordMigratedBatch(ctx, m.ToTable, byID, m.ID, counter)
+	return err
 }
 
 // EmbedTargets reports where writes must embed right now: the active provider

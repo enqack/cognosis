@@ -300,9 +300,18 @@ func TestKillMidBatchResumes(t *testing.T) {
 	if rows != m.ChunksTotal {
 		t.Fatalf("new table rows = %d, want %d (duplicates or gaps)", rows, m.ChunksTotal)
 	}
-	if m.ChunksBackfill+m.ChunksLazy != m.ChunksTotal {
-		t.Fatalf("backfill(%d)+lazy(%d) != total(%d) — a chunk was double-counted across the restart",
-			m.ChunksBackfill, m.ChunksLazy, m.ChunksTotal)
+	if sum := m.ChunksBackfill + m.ChunksLazy; sum != m.ChunksTotal {
+		// Name the direction. This message used to say only "double-counted",
+		// which sent the first investigation the wrong way: the observed
+		// failure was an *under*-count, from a batch whose embeddings
+		// committed while the credit for them did not. Both directions break
+		// the completion invariant and they have opposite causes.
+		direction := "under-counted (work committed without credit)"
+		if sum > m.ChunksTotal {
+			direction = "double-counted (credited more than once)"
+		}
+		t.Fatalf("backfill(%d)+lazy(%d) = %d != total(%d) — chunks were %s",
+			m.ChunksBackfill, m.ChunksLazy, sum, m.ChunksTotal, direction)
 	}
 }
 

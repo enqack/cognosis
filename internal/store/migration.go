@@ -121,25 +121,78 @@ func (s *Store) FinishMigration(ctx context.Context, id uuid.UUID, status string
 	return nil
 }
 
-// BumpMigrationCounter adds n to one of the progress counters.
-func (s *Store) BumpMigrationCounter(ctx context.Context, id uuid.UUID, counter string, n int) error {
-	const op = "store.BumpMigrationCounter"
-	var col string
+// counterColumn maps a progress counter name to its column.
+func counterColumn(op, counter string) (string, error) {
 	switch counter {
 	case "backfill":
-		col = "chunks_backfill"
+		return "chunks_backfill", nil
 	case "lazy":
-		col = "chunks_lazy"
+		return "chunks_lazy", nil
 	case "failed":
-		col = "chunks_failed"
+		return "chunks_failed", nil
 	default:
-		return cogerr.Ef(op, cogerr.Validation, "unknown counter %q", counter)
+		return "", cogerr.Ef(op, cogerr.Validation, "unknown counter %q", counter)
 	}
-	if _, err := s.pool.Exec(ctx,
+}
+
+// bumpMigrationCounterTx adds n to one of the progress counters, inside the
+// caller's transaction.
+func bumpMigrationCounterTx(ctx context.Context, tx pgxTx, id uuid.UUID, counter string, n int) error {
+	const op = "store.bumpMigrationCounter"
+	col, err := counterColumn(op, counter)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx,
 		fmt.Sprintf(`update migration_state set %s = %s + $2 where id = $1`, col, col), id, n); err != nil {
 		return cogerr.E(op, cogerr.Internal, err)
 	}
 	return nil
+}
+
+// RecordMigratedBatch writes a batch's embeddings and credits the progress
+// counter for exactly what landed — in one transaction.
+//
+// The atomicity is the point, not an optimisation. These were previously two
+// separate transactions, and a context cancellation arriving between them left
+// the embeddings durably committed while the counter never saw them. Nothing
+// recovers that: MissingChunkBatch and MissingCount both key on "no row in the
+// destination table", so a resumed worker never revisits those chunks, and no
+// code re-derives the counters from table state. The migration then completed
+// with chunks_backfill + chunks_lazy permanently short of chunks_total — the
+// completion invariant the schema documents, silently violated, and reported
+// to users as a self-contradictory "800/800 done (768 backfill, 32 lazy)".
+//
+// Committing both together makes the shortfall unrepresentable: either the
+// rows and the credit both land, or neither does and the batch is retried.
+func (s *Store) RecordMigratedBatch(ctx context.Context, table string,
+	vecs map[uuid.UUID][]float32, migrationID uuid.UUID, counter string) (int, error) {
+	const op = "store.RecordMigratedBatch"
+	if !tableNameRe.MatchString(table) {
+		return 0, cogerr.Ef(op, cogerr.Validation, "bad embedding table name %q", table)
+	}
+	if _, err := counterColumn(op, counter); err != nil {
+		return 0, err
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return 0, cogerr.E(op, cogerr.Unavailable, err)
+	}
+	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+
+	inserted, err := insertEmbeddingsIfAbsentTx(ctx, tx, table, vecs)
+	if err != nil {
+		return 0, err
+	}
+	if inserted > 0 {
+		if err := bumpMigrationCounterTx(ctx, tx, migrationID, counter, inserted); err != nil {
+			return 0, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, cogerr.E(op, cogerr.Internal, err)
+	}
+	return inserted, nil
 }
 
 // RecordMigrationError stores the most recent worker error for the report.
