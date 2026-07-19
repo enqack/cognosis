@@ -13,7 +13,7 @@ lifecycle stays top-level.
 |---|---|
 | `cognosis start [--foreground]` | Start the daemon (self-daemonizes; `--foreground` for a supervisor like systemd/launchd). Fails fatally if Postgres/embedding are unreachable. |
 | `cognosis stop` | Stop the running daemon. |
-| `cognosis status` | Health of postgres / embedding / schema / mcp / daemon. |
+| `cognosis status` | Health of postgres / embedding / schema / mcp / daemon, plus `auth` (the stashed local token still authenticates) and `graph` (stored edges agree with what the indexed content implies). The last two exist because the first five can all be green while every client 401s or the link graph has silently lost edges. |
 | `cognosis version` | Print the version (also `cognosis --version`). |
 
 ### Schema

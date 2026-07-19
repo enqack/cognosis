@@ -35,7 +35,7 @@ ollama pull nomic-embed-text:v1.5 # one-time model pull
 
 mage build                        # -> bin/cognosis (version-stamped from VERSION)
 ./bin/cognosis start              # daemonizes; mints a local token on first start
-./bin/cognosis status             # postgres / embedding / schema / mcp / daemon health
+./bin/cognosis status             # postgres / embedding / schema / mcp / auth / graph / daemon health
 ```
 
 `pg-start` runs a unix-socket-only Postgres in an in-repo, gitignored `.pg-data/` on port 5434 and

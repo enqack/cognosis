@@ -72,5 +72,27 @@ func KindOf(err error) Kind {
 	return Internal
 }
 
+// Message returns err's text with the op and Kind prefixes stripped — the
+// sentence a human or an agent can act on, without the internal identifiers
+// that belong in a log line.
+//
+// It does not decide whether the cause is safe to show. `cognosis status` runs
+// locally for an operator and wants the detail; the MCP layer serves a remote
+// caller and withholds Internal causes, which carry DSNs and socket paths.
+// That policy stays with each caller rather than being guessed at here.
+func Message(err error) string {
+	if err == nil {
+		return ""
+	}
+	var e *Error
+	if !errors.As(err, &e) {
+		return err.Error()
+	}
+	if e.Err == nil {
+		return e.Kind.String()
+	}
+	return e.Err.Error()
+}
+
 // Is reports whether err carries the given Kind.
 func Is(err error, kind Kind) bool { return err != nil && KindOf(err) == kind }

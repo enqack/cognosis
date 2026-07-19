@@ -249,6 +249,38 @@ type Referrer struct {
 // over-match (a name inside a code fence still counts), which is harmless:
 // the caller re-resolves through vault.Targets, and a note that turns out not
 // to reference the target simply rewrites the same edges it already had.
+// AllReferrers returns every note with the columns needed to re-derive its
+// outbound links. It exists for the graph audit in `cognosis status`, which
+// compares the edges the index holds against the edges the indexed content
+// implies — a difference means the link graph decayed, which is invisible to
+// every other check because notes, chunks and embeddings are all still correct.
+func (s *Store) AllReferrers(ctx context.Context) ([]Referrer, error) {
+	const op = "store.AllReferrers"
+	rows, err := s.pool.Query(ctx, `select id, path, frontmatter, content from notes order by path`)
+	if err != nil {
+		return nil, cogerr.E(op, cogerr.Internal, err)
+	}
+	defer rows.Close()
+	var out []Referrer
+	for rows.Next() {
+		var r Referrer
+		var fm []byte
+		if err := rows.Scan(&r.ID, &r.Path, &fm, &r.Body); err != nil {
+			return nil, cogerr.E(op, cogerr.Internal, err)
+		}
+		if len(fm) > 0 {
+			if err := json.Unmarshal(fm, &r.Frontmatter); err != nil {
+				return nil, cogerr.E(op, cogerr.Internal, err)
+			}
+		}
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, cogerr.E(op, cogerr.Internal, err)
+	}
+	return out, nil
+}
+
 func (s *Store) ReferrersOf(ctx context.Context, names []string) ([]Referrer, error) {
 	const op = "store.ReferrersOf"
 	if len(names) == 0 {

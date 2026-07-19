@@ -82,7 +82,7 @@ pg-start           # dev Postgres on port 5434 (exports COGNOSIS_DSN)
 ollama serve &     # or any Ollama already listening on :11434
 ollama pull nomic-embed-text:v1.5
 cognosis start     # fails fatally if Postgres/Ollama are unreachable
-cognosis status    # daemon / postgres / schema / mcp / embedding health
+cognosis status    # daemon / postgres / schema / mcp / auth / graph / embedding health
 ```
 
 The vault lives at `$XDG_DATA_HOME/cognosis/kb/`; config at

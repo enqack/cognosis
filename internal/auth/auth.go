@@ -211,6 +211,35 @@ func EnsureLocalToken(ctx context.Context, s *store.Store, tokenFile string) err
 	return nil
 }
 
+// CheckLocalToken reports whether the stashed local token would authenticate,
+// for `cognosis status`.
+//
+// It runs through the same localTokenUsable the provisioning path uses, rather
+// than reimplementing the checks: a status line that says "ok" via a second
+// copy of the logic is worth less than no line at all, and the failure it
+// exists to catch is precisely provisioning and request-time disagreeing.
+func CheckLocalToken(ctx context.Context, s *store.Store, tokenFile string) error {
+	const op = "auth.CheckLocalToken"
+	b, err := os.ReadFile(tokenFile)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return cogerr.Ef(op, cogerr.NotFound, "no local token at %s; it is minted on daemon start", tokenFile)
+	case err != nil:
+		return cogerr.E(op, cogerr.Internal, err)
+	}
+	usable, err := localTokenUsable(ctx, s, tokenFile, strings.TrimSpace(string(b)))
+	if err != nil {
+		return err
+	}
+	if !usable {
+		return cogerr.Ef(op, cogerr.Validation,
+			"the token in %s does not authenticate: its row is gone (a schema rebuild drops the tokens "+
+				"table) or the file was replaced. Restart the daemon to re-mint, then update any client "+
+				"config holding a copy", tokenFile)
+	}
+	return nil
+}
+
 // localTokenUsable reports whether the stashed plaintext would still pass
 // Middleware. It runs the same checks in the same order — parse, look up by
 // embedded id, reject revoked, verify the secret — because a divergence here

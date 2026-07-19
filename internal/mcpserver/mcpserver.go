@@ -125,10 +125,7 @@ func toolError(err error) error {
 	if e.Kind == cogerr.Internal {
 		return fmt.Errorf("internal error (see the daemon log for detail)")
 	}
-	if e.Err == nil {
-		return fmt.Errorf("%s", e.Kind)
-	}
-	return e.Err
+	return fmt.Errorf("%s", cogerr.Message(err))
 }
 
 func (s *Server) audit(ctx context.Context, tool, project, summary string, callErr error) {

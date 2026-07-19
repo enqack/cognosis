@@ -8,6 +8,14 @@ All notable changes to Cognosis are documented here. The format follows
 
 ### Added
 
+- **`cognosis status` gained `auth` and `graph` checks.** The existing five checks answer "the
+  process is up and its dependencies respond", which is not the same claim as "the thing works":
+  every expensive failure found while dogfooding was invisible to them. `auth` verifies the stashed
+  local token actually authenticates, through the same code path provisioning uses rather than a
+  second copy. `graph` re-derives every note's outbound links from indexed content and diffs them
+  against the stored edges — the one form of index corruption nothing else notices, since notes,
+  chunks and embeddings all stay correct while edges go missing. Both were verified by reproducing
+  the original failures on a live vault.
 - **`edit_note` MCP tool** — change part of an existing note without resending the whole file. It
   replaces one exact, unique occurrence and then runs the same pipeline as `write_note`:
   revalidation, history commit, re-chunk, re-embed, re-index, referrer repair. An `old_string`

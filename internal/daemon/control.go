@@ -7,13 +7,16 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/enqack/cognosis/internal/auth"
 	"github.com/enqack/cognosis/internal/cogerr"
 	"github.com/enqack/cognosis/internal/config"
 	"github.com/enqack/cognosis/internal/embed"
 	"github.com/enqack/cognosis/internal/store"
+	"github.com/enqack/cognosis/internal/write"
 )
 
 // Daemonize re-execs the current binary in the foreground mode, detached in
@@ -155,6 +158,47 @@ func Status(ctx context.Context, cfg *config.Config) []Check {
 			_ = conn.Close()
 			checks = append(checks, Check{"mcp", true, "listening on " + cfg.BindAddress})
 		}
+	}
+
+	// Auth and link-graph health.
+	//
+	// These are the two failure classes the checks above structurally cannot
+	// see. Each was diagnosed the hard way: a token file outliving its database
+	// row 401'd every client while status reported five green lines, and an
+	// editor's atomic save silently cost the graph an inbound edge with notes,
+	// chunks and embeddings all still correct. "The process is up and the
+	// dependencies answer" is not the same claim as "the thing works".
+	if s, err := store.Connect(ctx, dsn); err == nil {
+		defer s.Close()
+
+		actx, acancel := context.WithTimeout(ctx, 5*time.Second)
+		if err := auth.CheckLocalToken(actx, s, cfg.Paths().TokenFile()); err != nil {
+			checks = append(checks, Check{"auth", false, cogerr.Message(err)})
+		} else {
+			checks = append(checks, Check{"auth", true, "local token authenticates"})
+		}
+		acancel()
+
+		gctx, gcancel := context.WithTimeout(ctx, 15*time.Second)
+		ix := &write.Indexer{Store: s} // no provider: the audit reads, never indexes
+		switch g, err := ix.AuditGraph(gctx); {
+		case err != nil:
+			checks = append(checks, Check{"graph", false, cogerr.Message(err)})
+		case g.OK():
+			checks = append(checks, Check{"graph", true,
+				fmt.Sprintf("%d edges across %d notes agree with note content", g.Edges, g.Notes)})
+		default:
+			// The remedy names a *content* change deliberately. Reconciliation
+			// confirms drift by content hash, so touch(1) is skipped and the
+			// note keeps its stale edges forever — that skip is half of how
+			// this failure becomes permanent in the first place.
+			checks = append(checks, Check{"graph", false, fmt.Sprintf(
+				"%d edge(s) missing, %d unexpected across %d notes (e.g. %s) — repair by changing "+
+					"the content of an affected note (edit_note; touch(1) will not do, reconcile "+
+					"confirms drift by content hash), or drop the schema and restart to rebuild",
+				g.Missing, g.Extra, g.Notes, strings.Join(g.Sample, ", "))})
+		}
+		gcancel()
 	}
 
 	// Embedding provider reachability.
