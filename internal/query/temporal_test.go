@@ -2,6 +2,7 @@ package query_test
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -147,15 +148,25 @@ func TestAsOfWithIncludeFalsified(t *testing.T) {
 func TestListDecaying(t *testing.T) {
 	s, _ := storetest.New(t)
 	ctx := context.Background()
+	old := "2026-01-01 00:00:00"
+	oldTime := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	fresh := time.Now().Format("2006-01-02 15:04:05")
 
-	put := func(rel, lastReinforced, extra string) {
+	// created and lastExplicit are what the shortlist keys on now;
+	// lastReinforced is the decay clock, which passive refresh and decay both
+	// move and which therefore cannot answer "has anyone asserted this".
+	put := func(rel string, created time.Time, lastReinforced, lastExplicit, extra string) {
+		id := uuid.Must(uuid.NewV7())
 		fm := map[string]any{
-			"id": uuid.NewString(), "category": "concept",
+			"id": id.String(), "category": "concept",
 			"last_reinforced": lastReinforced,
 		}
+		if lastExplicit != "" {
+			fm["last_explicit_reinforce"] = lastExplicit
+		}
 		n := store.Note{
-			Path: rel, ID: uuid.MustParse(fm["id"].(string)), Category: "concept", Status: "active",
-			Created: time.Now().UTC(), Updated: time.Now().UTC(),
+			Path: rel, ID: id, Category: "concept", Status: "active",
+			Created: created, Updated: time.Now().UTC(),
 			Frontmatter: fm, Content: "x", Mtime: time.Now().UTC(), Size: 1, Blake3: rel,
 		}
 		conf := 0.5
@@ -175,26 +186,43 @@ func TestListDecaying(t *testing.T) {
 		}
 	}
 
-	put("notes/stale.md", "2026-01-01 00:00:00", "")
-	put("notes/fresh.md", time.Now().Format("2006-01-02 15:04:05"), "")
-	put("notes/paused.md", "2026-01-01 00:00:00", "paused")
-	put("notes/dead.md", "2026-01-01 00:00:00", "falsified")
-	put("notes/canon.md", "2026-01-01 00:00:00", "graduated")
-	put("entries/not-a-theory.md", "2026-01-01 00:00:00", "") // wrong stage
+	now := time.Now().UTC()
+	put("notes/stale.md", oldTime, old, "", "")       // never asserted, born long ago
+	put("notes/fresh.md", now, fresh, "", "")         // born today
+	put("notes/asserted.md", oldTime, old, fresh, "") // old note, asserted recently
+	put("notes/carried.md", oldTime, fresh, old, "")  // clock fresh, assertion old
+	put("notes/paused.md", oldTime, old, "", "paused")
+	put("notes/dead.md", oldTime, old, "", "falsified")
+	put("notes/canon.md", oldTime, old, "", "graduated")
+	put("entries/not-a-theory.md", oldTime, old, "", "") // wrong stage
 
 	cutoff := time.Now().AddDate(0, 0, -30)
 	got, err := s.ListDecaying(ctx, cutoff, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0].Path != "notes/stale.md" {
-		ps := make([]string, 0, len(got))
-		for _, d := range got {
-			ps = append(ps, d.Path)
-		}
-		t.Fatalf("decaying = %v, want exactly [notes/stale.md]", ps)
+	paths := make([]string, 0, len(got))
+	for _, d := range got {
+		paths = append(paths, d.Path)
 	}
-	if got[0].Confidence != 0.5 || got[0].Maturity != "seed" {
-		t.Fatalf("row = %+v", got[0])
+	// carried.md is the point of this change: passive refresh (or decay) has
+	// been moving its last_reinforced, so keying on that field would drop the
+	// note from the very shortlist that exists to surface it.
+	want := []string{"notes/stale.md", "notes/carried.md"}
+	if len(paths) != len(want) {
+		t.Fatalf("decaying = %v, want exactly %v", paths, want)
+	}
+	for _, w := range want {
+		if !slices.Contains(paths, w) {
+			t.Fatalf("decaying = %v, missing %s", paths, w)
+		}
+	}
+	for _, d := range got {
+		if d.Confidence != 0.5 || d.Maturity != "seed" {
+			t.Fatalf("row = %+v", d)
+		}
+		if d.LastAsserted == "" {
+			t.Errorf("%s: LastAsserted empty; the shortlist cannot show what it ordered by", d.Path)
+		}
 	}
 }

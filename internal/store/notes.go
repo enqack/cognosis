@@ -167,28 +167,44 @@ type DecayingNote struct {
 	Confidence     float64
 	Maturity       string
 	LastReinforced string
+	// LastAsserted is when an agent last *explicitly* reinforced the note,
+	// falling back to created. This is what the shortlist is ordered by.
+	LastAsserted string
 }
 
-// ListDecaying surfaces decaying notes whose last_reinforced is older than
-// the cutoff — visibility into the existing decay rules, not a new mechanism.
-// Decay-shielded notes (falsified, paused, graduated canon) are excluded.
-// The comparison is lexicographic over the fixed-width timestamp layout,
-// matching how the lifecycle itself reads frontmatter time.
+// ListDecaying surfaces notes nobody has explicitly asserted since the cutoff
+// — the shortlist to feed compile_lifecycle's reinforce. Decay-shielded notes
+// (falsified, paused, graduated canon) are excluded. Comparison is
+// lexicographic over the fixed-width timestamp layout, matching how the
+// lifecycle reads frontmatter time.
+//
+// It keys on last_explicit_reinforce (falling back to created), NOT
+// last_reinforced. last_reinforced is written by passive citation refresh and
+// by decay, so a note being kept alive by citations — or actively decaying —
+// looks freshly reinforced by that field and would drop off the very list that
+// exists to surface it. The distinction only became load-bearing once decay
+// started resetting the clock; before that these two orderings agreed often
+// enough to hide the difference.
 func (s *Store) ListDecaying(ctx context.Context, cutoff time.Time, project string) ([]DecayingNote, error) {
 	const op = "store.ListDecaying"
+	// asserted: the explicit anchor when present, else created — mirroring
+	// lifecycle.passiveBudgetLeft so the two never disagree about a note's age.
+	const asserted = `coalesce(
+		nullif(frontmatter->>'last_explicit_reinforce', ''),
+		to_char(created, 'YYYY-MM-DD HH24:MI:SS'))`
 	rows, err := s.pool.Query(ctx, `
 		select path, project,
 		       coalesce(confidence, 0),
 		       coalesce(maturity, ''),
-		       coalesce(frontmatter->>'last_reinforced', '')
+		       coalesce(frontmatter->>'last_reinforced', ''),
+		       `+asserted+`
 		from notes
 		where path like 'notes/%'
 		  and status not in ('falsified', 'paused')
 		  and not (frontmatter ? 'graduated_at')
 		  and ($2 = '' or project = $2)
-		  and coalesce(frontmatter->>'last_reinforced', '') <> ''
-		  and (frontmatter->>'last_reinforced') <= $1
-		order by frontmatter->>'last_reinforced'`,
+		  and `+asserted+` <= $1
+		order by `+asserted,
 		cutoff.Format("2006-01-02 15:04:05"), project)
 	if err != nil {
 		return nil, cogerr.E(op, cogerr.Internal, err)
@@ -197,7 +213,8 @@ func (s *Store) ListDecaying(ctx context.Context, cutoff time.Time, project stri
 	var out []DecayingNote
 	for rows.Next() {
 		var d DecayingNote
-		if err := rows.Scan(&d.Path, &d.Project, &d.Confidence, &d.Maturity, &d.LastReinforced); err != nil {
+		if err := rows.Scan(&d.Path, &d.Project, &d.Confidence, &d.Maturity,
+			&d.LastReinforced, &d.LastAsserted); err != nil {
 			return nil, cogerr.E(op, cogerr.Internal, err)
 		}
 		out = append(out, d)

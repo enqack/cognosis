@@ -14,7 +14,7 @@ import (
 
 func putNote(t *testing.T, ctx context.Context, ix *Indexer, rel, project, extraFM, body string) uuid.UUID {
 	t.Helper()
-	id := uuid.New()
+	id := uuid.Must(uuid.NewV7())
 	fm := "---\nid: " + id.String() + "\ncategory: entry\n"
 	if project != "" {
 		fm += "project: " + project + "\n"

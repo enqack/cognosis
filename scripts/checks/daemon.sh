@@ -62,7 +62,7 @@ pass "SIGTERM shuts down cleanly and releases the lock"
 mkdir -p "$KB/entries"
 cat > "$KB/entries/handedit.md" <<EOF
 ---
-id: $(uuidgen | tr 'A-Z' 'a-z')
+id: $(printf '0192%04x-0000-7000-8000-%012x' $((RANDOM)) $((RANDOM)))
 category: entry
 created: "2026-07-12 09:00:00"
 updated: "2026-07-12 09:00:00"
@@ -73,10 +73,11 @@ boot_daemon
 for _ in $(seq 1 100); do grep -q "note indexed.*handedit" "$LOG" && break; sleep 0.1; done
 grep -q "note indexed.*handedit" "$LOG" || fail "hand-edited note was not reconciled on boot"
 # The history commit lands *after* the "note indexed" line, so it needs its own
-# wait. Asserting it immediately was a latent race: it happened to win while
-# connection setup was cheap, and started losing consistently when store.Connect
-# gained a per-connection SET. Every other step here already polls; this one
-# was the exception.
+# wait. Asserting it immediately was a latent race — every other step in this
+# script already polls; this one was the exception, and it fires whenever
+# anything slows the path between indexing and committing. It happened to win
+# while connection setup was cheap, and started losing consistently once
+# store.Connect gained a per-connection SET.
 for _ in $(seq 1 100); do
   git -C "$KB" log --oneline -- entries/handedit.md | grep -q . && break
   sleep 0.1

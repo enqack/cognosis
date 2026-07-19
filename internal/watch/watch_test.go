@@ -63,7 +63,7 @@ func writeEntry(t *testing.T, root, rel, content string) string {
 func TestBootFastPathZeroHashes(t *testing.T) {
 	w, s, root, ctx := testWatcher(t)
 	for i := range 1000 {
-		writeEntry(t, root, fmt.Sprintf("entries/e%04d.md", i), entryContent(uuid.NewString()))
+		writeEntry(t, root, fmt.Sprintf("entries/e%04d.md", i), entryContent(uuid.Must(uuid.NewV7()).String()))
 	}
 	if err := w.Reconcile(ctx, s); err != nil {
 		t.Fatal(err)
@@ -85,7 +85,7 @@ func TestBootFastPathZeroHashes(t *testing.T) {
 // slips the fast path; the forced-hash sweep catches it.
 func TestSweepCatchesMtimePreservingEdit(t *testing.T) {
 	w, s, root, ctx := testWatcher(t)
-	id := uuid.NewString()
+	id := uuid.Must(uuid.NewV7()).String()
 	p := writeEntry(t, root, "entries/sneaky.md", entryContent(id)+"original tail\n")
 	if err := w.Reconcile(ctx, s); err != nil {
 		t.Fatal(err)
@@ -135,7 +135,7 @@ func TestSweepCatchesMtimePreservingEdit(t *testing.T) {
 // the previous DB state survives.
 func TestBrokenHandEditIsolated(t *testing.T) {
 	w, s, root, ctx := testWatcher(t)
-	id := uuid.NewString()
+	id := uuid.Must(uuid.NewV7()).String()
 	p := writeEntry(t, root, "entries/fragile.md", entryContent(id))
 	if err := w.Reconcile(ctx, s); err != nil {
 		t.Fatal(err)
@@ -165,7 +165,7 @@ func TestBrokenHandEditIsolated(t *testing.T) {
 // from the index on boot reconciliation.
 func TestDeletionReconciled(t *testing.T) {
 	w, s, root, ctx := testWatcher(t)
-	p := writeEntry(t, root, "entries/gone.md", entryContent(uuid.NewString()))
+	p := writeEntry(t, root, "entries/gone.md", entryContent(uuid.Must(uuid.NewV7()).String()))
 	if err := w.Reconcile(ctx, s); err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +184,7 @@ func TestDeletionReconciled(t *testing.T) {
 // in the vault history repo.
 func TestDriftCommittedToHistory(t *testing.T) {
 	w, s, root, ctx := testWatcher(t)
-	writeEntry(t, root, "entries/tracked.md", entryContent(uuid.NewString()))
+	writeEntry(t, root, "entries/tracked.md", entryContent(uuid.Must(uuid.NewV7()).String()))
 	if err := w.Reconcile(ctx, s); err != nil {
 		t.Fatal(err)
 	}
@@ -224,7 +224,7 @@ func TestWatcherConvergence(t *testing.T) {
 	// Give the watcher a moment to arm before generating events.
 	time.Sleep(200 * time.Millisecond)
 
-	p := writeEntry(t, root, "entries/live.md", entryContent(uuid.NewString()))
+	p := writeEntry(t, root, "entries/live.md", entryContent(uuid.Must(uuid.NewV7()).String()))
 	waitFor("create to be indexed", func() bool {
 		_, err := s.GetNote(ctx, "entries/live.md")
 		return err == nil

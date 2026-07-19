@@ -115,11 +115,11 @@ func memoryLoop(ctx context.Context) error {
 	}
 	defer func() { _ = s.Close() }()
 
-	marker := "zephyr-manifold-" + uuid.NewString()[:8]
+	marker := "zephyr-manifold-" + uuid.Must(uuid.NewV7()).String()[:8]
 	path := "entries/memloop-" + marker + ".md"
 	now := time.Now().Format("2006-01-02 15:04:05")
 	content := fmt.Sprintf("---\nid: %s\ncategory: entry\ncreated: %q\nupdated: %q\n---\nThe reconciliation sweep interval is configurable; marker %s.\n",
-		uuid.NewString(), now, now, marker)
+		uuid.Must(uuid.NewV7()).String(), now, now, marker)
 
 	if _, err := call(ctx, s, "write_note", map[string]any{"path": path, "content": content}); err != nil {
 		return fmt.Errorf("write_note: %w", err)
@@ -168,12 +168,12 @@ func retrieval(ctx context.Context) error {
 	}
 	defer func() { _ = s.Close() }()
 
-	marker := "quintet-" + uuid.NewString()[:8]
+	marker := "quintet-" + uuid.Must(uuid.NewV7()).String()[:8]
 	now := time.Now().Format("2006-01-02 15:04:05")
 
 	// Summaries: cached at write, shown with hits.
 	sumNote := fmt.Sprintf("---\nid: %s\ncategory: entry\nsummary: The %s capture proves cached summaries flow end to end.\ncreated: %q\nupdated: %q\n---\nLong-form body about the %s experiment and its many details.\n",
-		uuid.NewString(), marker, now, now, marker)
+		uuid.Must(uuid.NewV7()).String(), marker, now, now, marker)
 	if _, err := call(ctx, s, "write_note", map[string]any{"path": "entries/ret-" + marker + ".md", "content": sumNote}); err != nil {
 		return fmt.Errorf("write summary note: %w", err)
 	}
@@ -195,10 +195,15 @@ func retrieval(ctx context.Context) error {
 	}
 
 	// list_decaying: a stale theory surfaces.
+	//
+	// "Stale" now means nobody has explicitly asserted it lately, so the
+	// fixture must be old by `created` (or by last_explicit_reinforce), not
+	// merely by last_reinforced — that field is moved by passive citation
+	// refresh and by decay, so it cannot answer "has anyone asserted this".
 	stale := time.Now().AddDate(0, 0, -90).Format("2006-01-02 15:04:05")
 	theoryPath := "notes/ret-theory-" + marker + ".md"
 	theory := fmt.Sprintf("---\nid: %s\ncategory: concept\ncreated: %q\nupdated: %q\nconfidence: 0.6\nmaturity: seed\nlast_reinforced: %q\nreinforce_count: 1\nsources:\n  - \"[[ret-%s]]\"\n---\nA stale %s theory awaiting reinforcement.\n",
-		uuid.NewString(), now, now, stale, marker, marker)
+		uuid.Must(uuid.NewV7()).String(), stale, now, stale, marker, marker)
 	if _, err := call(ctx, s, "write_note", map[string]any{"path": theoryPath, "content": theory}); err != nil {
 		return fmt.Errorf("write theory: %w", err)
 	}
@@ -214,7 +219,7 @@ func retrieval(ctx context.Context) error {
 	// but returns with include_archived.
 	archPath := "archive/ret-shelved-" + marker + ".md"
 	archNote := fmt.Sprintf("---\nid: %s\ncategory: entry\nstatus: faded\narchived_at: %q\ncreated: %q\nupdated: %q\n---\nA shelved account of the %s experiment, now archived.\n",
-		uuid.NewString(), now, now, now, marker)
+		uuid.Must(uuid.NewV7()).String(), now, now, now, marker)
 	if _, err := call(ctx, s, "write_note", map[string]any{"path": archPath, "content": archNote}); err != nil {
 		return fmt.Errorf("write archived note: %w", err)
 	}
@@ -250,14 +255,14 @@ func knowledge(ctx context.Context) error {
 	// A related entry so the verify pass has related-context to surface.
 	if _, err := call(ctx, s, "write_note", map[string]any{
 		"path":    "entries/know-capture.md",
-		"content": fmt.Sprintf("---\nid: %s\ncategory: entry\ncreated: %q\nupdated: %q\n---\nThe original chronicle of the index design and its tradeoffs.\n", uuid.NewString(), now, now),
+		"content": fmt.Sprintf("---\nid: %s\ncategory: entry\ncreated: %q\nupdated: %q\n---\nThe original chronicle of the index design and its tradeoffs.\n", uuid.Must(uuid.NewV7()).String(), now, now),
 	}); err != nil {
 		return fmt.Errorf("write related capture: %w", err)
 	}
 
 	notePath := "notes/know-theory.md"
 	note := fmt.Sprintf("---\nid: %s\ncategory: concept\ncreated: %q\nupdated: %q\nconfidence: 0.5\nmaturity: seed\nlast_reinforced: %q\nreinforce_count: 0\nsources:\n  - \"[[know-capture]]\"\n---\nA stale theory about the index design and its tradeoffs.\n",
-		uuid.NewString(), stale, now, stale)
+		uuid.Must(uuid.NewV7()).String(), stale, now, stale)
 	if _, err := call(ctx, s, "write_note", map[string]any{"path": notePath, "content": note}); err != nil {
 		return fmt.Errorf("write_note: %w", err)
 	}
@@ -334,7 +339,7 @@ func knowledge(ctx context.Context) error {
 	// Vault history: read the log, mediate a rollback.
 	histPath := "entries/know-history.md"
 	mk := func(body string) string {
-		return fmt.Sprintf("---\nid: %s\ncategory: entry\ncreated: %q\nupdated: %q\n---\n%s\n", uuid.NewString(), now, now, body)
+		return fmt.Sprintf("---\nid: %s\ncategory: entry\ncreated: %q\nupdated: %q\n---\n%s\n", uuid.Must(uuid.NewV7()).String(), now, now, body)
 	}
 	if _, err := call(ctx, s, "write_note", map[string]any{"path": histPath, "content": mk("VERSION-ALPHA original")}); err != nil {
 		return fmt.Errorf("history write v1: %w", err)
@@ -375,7 +380,7 @@ func platform(ctx context.Context) error {
 
 	canary := "CANARY-molten-lava-keys"
 	now := time.Now().Format("2006-01-02 15:04:05")
-	note := fmt.Sprintf("---\nid: %s\ncategory: entry\ncreated: %q\nupdated: %q\n---\nA note carrying the secret %s.\n", uuid.NewString(), now, now, canary)
+	note := fmt.Sprintf("---\nid: %s\ncategory: entry\ncreated: %q\nupdated: %q\n---\nA note carrying the secret %s.\n", uuid.Must(uuid.NewV7()).String(), now, now, canary)
 	if _, err := call(ctx, s, "write_note", map[string]any{"path": "entries/platform-canary.md", "content": note}); err != nil {
 		return fmt.Errorf("write_note: %w", err)
 	}

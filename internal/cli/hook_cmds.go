@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
 	"github.com/enqack/cognosis/internal/config"
@@ -49,6 +48,10 @@ func newHookCmd() *cobra.Command {
 
 			now := time.Now()
 			rel := fmt.Sprintf("entries/commit-%s-%s.md", now.Format("2006-01-02"), hash[:12])
+			id, err := vault.NewNoteID()
+			if err != nil {
+				return err
+			}
 			content := fmt.Sprintf(`---
 id: %s
 category: entry
@@ -63,7 +66,7 @@ summary: %s
 
 Files:
 %s`,
-				uuid.NewString(), project,
+				id, project,
 				now.Format(vault.TimeLayout), now.Format(vault.TimeLayout),
 				yamlEscapeLine("commit "+hash[:12]+": "+subject),
 				hash[:12], subject, files)

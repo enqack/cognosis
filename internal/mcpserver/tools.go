@@ -17,7 +17,7 @@ import (
 
 type writeNoteArgs struct {
 	Path    string `json:"path" jsonschema:"vault-relative path under entries/, notes/, reflections/, or archive/ (e.g. entries/2026-07-12-capture.md)"`
-	Content string `json:"content" jsonschema:"full markdown file content including YAML frontmatter satisfying the contract (id, category, created, updated, ...). An optional one-line summary: key is cached and returned with every retrieval hit."`
+	Content string `json:"content" jsonschema:"full markdown file content including YAML frontmatter satisfying the contract (id, category, created, updated, ...). id must be a UUIDv7 (time-ordered) — v4 is rejected. An optional one-line summary: key is cached and returned with every retrieval hit."`
 	Project string `json:"project,omitempty" jsonschema:"optional cross-check: must match the note's own frontmatter project tag when set"`
 }
 
@@ -166,7 +166,14 @@ func (s *Server) addTools(srv *mcp.Server) {
 		}
 		var b strings.Builder
 		for _, d := range notes {
-			fmt.Fprintf(&b, "- %s (confidence %.1f, %s, last reinforced %s", d.Path, d.Confidence, d.Maturity, d.LastReinforced)
+			// Both timestamps, because they answer different questions and
+			// diverge exactly when it matters: last_reinforced moves on
+			// passive citation refresh and on decay, while last asserted moves
+			// only when an agent actually reinforced. A note whose "asserted"
+			// is far older than its "reinforced" is one citations have been
+			// carrying — the ones most worth a deliberate look.
+			fmt.Fprintf(&b, "- %s (confidence %.1f, %s, last asserted %s, clock %s",
+				d.Path, d.Confidence, d.Maturity, d.LastAsserted, d.LastReinforced)
 			if d.Project != "" {
 				fmt.Fprintf(&b, ", project %s", d.Project)
 			}

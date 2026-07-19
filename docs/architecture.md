@@ -45,6 +45,11 @@ Every note carries a frontmatter contract (required `id`, `category`, `created`,
 decay fields for `notes/`). A validator enforces the contract on every write, so a malformed note is
 rejected with the offending field named rather than silently indexed.
 
+`id` is a **UUIDv7** — time-ordered, so ids sort lexically by creation time and index inserts stay
+sequential instead of scattering a b-tree. This is enforced, not advised: an id is written once and
+never rewritten, so any version accepted at write time is permanent. Mint one with
+`vault.NewNoteID()`; every code path that creates a note uses it.
+
 ## The daemon
 
 Startup is a linear, fail-fast sequence — any failure in the first steps is fatal, never degraded:

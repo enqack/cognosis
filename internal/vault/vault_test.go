@@ -57,7 +57,7 @@ func TestStageOf(t *testing.T) {
 func TestRoundTripIdentity(t *testing.T) {
 	src := `---
 # a comment that must survive
-id: 5f0c9d1e-8a4b-4c3d-9e2f-1a2b3c4d5e6f
+id: 01920000-0000-7000-8000-00000000000a
 category: concept
 created: "2026-07-12 10:00:00"
 updated: "2026-07-12 10:00:00"
@@ -142,9 +142,9 @@ Body.
 
 func TestWalkAcceptsValidVault(t *testing.T) {
 	root := writeVault(t, map[string]string{
-		"notes/a.md": validNote(uuid.NewString()),
+		"notes/a.md": validNote(uuid.Must(uuid.NewV7()).String()),
 		"entries/2026-07-12.md": `---
-id: ` + uuid.NewString() + `
+id: ` + uuid.Must(uuid.NewV7()).String() + `
 category: entry
 created: "2026-07-12 09:00:00"
 updated: "2026-07-12 09:00:00"
@@ -166,7 +166,7 @@ Raw capture.
 }
 
 func TestWalkRejectsDuplicateIDs(t *testing.T) {
-	id := uuid.NewString()
+	id := uuid.Must(uuid.NewV7()).String()
 	root := writeVault(t, map[string]string{
 		"notes/a.md": validNote(id),
 		"notes/b.md": validNote(id),

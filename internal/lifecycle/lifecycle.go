@@ -39,10 +39,45 @@ const (
 	// refreshWithin: a note cited by a note updated this recently is still in
 	// use — its decay clock resets without an explicit reinforce.
 	refreshWithin = 7 * 24 * time.Hour
-	stableMinRuns = 3
-	developingAt  = 0.8
-	stableAt      = 0.9
+	// passiveRefreshBudget: citation is evidence a note is *used*, not that it
+	// is *believed*. Passive refresh may therefore extend a note's life only
+	// this far past the last explicit reinforce; after that the note decays
+	// even while cited, and an agent must assert belief to revive it.
+	//
+	// Tied to ancientAfter deliberately, so the vault has exactly one horizon
+	// at which silence stops counting as assent. That is six staleAfter
+	// windows, and refresh is lazy (it fires only once a note is already
+	// stale), so a cited note emits roughly six `refreshed` lines — each
+	// carrying the remaining budget — before it starts decaying.
+	passiveRefreshBudget = ancientAfter
+	stableMinRuns        = 3
+	developingAt         = 0.8
+	stableAt             = 0.9
 )
+
+// passiveBudgetLeft reports how much passive-refresh budget a note has left.
+// A non-positive result means citation no longer shields it.
+//
+// The anchor is last_explicit_reinforce, falling back to created when absent —
+// which is every note written before that field existed. The fallback must not
+// be last_reinforced: passive refresh *writes* that field, so anchoring to it
+// would make the budget renew itself, which is the unbounded behavior this
+// exists to stop. created is required, always present, and never written by
+// the lifecycle, so for a note nobody ever reinforced it gives the honest
+// answer — measure from birth.
+//
+// A malformed anchor is treated as exhausted rather than raising: this is a
+// bound, and the safe failure direction for a bound is "expired". Raising
+// would let one bad optional timestamp abort a whole compile run.
+func passiveBudgetLeft(n *vault.Note, now time.Time) time.Duration {
+	anchor, err := vault.TimeOf(n.Frontmatter["last_explicit_reinforce"])
+	if err != nil {
+		if anchor, err = vault.TimeOf(n.Frontmatter["created"]); err != nil {
+			return 0
+		}
+	}
+	return passiveRefreshBudget - now.Sub(anchor)
+}
 
 // Options is one run's explicit, agent-justified operation set.
 type Options struct {
@@ -267,6 +302,15 @@ func (e *Engine) run(ctx context.Context, opts Options) (*Report, error) {
 			continue
 		}
 		for _, ref := range vault.Targets(m) {
+			// Body wikilinks only. A `sources:` entry is provenance — where a
+			// note came from — and provenance never changes after the note is
+			// written, so treating it as a citation makes it a permanent
+			// one-sided shield driven by an unrelated file's `updated` stamp.
+			// "Still in use" has to mean somebody referred to it, not that it
+			// once had a parent.
+			if ref.Kind != vault.Wikilink {
+				continue
+			}
 			if id, ok := idByName[ref.Name]; ok && id != m.ID() {
 				recentlyCited[id] = true
 			}
@@ -345,9 +389,23 @@ func (e *Engine) run(ctx context.Context, opts Options) (*Report, error) {
 		reinforced := reinforce[n.ID()] || reinforce[n.Path]
 		_, graduatedAlready := n.Frontmatter["graduated_at"]
 		paused := n.Status() == "paused"
-		shielded := paused || recentlyCited[n.ID()] || graduatedAlready
+
+		// Two shields, not one, because the two sites they gate mean different
+		// things. Citation shielding is budgeted for decay (a reversible
+		// confidence slide) but not for archival (a file move): decay keys on
+		// belief, archival keys on `updated`, which the lifecycle never writes
+		// and which is therefore a true last-agent-edit signal. A note that is
+		// cited AND was edited recently is not abandoned by any reading, and a
+		// move triggered by the mere absence of a reinforce is the transition
+		// most worth requiring two independent signals for.
+		budgetLeft := passiveBudgetLeft(n, opts.Now)
+		citedAndInBudget := recentlyCited[n.ID()] && budgetLeft > 0
+		decayShielded := paused || graduatedAlready || citedAndInBudget
+		moveShielded := paused || graduatedAlready || recentlyCited[n.ID()]
+
 		clearDispute := false
 		changed := false
+		stampExplicit := false
 
 		// Reinforce (wins over decay in the same run).
 		if reinforced {
@@ -358,6 +416,11 @@ func (e *Engine) run(ctx context.Context, opts Options) (*Report, error) {
 			conf = round1(min(1.0, conf+reinforceDelta))
 			count++
 			last = opts.Now
+			// Only an explicit reinforce moves the budget anchor. Stamping it
+			// anywhere `changed` is true (refresh, decay) would make the
+			// budget renew itself — the same self-renewing loop that
+			// disqualifies last_reinforced as the anchor.
+			stampExplicit = true
 			changed = true
 			report.Actions = append(report.Actions, Action{"reinforced", name, fmt.Sprintf("%.1f→%.1f", old, conf)})
 			if n.Status() == "disputed" {
@@ -373,13 +436,25 @@ func (e *Engine) run(ctx context.Context, opts Options) (*Report, error) {
 				report.Actions = append(report.Actions, Action{"promoted", name, "developing→stable"})
 			}
 		} else if opts.Now.Sub(last) > staleAfter {
-			if shielded {
-				cause := "cited recently"
-				if paused {
+			if decayShielded {
+				var cause string
+				switch {
+				case paused:
 					cause = "paused"
-				}
-				if graduatedAlready {
+				case graduatedAlready:
 					cause = "graduated canon"
+				default:
+					// Citation is the only budgeted cause, so it is the only
+					// one that can warn. Refresh is lazy — it fires at most
+					// once per staleAfter — so a budget smaller than that
+					// window means this is very likely the last refresh this
+					// note gets. Say so while a reinforce can still help.
+					cause = fmt.Sprintf("cited recently; %s of passive budget left",
+						roundDays(budgetLeft))
+					if budgetLeft < staleAfter {
+						cause += fmt.Sprintf(" — reinforce before %s or it starts decaying",
+							opts.Now.Add(budgetLeft).Format(vault.TimeLayout))
+					}
 				}
 				last = opts.Now
 				changed = true
@@ -387,23 +462,46 @@ func (e *Engine) run(ctx context.Context, opts Options) (*Report, error) {
 			} else {
 				old := conf
 				conf = round1(max(0.0, conf-decayDelta))
+				// Reset the clock so decay steps once per staleAfter. Without
+				// this the note stays stale and decays again on every
+				// subsequent compile run, making the decay rate a function of
+				// how often the agent happens to compile rather than of time.
+				last = opts.Now
 				changed = true
-				report.Actions = append(report.Actions, Action{"decayed", name,
-					fmt.Sprintf("%.1f→%.1f (last_reinforced %s)", old, conf, last.Format(vault.TimeLayout))})
+				detail := fmt.Sprintf("%.1f→%.1f (last_reinforced %s)", old, conf, last.Format(vault.TimeLayout))
+				if recentlyCited[n.ID()] {
+					// Still cited, so the shield is not missing — it expired.
+					// Without saying so, this reads as the refresh mechanism
+					// having silently broken.
+					detail = fmt.Sprintf("%.1f→%.1f (still cited, but the passive-refresh budget "+
+						"expired — only an explicit reinforce revives it)", old, conf)
+				}
+				report.Actions = append(report.Actions, Action{"decayed", name, detail})
 			}
 		}
+
+		// Whether an archival move will follow. The frontmatter edits below are
+		// staged either way, but the *write* is deferred when a move is coming:
+		// writing here and then moving would touch the file twice, index it
+		// twice, and leave an intermediate state in vault history that never
+		// meaningfully existed.
+		willArchive := conf <= 0 ||
+			(!reinforced && !moveShielded && opts.Now.Sub(updated) > ancientAfter)
 
 		if changed {
 			n.SetFM("confidence", fmt.Sprintf("%.1f", conf))
 			n.SetFM("maturity", maturity)
 			n.SetFM("last_reinforced", last.Format(vault.TimeLayout))
 			n.SetFM("reinforce_count", strconv.Itoa(count))
+			if stampExplicit {
+				n.SetFM("last_explicit_reinforce", opts.Now.Format(vault.TimeLayout))
+			}
 			if clearDispute {
 				n.SetFM("status", "active")
 				n.DeleteFM("disputed_reason")
 				n.DeleteFM("disputed_at")
 			}
-			if !opts.DryRun {
+			if !opts.DryRun && !willArchive {
 				if err := e.rewrite(ctx, n, n.Path); err != nil {
 					return nil, err
 				}
@@ -412,7 +510,8 @@ func (e *Engine) run(ctx context.Context, opts Options) (*Report, error) {
 		}
 
 		// Archive: faded (confidence hit zero) or ancient (updated timestamp
-		// abandoned). Both are moves into archive/; the id survives.
+		// abandoned). Both are moves into archive/; the id survives. The move
+		// writes the staged frontmatter above in one go.
 		if conf <= 0 {
 			report.Actions = append(report.Actions, Action{"archived-faded", name, fmt.Sprintf("(confidence %.1f)", conf)})
 			if !opts.DryRun {
@@ -425,7 +524,7 @@ func (e *Engine) run(ctx context.Context, opts Options) (*Report, error) {
 			}
 			continue
 		}
-		if !reinforced && !shielded && opts.Now.Sub(updated) > ancientAfter {
+		if !reinforced && !moveShielded && opts.Now.Sub(updated) > ancientAfter {
 			report.Actions = append(report.Actions, Action{"archived-ancient", name,
 				fmt.Sprintf("(updated %s ago)", opts.Now.Sub(updated).Round(24*time.Hour))})
 			if !opts.DryRun {

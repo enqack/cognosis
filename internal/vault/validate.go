@@ -39,6 +39,21 @@ const (
 // fields. Explicit timestamps replace silo-kb's git-derived staleness.
 const TimeLayout = "2006-01-02 15:04:05"
 
+// NewNoteID mints a note id: UUIDv7, time-ordered, so ids sort lexically by
+// creation time and index inserts stay sequential rather than scattering a
+// b-tree. Every code path that creates a note must use this — Validate rejects
+// any other UUID version, and an id is permanent once written.
+//
+// Callers that cannot handle an error (fixtures, table-driven tests) should use
+// a fixed v7 literal instead, which is more deterministic anyway.
+func NewNoteID() (string, error) {
+	id, err := uuid.NewV7()
+	if err != nil {
+		return "", fmt.Errorf("minting note id: %w", err)
+	}
+	return id.String(), nil
+}
+
 func ParseTime(s string) (time.Time, error) {
 	if t, err := time.ParseInLocation(TimeLayout, s, time.Local); err == nil {
 		return t, nil
@@ -103,11 +118,19 @@ func Validate(relPath string, fm map[string]any, hasFM bool) []Problem {
 
 	var probs []Problem
 
+	// Note ids are UUIDv7 — see NewNoteID. v4 is rejected rather than merely
+	// discouraged: an id is written once and never rewritten, so anything
+	// accepted here is permanent.
 	id, _ := fm["id"].(string)
-	if id == "" {
-		probs = append(probs, p("id", "required; generate a UUID and retry — never reuse another note's id"))
-	} else if _, err := uuid.Parse(id); err != nil {
+	switch parsed, err := uuid.Parse(id); {
+	case id == "":
+		probs = append(probs, p("id", "required; generate a UUIDv7 and retry — never reuse another note's id"))
+	case err != nil:
 		probs = append(probs, p("id", fmt.Sprintf("not a valid UUID: %q", id)))
+	case parsed.Version() != 7:
+		probs = append(probs, p("id", fmt.Sprintf(
+			"must be a UUIDv7 (time-ordered), got v%d — ids sort lexically by creation time",
+			parsed.Version())))
 	}
 
 	cat, _ := fm["category"].(string)
@@ -206,6 +229,18 @@ func validateDecaying(relPath string, fm map[string]any) []Problem {
 	if ga, present := fm["graduated_at"]; present {
 		if _, err := TimeOf(ga); err != nil {
 			probs = append(probs, p("graduated_at", err.Error()))
+		}
+	}
+
+	// last_explicit_reinforce anchors the passive-refresh budget: citation can
+	// only extend a note's life so far past the last time an agent actually
+	// asserted it. Optional, and it must stay optional — every note written
+	// before this field existed lacks it, there is no frontmatter backfill,
+	// and reconciliation refuses to index a note that fails validation, so
+	// requiring it would strand every existing vault.
+	if lr, present := fm["last_explicit_reinforce"]; present {
+		if _, err := TimeOf(lr); err != nil {
+			probs = append(probs, p("last_explicit_reinforce", err.Error()))
 		}
 	}
 

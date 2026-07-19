@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/google/uuid"
 )
 
 func testHistory(t *testing.T) (*History, string, context.Context) {
@@ -26,13 +28,13 @@ func TestRestoreRoundTrip(t *testing.T) {
 	h, root, ctx := testHistory(t)
 	p := filepath.Join(root, "entries", "a.md")
 
-	if err := os.WriteFile(p, []byte("version one\n"), 0o600); err != nil {
+	if err := os.WriteFile(p, []byte(restorableNote("version one")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.CommitAll(ctx, "write v1"); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(p, []byte("version two\n"), 0o600); err != nil {
+	if err := os.WriteFile(p, []byte(restorableNote("version two")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.CommitAll(ctx, "write v2"); err != nil {
@@ -51,7 +53,7 @@ func TestRestoreRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	b, err := os.ReadFile(p)
-	if err != nil || string(b) != "version one\n" {
+	if err != nil || string(b) != restorableNote("version one") {
 		t.Fatalf("restored content = %q (%v)", b, err)
 	}
 
@@ -164,5 +166,64 @@ func TestPurgePathErasesHistory(t *testing.T) {
 	b, err := os.ReadFile(keep)
 	if err != nil || string(b) != "unrelated survivor\n" {
 		t.Fatalf("survivor content = %q (%v)", b, err)
+	}
+}
+
+// restorableNote is a minimal note that satisfies the current contract, so
+// restore tests exercise the real path rather than bare text a vault would
+// never hold (and that reconciliation would refuse to index anyway).
+// The id is a fixed literal, not freshly minted: a note keeps its id across
+// versions, so a round-trip comparison must not see it change.
+func restorableNote(body string) string {
+	return "---\nid: 01920000-0000-7000-8000-0000000000b1\ncategory: entry\n" +
+		"created: \"2026-07-12 09:00:00\"\nupdated: \"2026-07-12 09:00:00\"\n---\n" + body + "\n"
+}
+
+// TestRestoreRefusesContractViolation is the guard for a silent failure: a
+// commit predating a contract rule (a v4 id, here) would otherwise restore
+// "successfully", land on disk, and then be refused by reconciliation — a note
+// that exists and cannot be retrieved, reported as success.
+func TestRestoreRefusesContractViolation(t *testing.T) {
+	h, root, ctx := testHistory(t)
+	p := filepath.Join(root, "entries", "old.md")
+
+	// A note as it would have been written before ids were required to be v7.
+	legacy := "---\nid: " + uuid.Must(uuid.NewRandom()).String() + "\ncategory: entry\n" +
+		"created: \"2026-07-12 09:00:00\"\nupdated: \"2026-07-12 09:00:00\"\n---\nlegacy\n"
+	if err := os.WriteFile(p, []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.CommitAll(ctx, "legacy note"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(restorableNote("current")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.CommitAll(ctx, "conforming note"); err != nil {
+		t.Fatal(err)
+	}
+
+	lines, err := h.Log(ctx, "entries/old.md")
+	if err != nil || len(lines) != 2 {
+		t.Fatalf("log = %v (%v)", lines, err)
+	}
+	oldRef := strings.Fields(lines[len(lines)-1])[0]
+
+	err = h.Restore(ctx, oldRef, "entries/old.md")
+	if err == nil {
+		t.Fatal("restore of a contract-violating commit succeeded; it would write a note the index refuses")
+	}
+	if !strings.Contains(err.Error(), "UUIDv7") {
+		t.Errorf("error should name the violated rule, got: %v", err)
+	}
+
+	// The refusal must not have clobbered the current file.
+	b, readErr := os.ReadFile(p)
+	if readErr != nil || !strings.Contains(string(b), "current") {
+		t.Errorf("refused restore modified the working file: %q (%v)", b, readErr)
+	}
+	// And the content is still reachable for inspection.
+	if _, err := h.Show(ctx, oldRef, "entries/old.md"); err != nil {
+		t.Errorf("Show should still read the old content: %v", err)
 	}
 }

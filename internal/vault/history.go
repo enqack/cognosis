@@ -224,10 +224,33 @@ func (h *History) Show(ctx context.Context, ref, relPath string) ([]byte, error)
 
 // Restore writes a path's content-at-ref back as the current version. History
 // moves forward: the restore is itself a new commit, never a rewrite.
+//
+// The restored content is validated against the *current* contract before
+// anything is written. Old commits are not bound by today's rules — a note
+// predating the UUIDv7 id requirement is the concrete case — and without this
+// check the restore succeeds, the file lands on disk, and reconciliation then
+// silently refuses to index it. That leaves a note that exists but cannot be
+// retrieved, reported to the caller as success. Refusing outright is worse for
+// nobody: the content is still readable via Show.
 func (h *History) Restore(ctx context.Context, ref, relPath string) error {
+	const op = "vault.History.Restore"
 	content, err := h.Show(ctx, ref, relPath)
 	if err != nil {
 		return err
+	}
+	n, err := ParseNote(relPath, content)
+	if err != nil {
+		return cogerr.Ef(op, cogerr.Validation,
+			"%s at %s does not parse under the current contract: %v", relPath, ref, err)
+	}
+	if probs := Validate(relPath, n.Frontmatter, n.Frontmatter != nil); len(probs) > 0 {
+		msgs := make([]string, len(probs))
+		for i, p := range probs {
+			msgs[i] = p.Field + ": " + p.Reason
+		}
+		return cogerr.Ef(op, cogerr.Validation,
+			"%s at %s violates the current contract and would be written but never indexed (%s)",
+			relPath, ref, strings.Join(msgs, "; "))
 	}
 	if err := WriteFileAtomic(filepath.Join(h.dir, filepath.FromSlash(relPath)), content); err != nil {
 		return err

@@ -13,7 +13,7 @@ import (
 
 func validDecayingFM() map[string]any {
 	return map[string]any{
-		"id":              uuid.NewString(),
+		"id":              uuid.Must(uuid.NewV7()).String(),
 		"category":        "concept",
 		"created":         "2026-07-12 10:00:00",
 		"updated":         "2026-07-12 10:00:00",
@@ -133,7 +133,7 @@ func TestStatusRules(t *testing.T) {
 
 func TestEntriesStage(t *testing.T) {
 	fm := map[string]any{
-		"id":       uuid.NewString(),
+		"id":       uuid.Must(uuid.NewV7()).String(),
 		"category": "entry",
 		"created":  "2026-07-12 09:00:00",
 		"updated":  "2026-07-12 09:00:00",
@@ -147,7 +147,7 @@ func TestEntriesStage(t *testing.T) {
 
 func TestReflectionsStage(t *testing.T) {
 	fm := map[string]any{
-		"id":          uuid.NewString(),
+		"id":          uuid.Must(uuid.NewV7()).String(),
 		"category":    "reflection",
 		"persona":     "deep-thoughts",
 		"description": "Ported the frontmatter contract from silo-kb.",
@@ -182,7 +182,7 @@ func TestReflectionsStage(t *testing.T) {
 // only the universal core applies.
 func TestArchiveExempt(t *testing.T) {
 	fm := map[string]any{
-		"id":       uuid.NewString(),
+		"id":       uuid.Must(uuid.NewV7()).String(),
 		"category": "concept",
 		"created":  "2026-01-01 00:00:00",
 		"updated":  "2026-06-01 00:00:00",
@@ -248,4 +248,55 @@ func TestLinks(t *testing.T) {
 	if len(srcs) != 2 || srcs[0] != "2026-07-12" || srcs[1] != "capture" {
 		t.Fatalf("sources = %v", srcs)
 	}
+}
+
+// TestNoteIDMustBeV7 pins the id contract. Ids are written once and never
+// rewritten, so an accepted version is permanent — this is the gate that makes
+// "ids sort lexically by creation time" true rather than aspirational.
+func TestNoteIDMustBeV7(t *testing.T) {
+	cases := []struct {
+		name    string
+		id      any
+		wantErr bool
+	}{
+		{"v7 accepted", uuid.Must(uuid.NewV7()).String(), false},
+		{"v4 rejected", uuid.Must(uuid.NewRandom()).String(), true},
+		{"v1 rejected", uuid.Must(uuid.NewUUID()).String(), true},
+		{"nil uuid rejected", uuid.Nil.String(), true},
+		{"not a uuid", "nope", true},
+		{"missing", "", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fm := validDecayingFM()
+			fm["id"] = tc.id
+			probs := Validate("notes/a.md", fm, true)
+			var got bool
+			for _, p := range probs {
+				if p.Field == "id" {
+					got = true
+				}
+			}
+			if got != tc.wantErr {
+				t.Errorf("id %v: problem reported = %v, want %v (problems: %v)",
+					tc.id, got, tc.wantErr, fieldsOf(probs))
+			}
+		})
+	}
+}
+
+// A rejected id must say which version it got, or the agent cannot tell a
+// version problem from a malformed-string problem and will retry identically.
+func TestV4RejectionNamesTheVersion(t *testing.T) {
+	fm := validDecayingFM()
+	fm["id"] = uuid.Must(uuid.NewRandom()).String()
+	for _, p := range Validate("notes/a.md", fm, true) {
+		if p.Field == "id" {
+			if !strings.Contains(p.Reason, "v4") || !strings.Contains(p.Reason, "UUIDv7") {
+				t.Errorf("reason %q should name both the required version and what it got", p.Reason)
+			}
+			return
+		}
+	}
+	t.Fatal("no id problem reported for a v4 id")
 }

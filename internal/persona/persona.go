@@ -15,8 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/enqack/cognosis/internal/cogerr"
 	"github.com/enqack/cognosis/internal/vault"
 	"github.com/enqack/cognosis/internal/write"
@@ -190,8 +188,12 @@ func (r *Registry) WriteReflection(ctx context.Context, pipeline *write.Pipeline
 	now := time.Now()
 	rel := fmt.Sprintf("reflections/%s-%s.md", now.Format("2006-01-02-15-04"), slugify(description))
 
+	id, err := vault.NewNoteID()
+	if err != nil {
+		return "", cogerr.E(op, cogerr.Internal, err)
+	}
 	fm := fmt.Sprintf("---\nid: %s\ncategory: reflection\npersona: %s\ndescription: %s\ncreated: %q\nupdated: %q\n",
-		uuid.NewString(), persona, yamlEscape(description),
+		id, persona, yamlEscape(description),
 		now.Format(vault.TimeLayout), now.Format(vault.TimeLayout))
 	if project != "" {
 		fm += "project: " + project + "\n"

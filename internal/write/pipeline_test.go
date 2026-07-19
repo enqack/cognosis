@@ -55,7 +55,7 @@ updated: "2026-07-12 09:00:00"
 
 func TestWriteLandsEverything(t *testing.T) {
 	p, s, root, ctx := testPipeline(t)
-	id := uuid.NewString()
+	id := uuid.Must(uuid.NewV7()).String()
 	content := noteContent(id, "cognosis", "The daemon reconciles the vault on boot.\n")
 
 	if err := p.Write(ctx, "entries/first.md", content, "cognosis"); err != nil {
@@ -102,7 +102,7 @@ func countEmbeddings(t *testing.T, s *store.Store, ctx context.Context) int {
 
 func TestRewriteLeavesNoOrphans(t *testing.T) {
 	p, s, _, ctx := testPipeline(t)
-	id := uuid.NewString()
+	id := uuid.Must(uuid.NewV7()).String()
 
 	long := strings.Repeat("alpha bravo charlie. ", 20)
 	multi := noteContent(id, "", "## One\n\n"+long+"\n\n## Two\n\n"+long+"\n")
@@ -130,7 +130,7 @@ func TestRewriteLeavesNoOrphans(t *testing.T) {
 
 func TestValidationNamesField(t *testing.T) {
 	p, _, _, ctx := testPipeline(t)
-	bad := "---\nid: " + uuid.NewString() + "\ncategory: entry\n---\nmissing timestamps\n"
+	bad := "---\nid: " + uuid.Must(uuid.NewV7()).String() + "\ncategory: entry\n---\nmissing timestamps\n"
 	err := p.Write(ctx, "entries/bad.md", bad, "")
 	if !cogerr.Is(err, cogerr.Validation) {
 		t.Fatalf("err = %v, want Validation", err)
@@ -142,7 +142,7 @@ func TestValidationNamesField(t *testing.T) {
 
 func TestPathRules(t *testing.T) {
 	p, _, _, ctx := testPipeline(t)
-	id := uuid.NewString()
+	id := uuid.Must(uuid.NewV7()).String()
 	content := noteContent(id, "", "body\n")
 	for _, bad := range []string{
 		"../escape.md", "outside/x.md", "log.md", "entries/nested.txt",
@@ -155,7 +155,7 @@ func TestPathRules(t *testing.T) {
 
 func TestProjectMismatchRejected(t *testing.T) {
 	p, _, _, ctx := testPipeline(t)
-	content := noteContent(uuid.NewString(), "cognosis", "body\n")
+	content := noteContent(uuid.Must(uuid.NewV7()).String(), "cognosis", "body\n")
 	if err := p.Write(ctx, "entries/pm.md", content, "other-project"); !cogerr.Is(err, cogerr.Validation) {
 		t.Fatalf("err = %v, want Validation", err)
 	}
@@ -163,7 +163,7 @@ func TestProjectMismatchRejected(t *testing.T) {
 
 func TestConcurrentSamePathSerializes(t *testing.T) {
 	p, s, _, ctx := testPipeline(t)
-	id := uuid.NewString()
+	id := uuid.Must(uuid.NewV7()).String()
 	var wg sync.WaitGroup
 	errs := make([]error, 8)
 	for i := range 8 {
@@ -195,12 +195,12 @@ func TestConcurrentSamePathSerializes(t *testing.T) {
 
 func TestLinksResolvedAndDanglingDropped(t *testing.T) {
 	p, s, _, ctx := testPipeline(t)
-	targetID := uuid.NewString()
+	targetID := uuid.Must(uuid.NewV7()).String()
 	if err := p.Write(ctx, "entries/target.md",
 		noteContent(targetID, "", "the referenced capture\n"), ""); err != nil {
 		t.Fatal(err)
 	}
-	srcID := uuid.NewString()
+	srcID := uuid.Must(uuid.NewV7()).String()
 	body := "links to [[target]] and to [[nonexistent-note]]\n"
 	if err := p.Write(ctx, "entries/src.md", noteContent(srcID, "", body), ""); err != nil {
 		t.Fatal(err)
@@ -219,7 +219,7 @@ func TestLinksResolvedAndDanglingDropped(t *testing.T) {
 // stopping); boot reconciliation repairs the divergence.
 func TestCrashBetweenFileAndDBConverges(t *testing.T) {
 	p, s, root, ctx := testPipeline(t)
-	id := uuid.NewString()
+	id := uuid.Must(uuid.NewV7()).String()
 	content := noteContent(id, "", "crashed before the DB commit\n")
 
 	// Simulate the crash: file written, history committed, no DB write.
