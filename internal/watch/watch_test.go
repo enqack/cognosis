@@ -382,3 +382,96 @@ Refers to [[written-target]] which does not exist yet.
 		t.Fatalf("write_note did not repair the dangling edge pointing at it: got %v", dsts)
 	}
 }
+
+// TestAtomicSaveKeepsInboundLinks — vim, VS Code and most editors save by
+// writing a temp file and renaming it over the target. fsnotify reports that
+// as Rename/Remove on the target path, and treating it as a deletion drops the
+// note row, which cascades every *inbound* link away. The follow-up Create
+// re-indexes the note and its outbound links, but nothing restores its
+// referrers: those notes did not change, so reconcile skips them by content
+// hash forever.
+//
+// Observed in the real vault — editing one note's frontmatter took the graph
+// from 7 edges to 6, and the lost edge was the one pointing *at* it. Ordinary
+// editing silently degraded the graph leg of retrieval.
+func TestAtomicSaveKeepsInboundLinks(t *testing.T) {
+	w, s, root, ctx := testWatcher(t)
+
+	target := uuid.Must(uuid.NewV7()).String()
+	writeEntry(t, root, "entries/target.md", entryContent(target))
+	src := uuid.Must(uuid.NewV7()).String()
+	writeEntry(t, root, "entries/source.md", `---
+id: `+src+`
+category: entry
+created: "2026-07-12 09:00:00"
+updated: "2026-07-12 09:00:00"
+---
+Refers to [[target]] in the body.
+`)
+	if err := w.Reconcile(ctx, s); err != nil {
+		t.Fatal(err)
+	}
+	srcID := uuid.MustParse(src)
+	if dsts, err := s.LinkDsts(ctx, srcID); err != nil {
+		t.Fatal(err)
+	} else if len(dsts) != 1 {
+		t.Fatalf("precondition: source should link to target before the edit, got %v", dsts)
+	}
+
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go func() { _ = w.Run(runCtx) }()
+	time.Sleep(200 * time.Millisecond)
+
+	// The atomic save. The temp file is not .md, so it draws no events of its
+	// own — only the rename onto the watched path does.
+	final := filepath.Join(root, "entries", "target.md")
+	tmp := filepath.Join(root, "entries", "target.md.swaptmp")
+	if err := os.WriteFile(tmp, []byte(entryContent(target)+"\nEdited in place.\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(tmp, final); err != nil {
+		t.Fatal(err)
+	}
+	// Settle window (200ms) plus index, referrer repair and the history commit.
+	time.Sleep(2 * time.Second)
+
+	if _, err := s.GetNote(ctx, "entries/target.md"); err != nil {
+		t.Fatalf("target note missing after an atomic save: %v", err)
+	}
+	dsts, err := s.LinkDsts(ctx, srcID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dsts) != 1 || dsts[0] != uuid.MustParse(target) {
+		t.Fatalf("inbound edge lost to an atomic save: got %v, want the edge to %s", dsts, target)
+	}
+}
+
+// The settle window must not swallow a real deletion — that is the behaviour it
+// is inserted in front of, and the one users rely on when they delete a note.
+func TestRealDeletionStillRemovesTheNote(t *testing.T) {
+	w, s, root, ctx := testWatcher(t)
+	id := uuid.Must(uuid.NewV7()).String()
+	writeEntry(t, root, "entries/doomed.md", entryContent(id))
+	if err := w.Reconcile(ctx, s); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.GetNote(ctx, "entries/doomed.md"); err != nil {
+		t.Fatalf("precondition: note should be indexed, got %v", err)
+	}
+
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go func() { _ = w.Run(runCtx) }()
+	time.Sleep(200 * time.Millisecond)
+
+	if err := os.Remove(filepath.Join(root, "entries", "doomed.md")); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(2 * time.Second) // settle window elapses, then the delete lands
+
+	if _, err := s.GetNote(ctx, "entries/doomed.md"); !cogerr.Is(err, cogerr.NotFound) {
+		t.Fatalf("deleted note still indexed after the settle window: %v", err)
+	}
+}

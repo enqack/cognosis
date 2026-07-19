@@ -292,6 +292,22 @@ func (w *Watcher) repairReferrers(ctx context.Context, batch []drifted) {
 	}
 }
 
+// repairReferrersOf is repairReferrers for a single path — the watch-event
+// path, where notes arrive one at a time rather than in a reconcile batch.
+func (w *Watcher) repairReferrersOf(ctx context.Context, rel string) {
+	name := strings.TrimSuffix(path.Base(rel), ".md")
+	n, err := w.indexer().RepairReferrers(ctx, []string{name}, map[string]bool{rel: true})
+	if err != nil {
+		// Not fatal, matching repairReferrers: a missing edge degrades the graph
+		// leg, it does not corrupt the index, and the note itself is already in.
+		w.log.Error("referrer link repair failed", "path", rel, "reason", err)
+		return
+	}
+	if n > 0 {
+		w.log.Info("repaired links in notes referencing an out-of-band edit", "path", rel, "notes", n)
+	}
+}
+
 // indexFile validates one file and routes it through the shared indexing
 // core (chunks, embeddings, links — identical to a sanctioned write). Invalid
 // frontmatter is logged as a sync error and NOT indexed — the previous DB
