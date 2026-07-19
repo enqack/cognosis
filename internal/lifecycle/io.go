@@ -44,6 +44,31 @@ func (e *Engine) rewrite(ctx context.Context, n *vault.Note, rel string) error {
 // now is.
 var ErrChangedDuringRun = errors.New("note changed during the run; skipped to avoid reverting it")
 
+// assertUnchanged reports ErrChangedDuringRun when the file at rel is no longer
+// the one the caller parsed. A missing file is not a conflict: move writes its
+// destination before deleting the source, and an empty digest means the note
+// was built from index rows rather than parsed from a file, so there is nothing
+// to compare.
+func (e *Engine) assertUnchanged(rel, want string) error {
+	const op = "lifecycle.rewrite"
+	if want == "" {
+		return nil
+	}
+	abs := filepath.Join(e.VaultDir, filepath.FromSlash(rel))
+	cur, err := os.ReadFile(abs) //nolint:gosec // path is inside the configured vault
+	switch {
+	case os.IsNotExist(err):
+		return nil
+	case err != nil:
+		return cogerr.E(op, cogerr.Internal, err)
+	}
+	sum := blake3.Sum256(cur)
+	if hex.EncodeToString(sum[:]) != want {
+		return ErrChangedDuringRun
+	}
+	return nil
+}
+
 // rewriteLocked is rewrite with the path lock already held. move needs both its
 // source and destination locked for the whole operation, and the mutex is not
 // reentrant, so it takes both up front and calls this.
@@ -74,17 +99,8 @@ func (e *Engine) rewriteLocked(ctx context.Context, n *vault.Note, rel string) e
 	// Under the lock, confirm the file is still the one this note was parsed
 	// from. A missing file is not a conflict: move writes its destination
 	// before deleting the source.
-	if n.SrcBlake3 != "" {
-		switch cur, err := os.ReadFile(abs); { //nolint:gosec // path is inside the configured vault
-		case os.IsNotExist(err):
-		case err != nil:
-			return cogerr.E(op, cogerr.Internal, err)
-		default:
-			cursum := blake3.Sum256(cur)
-			if hex.EncodeToString(cursum[:]) != n.SrcBlake3 {
-				return ErrChangedDuringRun
-			}
-		}
+	if err := e.assertUnchanged(rel, n.SrcBlake3); err != nil {
+		return err
 	}
 	if err := vault.WriteFileAtomic(abs, out); err != nil {
 		return err
@@ -124,6 +140,16 @@ func (e *Engine) move(ctx context.Context, n *vault.Note, dest string) error {
 	stage, ok := vault.StageOf(dest)
 	if !ok {
 		return cogerr.Ef(op, cogerr.Internal, "move destination %q is not a valid vault stage path", dest)
+	}
+	// Check the SOURCE, which is the file this note was parsed from. The
+	// destination cannot serve: move has just refused if it exists, so
+	// rewriteLocked's own check always hits the not-exist arm and is skipped by
+	// construction. Without this, move is the one rewrite path with no stale
+	// protection — and it is the worst one to lose, because it also deletes the
+	// source and archives the note, so a concurrent edit is reverted *and*
+	// removed from retrieval while both calls report success.
+	if err := e.assertUnchanged(src, n.SrcBlake3); err != nil {
+		return err
 	}
 	n.Path = dest
 	n.Stage = stage

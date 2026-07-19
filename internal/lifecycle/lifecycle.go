@@ -112,6 +112,26 @@ type Report struct {
 	StableCandidates []string // stable, ungraduated — next run's shortlist
 }
 
+// replaceSince drops every action recorded since mark and appends one in their
+// place. mark is captured at the top of a note's iteration, so this removes
+// exactly what that note contributed.
+//
+// Replacing only the *last* action was not enough: one reinforce can append
+// three — `reinforced`, `dispute-cleared`, `promoted` — before the write that
+// then gets skipped. Swapping the tail left `reinforced 0.7→0.8` standing above
+// a `skipped` line for the same note, so the report affirmed a reinforce that
+// never reached disk. That is the failure this whole mechanism exists to
+// prevent, left in place on the highest-traffic path.
+//
+// Indexing by mark rather than matching on the note name also removes the
+// question of whether two notes can share a name in one run.
+func (r *Report) replaceSince(mark int, a Action) {
+	if mark < 0 || mark > len(r.Actions) {
+		return
+	}
+	r.Actions = append(r.Actions[:mark], a)
+}
+
 func (r *Report) String() string {
 	var b strings.Builder
 	suffix := ""
@@ -333,6 +353,10 @@ func (e *Engine) run(ctx context.Context, opts Options) (*Report, error) {
 			continue // retained, queryable, lifecycle-inert
 		}
 		name := wikiname(n.Path)
+		// Where this note's actions start. A skipped write truncates back to
+		// here, so the report never claims something the run did not do — one
+		// reinforce can append three actions before the write that carries them.
+		mark := len(report.Actions)
 
 		// Falsify: explicit, terminal, in place — wrong, not forgotten.
 		if reason, ok := pick(opts.Falsify, n.ID(), n.Path); ok {
@@ -358,8 +382,14 @@ func (e *Engine) run(ctx context.Context, opts Options) (*Report, error) {
 					// Report it and move on: the lifecycle is idempotent, so
 					// whatever was due is due again next run against the note
 					// as it now is.
-					report.Actions = append(report.Actions, Action{"skipped", name,
-						"(changed during the run; re-evaluate on the next compile)"})
+					// Replace this note's action rather than adding a second
+					// one. Leaving both makes the report say the note was
+					// falsified/decayed/archived *and* skipped, and an agent
+					// that asked for an explicit falsify has no reason to
+					// cross-reference a later line for the same name — it would
+					// read a success for something that never happened.
+					report.replaceSince(mark, Action{"skipped", name,
+						"(changed during the run; not applied, re-evaluate on the next compile)"})
 					continue
 				case err != nil:
 					return nil, err
@@ -386,8 +416,14 @@ func (e *Engine) run(ctx context.Context, opts Options) (*Report, error) {
 					// Report it and move on: the lifecycle is idempotent, so
 					// whatever was due is due again next run against the note
 					// as it now is.
-					report.Actions = append(report.Actions, Action{"skipped", name,
-						"(changed during the run; re-evaluate on the next compile)"})
+					// Replace this note's action rather than adding a second
+					// one. Leaving both makes the report say the note was
+					// falsified/decayed/archived *and* skipped, and an agent
+					// that asked for an explicit falsify has no reason to
+					// cross-reference a later line for the same name — it would
+					// read a success for something that never happened.
+					report.replaceSince(mark, Action{"skipped", name,
+						"(changed during the run; not applied, re-evaluate on the next compile)"})
 					continue
 				case err != nil:
 					return nil, err
@@ -531,13 +567,28 @@ func (e *Engine) run(ctx context.Context, opts Options) (*Report, error) {
 					// Report it and move on: the lifecycle is idempotent, so
 					// whatever was due is due again next run against the note
 					// as it now is.
-					report.Actions = append(report.Actions, Action{"skipped", name,
-						"(changed during the run; re-evaluate on the next compile)"})
+					// Replace this note's action rather than adding a second
+					// one. Leaving both makes the report say the note was
+					// falsified/decayed/archived *and* skipped, and an agent
+					// that asked for an explicit falsify has no reason to
+					// cross-reference a later line for the same name — it would
+					// read a success for something that never happened.
+					report.replaceSince(mark, Action{"skipped", name,
+						"(changed during the run; not applied, re-evaluate on the next compile)"})
 					continue
 				case err != nil:
 					return nil, err
 				}
 				changedFiles++
+				// This write landed. Re-seed the mark so a *later* skip in the
+				// same iteration — reinforce and graduate are both accepted for
+				// one note, and each writes — truncates only the actions
+				// belonging to the write that failed. Truncating to the top of
+				// the iteration would delete actions describing a change that
+				// is already on disk, already indexed, and already counted,
+				// leaving log.md denying it and an agent re-issuing a reinforce
+				// that would then apply twice.
+				mark = len(report.Actions)
 			}
 		}
 
@@ -549,7 +600,20 @@ func (e *Engine) run(ctx context.Context, opts Options) (*Report, error) {
 			if !opts.DryRun {
 				n.SetFM("status", vault.StatusFaded)
 				n.SetFM("archived_at", opts.Now.Format(vault.TimeLayout))
-				if err := e.move(ctx, n, "archive/"+filepath.Base(n.Path)); err != nil {
+				switch err := e.move(ctx, n, "archive/"+filepath.Base(n.Path)); {
+				case errors.Is(err, ErrChangedDuringRun):
+					// Same skip contract as every other write site. These two
+					// were written as fatal because move could not return this
+					// error until its source-digest check was added — making an
+					// error reachable without revisiting its callers turned one
+					// concurrently-edited note into an aborted run: the report
+					// discarded along with the writes that already landed, no
+					// log.md entry, and every mutated file left uncommitted in
+					// vault history.
+					report.replaceSince(mark, Action{"skipped", name,
+						"(changed during the run; not applied, re-evaluate on the next compile)"})
+					continue
+				case err != nil:
 					return nil, err
 				}
 				changedFiles++
@@ -562,7 +626,20 @@ func (e *Engine) run(ctx context.Context, opts Options) (*Report, error) {
 			if !opts.DryRun {
 				n.SetFM("status", vault.StatusArchived)
 				n.SetFM("archived_at", opts.Now.Format(vault.TimeLayout))
-				if err := e.move(ctx, n, "archive/"+filepath.Base(n.Path)); err != nil {
+				switch err := e.move(ctx, n, "archive/"+filepath.Base(n.Path)); {
+				case errors.Is(err, ErrChangedDuringRun):
+					// Same skip contract as every other write site. These two
+					// were written as fatal because move could not return this
+					// error until its source-digest check was added — making an
+					// error reachable without revisiting its callers turned one
+					// concurrently-edited note into an aborted run: the report
+					// discarded along with the writes that already landed, no
+					// log.md entry, and every mutated file left uncommitted in
+					// vault history.
+					report.replaceSince(mark, Action{"skipped", name,
+						"(changed during the run; not applied, re-evaluate on the next compile)"})
+					continue
+				case err != nil:
 					return nil, err
 				}
 				changedFiles++
@@ -598,8 +675,14 @@ func (e *Engine) run(ctx context.Context, opts Options) (*Report, error) {
 					// Report it and move on: the lifecycle is idempotent, so
 					// whatever was due is due again next run against the note
 					// as it now is.
-					report.Actions = append(report.Actions, Action{"skipped", name,
-						"(changed during the run; re-evaluate on the next compile)"})
+					// Replace this note's action rather than adding a second
+					// one. Leaving both makes the report say the note was
+					// falsified/decayed/archived *and* skipped, and an agent
+					// that asked for an explicit falsify has no reason to
+					// cross-reference a later line for the same name — it would
+					// read a success for something that never happened.
+					report.replaceSince(mark, Action{"skipped", name,
+						"(changed during the run; not applied, re-evaluate on the next compile)"})
 					continue
 				case err != nil:
 					return nil, err
