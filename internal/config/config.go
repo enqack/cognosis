@@ -50,6 +50,17 @@ type Config struct {
 	TLS                    TLS           `mapstructure:"tls"`
 	Personas               []Persona     `mapstructure:"personas"`
 
+	// TrustLocalErrors lets a loopback caller see the full cause of Internal
+	// and Unavailable tool failures instead of the redacted summary. Those
+	// causes carry DSNs, unix socket paths and database users.
+	//
+	// Default false, and it must stay false for any daemon a reverse proxy
+	// fronts. Under the topology docs/remote.md recommends, the proxy forwards
+	// from 127.0.0.1, so every remote caller *looks* loopback — the daemon
+	// cannot tell them apart from the local CLI by network position alone.
+	// Setting this is an operator assertion that nothing proxies this daemon.
+	TrustLocalErrors bool `mapstructure:"trust_local_errors"`
+
 	paths Paths
 	viper *viper.Viper
 }
@@ -72,6 +83,7 @@ func Load() (*Config, error) {
 	v.SetDefault("embedding.model", "nomic-embed-text:v1.5")
 	v.SetDefault("embedding.url", "http://localhost:11434")
 	v.SetDefault("personas", []map[string]any{{"id": "deep-thoughts"}})
+	v.SetDefault("trust_local_errors", false)
 	v.SetDefault("tls.cert_file", "")
 	v.SetDefault("tls.key_file", "")
 

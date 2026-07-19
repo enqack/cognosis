@@ -30,11 +30,25 @@ server {
         proxy_pass http://127.0.0.1:7433;
         proxy_http_version 1.1;
         proxy_set_header Connection "";
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
         proxy_buffering off;      # Streamable HTTP uses long-lived responses
         proxy_read_timeout 3600s;
     }
 }
 ```
+
+Both snippets forward from loopback, so **every remote caller reaches the daemon with
+`RemoteAddr` of `127.0.0.1`** — indistinguishable from the local CLI by network position alone.
+Two consequences:
+
+- Leave `trust_local_errors` at its default (`false`). It releases the full cause of internal
+  failures — DSNs, socket paths, database users — to callers the daemon judges local, and behind a
+  proxy that judgement is wrong. The setting is an operator assertion that *nothing* proxies this
+  daemon.
+- Keep the `X-Forwarded-For` line above. Cognosis treats any forwarding marker as proof of a proxy
+  and withholds detail; the header is a second line of defence for the case where
+  `trust_local_errors` was set by mistake. Caddy's `reverse_proxy` sets it automatically.
 
 ## Fallback: built-in TLS (no proxy)
 

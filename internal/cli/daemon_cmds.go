@@ -106,6 +106,10 @@ func newStartCmd() *cobra.Command {
 						return nil, err // non-loopback bind: refuse to start
 					}
 					srv.Migrations = coord
+					// Off unless the operator asserts no proxy fronts this
+					// daemon: a reverse proxy forwarding from 127.0.0.1 makes
+					// every remote caller look local.
+					srv.TrustLocalErrors = cfg.TrustLocalErrors
 					srv.Version = buildVersion
 					return []daemon.Runner{srv, &migrate.Worker{C: coord}}, nil
 				},

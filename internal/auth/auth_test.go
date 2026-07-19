@@ -304,3 +304,36 @@ func TestEnsureLocalTokenRefusesToUndoRevocation(t *testing.T) {
 		t.Fatalf("tokens = %d (%v), want 1 — a replacement was minted around the revocation", len(tokens), err2)
 	}
 }
+
+// TestLooksLocalWithdrawsOnProxyMarkers — the header check is the fail-safe
+// half of the disclosure gate, so what matters is that it only ever *removes*
+// trust. A forged marker from a loopback peer must yield less detail, never
+// more; and a proxy forwarding from 127.0.0.1 must not read as local, which is
+// the exact topology docs/remote.md recommends.
+func TestLooksLocalWithdrawsOnProxyMarkers(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		addr   string
+		header [2]string
+		want   bool
+	}{
+		{"direct loopback", "127.0.0.1:53201", [2]string{}, true},
+		{"direct loopback v6", "[::1]:53201", [2]string{}, true},
+		{"remote peer", "203.0.113.7:44321", [2]string{}, false},
+		{"proxied from loopback", "127.0.0.1:53201", [2]string{"X-Forwarded-For", "203.0.113.7"}, false},
+		{"proxied, Forwarded header", "127.0.0.1:53201", [2]string{"Forwarded", "for=203.0.113.7"}, false},
+		{"proxied, X-Real-Ip", "127.0.0.1:53201", [2]string{"X-Real-Ip", "203.0.113.7"}, false},
+		{"unparseable addr", "garbage", [2]string{}, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", nil)
+			r.RemoteAddr = c.addr
+			if c.header[0] != "" {
+				r.Header.Set(c.header[0], c.header[1])
+			}
+			if got := looksLocal(r); got != c.want {
+				t.Errorf("looksLocal(%s, %v) = %v, want %v", c.addr, c.header, got, c.want)
+			}
+		})
+	}
+}

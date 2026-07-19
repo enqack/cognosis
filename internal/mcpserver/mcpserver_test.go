@@ -11,6 +11,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/enqack/cognosis/internal/auth"
 	"github.com/enqack/cognosis/internal/cogerr"
 	"github.com/enqack/cognosis/internal/config"
 	"github.com/enqack/cognosis/internal/query"
@@ -218,7 +219,7 @@ func TestToolErrorStripsInternalIdentifiers(t *testing.T) {
 	err := cogerr.Ef("write.Pipeline.Edit", cogerr.Validation,
 		"old_string appears %d times in %s; extend it until it identifies one location", 2, "notes/x.md")
 
-	got := toolError(err).Error()
+	got := srvFor(false).toolError(context.Background(), err).Error()
 	want := "old_string appears 2 times in notes/x.md; extend it until it identifies one location"
 	if got != want {
 		t.Errorf("toolError = %q, want %q", got, want)
@@ -237,7 +238,7 @@ func TestToolErrorWithholdsInternalDetail(t *testing.T) {
 	secret := "failed to connect to `user=sysop database=cognosis`: /Users/sysop/.pg-data/.s.PGSQL.5434"
 	err := cogerr.E("store.GetNote", cogerr.Internal, errors.New(secret))
 
-	got := toolError(err).Error()
+	got := srvFor(false).toolError(context.Background(), err).Error()
 	if strings.Contains(got, "sysop") || strings.Contains(got, ".s.PGSQL") {
 		t.Errorf("internal detail reached the tool result: %s", got)
 	}
@@ -251,11 +252,11 @@ func TestToolErrorWithholdsInternalDetail(t *testing.T) {
 // into a generic internal error.
 func TestToolErrorPassesThroughPlainErrors(t *testing.T) {
 	err := errors.New("path and old_string are required")
-	if got := toolError(err); got.Error() != err.Error() {
+	if got := srvFor(false).toolError(context.Background(), err); got.Error() != err.Error() {
 		t.Errorf("toolError rewrote a plain error: %q", got)
 	}
-	if toolError(nil) != nil {
-		t.Error("toolError(nil) should be nil")
+	if srvFor(false).toolError(context.Background(), nil) != nil {
+		t.Error("srvFor(false).toolError(context.Background(), nil) should be nil")
 	}
 }
 
@@ -263,7 +264,7 @@ func TestToolErrorPassesThroughPlainErrors(t *testing.T) {
 // documented as valid, and the naive unwrap returns nil for it.
 func TestToolErrorHandlesKindWithoutCause(t *testing.T) {
 	err := cogerr.E("store.GetNote", cogerr.NotFound, nil)
-	got := toolError(err)
+	got := srvFor(false).toolError(context.Background(), err)
 	if got == nil {
 		t.Fatal("toolError returned nil for a non-nil error")
 	}
@@ -284,7 +285,7 @@ func TestToolErrorWithholdsUnavailableDetail(t *testing.T) {
 		{"embedding endpoint", `Post "http://10.0.0.7:11434/api/embed": dial tcp 10.0.0.7:11434: connect: refused`},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			got := toolError(cogerr.E("store.UpsertNote", cogerr.Unavailable, errors.New(c.secret))).Error()
+			got := srvFor(false).toolError(context.Background(), cogerr.E("store.UpsertNote", cogerr.Unavailable, errors.New(c.secret))).Error()
 			for _, leak := range []string{"user=", "database=", ".s.PGSQL", "10.0.0.7", "/Users/"} {
 				if strings.Contains(got, leak) {
 					t.Errorf("tool result leaks %q: %s", leak, got)
@@ -301,9 +302,58 @@ func TestToolErrorWithholdsUnavailableDetail(t *testing.T) {
 // bug" are different instructions, and collapsing them into one message would
 // make the redaction cost the caller something real.
 func TestToolErrorDistinguishesUnavailableFromInternal(t *testing.T) {
-	unavail := toolError(cogerr.E("op", cogerr.Unavailable, errors.New("x"))).Error()
-	internal := toolError(cogerr.E("op", cogerr.Internal, errors.New("x"))).Error()
+	unavail := srvFor(false).toolError(context.Background(), cogerr.E("op", cogerr.Unavailable, errors.New("x"))).Error()
+	internal := srvFor(false).toolError(context.Background(), cogerr.E("op", cogerr.Internal, errors.New("x"))).Error()
 	if unavail == internal {
 		t.Errorf("both kinds produce %q; the caller cannot tell a transient outage from a bug", unavail)
+	}
+}
+
+// srvFor builds a bare Server carrying only the disclosure setting.
+func srvFor(trust bool) *Server { return &Server{TrustLocalErrors: trust} }
+
+// ctxAs returns a context carrying an authenticated identity with the given
+// locality, as auth.Middleware would attach it.
+func ctxAs(local bool) context.Context {
+	return auth.WithIdentity(context.Background(), auth.Identity{Name: "t", Local: local})
+}
+
+// TestTrustLocalErrorsNeedsBothKeys — releasing a withheld cause requires the
+// operator's assertion *and* a genuinely local request. Either alone is not
+// enough, and the reason is concrete: docs/remote.md recommends a reverse proxy
+// forwarding from 127.0.0.1, so network position alone cannot distinguish a
+// remote agent from the local CLI.
+func TestTrustLocalErrorsNeedsBothKeys(t *testing.T) {
+	secret := "failed to connect to `user=sysop database=cognosis`: /Users/sysop/.pg-data/.s.PGSQL.5434"
+	err := cogerr.E("store.UpsertNote", cogerr.Unavailable, errors.New(secret))
+
+	for _, c := range []struct {
+		name           string
+		trust, local   bool
+		wantDisclosure bool
+	}{
+		{"default: off and remote", false, false, false},
+		{"opted in but remote (the proxy case)", true, false, false},
+		{"local but not opted in", false, true, false},
+		{"opted in and local", true, true, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			got := srvFor(c.trust).toolError(ctxAs(c.local), err).Error()
+			disclosed := strings.Contains(got, ".s.PGSQL") || strings.Contains(got, "user=sysop")
+			if disclosed != c.wantDisclosure {
+				t.Errorf("disclosure=%v want %v: %s", disclosed, c.wantDisclosure, got)
+			}
+		})
+	}
+}
+
+// An unauthenticated context must never disclose: Local defaults to false on a
+// zero Identity, but the absence of an identity entirely is the case worth
+// pinning, since that is what a bug in the middleware would produce.
+func TestTrustLocalErrorsWithholdsWithoutAnIdentity(t *testing.T) {
+	err := cogerr.E("op", cogerr.Internal, errors.New("/private/socket/path"))
+	got := srvFor(true).toolError(context.Background(), err).Error()
+	if strings.Contains(got, "/private/socket") {
+		t.Errorf("disclosed to a context with no identity: %s", got)
 	}
 }

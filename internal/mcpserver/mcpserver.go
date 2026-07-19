@@ -49,6 +49,10 @@ type Server struct {
 	// Version is the implementation version advertised to MCP clients. Set
 	// post-construction (like Migrations); empty falls back to "dev".
 	Version string
+	// TrustLocalErrors mirrors config.TrustLocalErrors. See toolError: it is one
+	// of two keys required before a withheld cause is released, and it must
+	// stay false for any daemon a reverse proxy fronts.
+	TrustLocalErrors bool
 }
 
 func New(bind, vaultDir string, log *slog.Logger, p *write.Pipeline, e *query.Engine, s *store.Store,
@@ -125,7 +129,7 @@ func requireLoopback(bind string, tls config.TLS) error {
 // Nothing actionable is lost: Unavailable means a dependency is down, and the
 // remedy is always operator-side. The two kinds get distinct messages so the
 // caller can still tell "retry later" from "report a bug".
-func toolError(err error) error {
+func (s *Server) toolError(ctx context.Context, err error) error {
 	if err == nil {
 		return nil
 	}
@@ -136,6 +140,22 @@ func toolError(err error) error {
 	// Exhaustive on purpose. This is a redaction boundary, so a newly added
 	// Kind must force an explicit decision about whether its causes are safe to
 	// hand a remote caller, rather than defaulting to exposure.
+	// Two independent keys before releasing a withheld cause, because neither
+	// is sufficient alone:
+	//
+	//   - the operator asserted nothing proxies this daemon (trust_local_errors)
+	//   - this request arrived over loopback with no forwarding markers
+	//
+	// The config key exists because network position cannot answer the
+	// question: docs/remote.md recommends a reverse proxy forwarding from
+	// 127.0.0.1, so a remote caller looks exactly like the local CLI. The
+	// header check exists because an operator can be wrong, and it fails safe —
+	// a forged marker withdraws detail, it never grants it.
+	if s.TrustLocalErrors {
+		if id, ok := auth.FromContext(ctx); ok && id.Local {
+			return fmt.Errorf("%s", cogerr.Message(err))
+		}
+	}
 	switch e.Kind {
 	case cogerr.Internal:
 		return fmt.Errorf("internal error (see the daemon log for detail)")
