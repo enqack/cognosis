@@ -20,14 +20,24 @@ func withStore(cmd *cobra.Command, fn func(ctx context.Context, s *store.Store) 
 	if err != nil {
 		return err
 	}
-	if err := store.Migrate(dsn); err != nil {
-		return err
-	}
 	s, err := store.Connect(cmd.Context(), dsn)
 	if err != nil {
 		return err
 	}
 	defer s.Close()
+
+	// Migrate only when no daemon owns this database.
+	//
+	// This ran unconditionally, so any store-using CLI command — including
+	// read-only ones like `token list` — could apply a schema migration to a
+	// database a live daemon was serving from. A daemon migrates at startup, so
+	// when one is present the migration is redundant as well as unwelcome:
+	// skipping it is both safer and no less correct.
+	if daemonOwns(cmd.Context(), s) != daemonPresent {
+		if err := store.Migrate(dsn); err != nil {
+			return err
+		}
+	}
 	return fn(cmd.Context(), s)
 }
 

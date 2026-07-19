@@ -52,21 +52,92 @@ func newVaultCmd() *cobra.Command {
 			if at == "" {
 				return fmt.Errorf("--at <ref> is required (a commit hash from `cognosis vault history`)")
 			}
+			forceLocal, _ := cmd.Flags().GetBool("force-local")
 			cfg, err := config.Load()
 			if err != nil {
 				return err
 			}
-			if err := vault.NewHistory(cfg.KBPath).Restore(cmd.Context(), at, args[0]); err != nil {
-				return err
-			}
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "restored %s @ %s (the running daemon's watcher reindexes it)\n", args[0], at)
-			return nil
+			return runRestore(cmd, cfg, args[0], at, forceLocal)
 		},
 	}
 	restore.Flags().String("at", "", "git ref or commit hash to restore to")
+	restore.Flags().Bool("force-local", false,
+		"write the vault directly even when a daemon owns it (bypasses the daemon's per-path lock)")
 
 	cmd.AddCommand(history, restore)
 	return cmd
+}
+
+// runRestore lands a restore through whichever door is safe.
+//
+// The daemon and this command write the same files. Only the daemon's door
+// (the restore_note tool) normalises the path and takes the per-path lock the
+// pipeline and the lifecycle engine share, so a direct write races a compile
+// pass over the same note and whichever lands second wins.
+//
+// Which door is safe is decided by asking Postgres who holds the instance
+// lock, not by looking for a local PID file — a daemon on another host owns
+// this vault's database and is invisible to the file. See probeDaemon.
+func runRestore(cmd *cobra.Command, cfg *config.Config, path, at string, forceLocal bool) error {
+	out := cmd.OutOrStdout()
+
+	if forceLocal {
+		_, _ = fmt.Fprintln(cmd.ErrOrStderr(),
+			"warning: --force-local writes the vault directly, bypassing the daemon's per-path lock; "+
+				"a concurrent compile or edit of this note can be lost")
+		return restoreLocally(cmd, cfg, path, at)
+	}
+
+	switch probeDaemon(cmd.Context(), cfg) {
+	case daemonAbsent:
+		// Nothing else owns the vault, so the direct write is the safe write.
+		return restoreLocally(cmd, cfg, path, at)
+
+	case daemonPresent:
+		msg, err := callDaemonTool(cmd.Context(), cfg, "restore_note", map[string]any{
+			"path": path, "ref": at,
+		})
+		if err != nil {
+			// Deliberately not falling back. A daemon owns this vault, so a
+			// direct write here is the race — and the moment to be most careful
+			// is when the thing that owns your data is already misbehaving.
+			return fmt.Errorf("a daemon owns this vault and the restore could not be routed through it: %w\n"+
+				"  stop the daemon, or re-run with --force-local to write directly anyway", err)
+		}
+		_, _ = fmt.Fprintf(out, "%s (via the running daemon)\n", strings.TrimSpace(msg))
+		return nil
+
+	case daemonUnknown:
+		// Could not reach Postgres, so "no daemon" is unproven. Try the daemon's
+		// HTTP door: if it answers, there is one and this is safe; if it does
+		// not, refuse rather than guess.
+		msg, err := callDaemonTool(cmd.Context(), cfg, "restore_note", map[string]any{
+			"path": path, "ref": at,
+		})
+		if err == nil {
+			_, _ = fmt.Fprintf(out, "%s (via the running daemon)\n", strings.TrimSpace(msg))
+			return nil
+		}
+		return fmt.Errorf("cannot tell whether a daemon owns this vault: Postgres is unreachable and "+
+			"the daemon did not answer (%v)\n"+
+			"  re-run with --force-local to write directly, accepting that a running daemon could be "+
+			"writing the same note", err)
+	}
+	// Unreachable: the switch covers every daemonOwnership value, and the
+	// exhaustive linter keeps it that way. Go still needs a terminating
+	// statement here since the switch has no default.
+	return nil
+}
+
+// restoreLocally is the original direct path: write the file, commit, and let
+// the daemon's watcher reindex it if one is running.
+func restoreLocally(cmd *cobra.Command, cfg *config.Config, path, at string) error {
+	if err := vault.NewHistory(cfg.KBPath).Restore(cmd.Context(), at, path); err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(),
+		"restored %s @ %s (the running daemon's watcher reindexes it)\n", path, at)
+	return nil
 }
 
 func newNoteCmd() *cobra.Command {
@@ -113,6 +184,18 @@ func hardDelete(cmd *cobra.Command, rel string) error {
 		return err
 	}
 	return withStore(cmd, func(ctx context.Context, s *store.Store) error {
+		// Hard deletion writes Postgres rows, removes the file, rewrites log.md
+		// and purges the path from git history — none of it under the per-path
+		// lock the daemon's own writers share, and with no MCP equivalent to
+		// route it through.
+		//
+		// Unlike `token` and `embeddings`, whose DB-direct writes are a
+		// deliberate coordination medium a running daemon polls, nothing here is
+		// meant to be observed by a live daemon: it would see a file vanish and
+		// a history rewritten under it.
+		if err := refuseIfDaemonOwns(ctx, s, "a hard delete"); err != nil {
+			return err
+		}
 		// 1. The derived index: notes row cascades chunks, links, and every
 		// provider embedding table.
 		if err := s.DeleteNote(ctx, rel); err != nil {
