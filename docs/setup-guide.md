@@ -270,9 +270,23 @@ list` shows `last used` per token, which is the quickest way to find them.
 
 ## Keeping the token out of client config
 
-Interpolating the token into `~/.claude.json` copies a secret into a file nothing rotates. Claude Code
-can instead fetch headers from a command on every connection, and again after a `401` — so rotation
-becomes "rewrite the file", with no client reconfiguration:
+Interpolating the token into a client config copies a secret into a file nothing rotates. Both clients
+below can read it from its 0600 file instead, so rotation is a file rewrite rather than a config edit.
+`cognosis token create` prints the plaintext once, so write it straight into that file — taking the
+first line only, since the command also prints a "shown once" notice that must not land in the file:
+
+```sh
+(umask 077; cognosis token create desktop | head -1 \
+  > "${XDG_STATE_HOME:-$HOME/.local/state}/cognosis/desktop-token")
+```
+
+A file that captured the notice too fails loudly rather than silently: the helper rejects a value
+containing spaces, and `mcp-remote` sends a malformed header that the daemon answers with `401`.
+
+### Claude Code
+
+Claude Code fetches headers from a command on every connection, and again after a `401` — so rotation
+needs no client reconfiguration at all:
 
 ```sh
 cp contrib/cognosis-mcp-headers ~/.local/bin/
@@ -306,6 +320,33 @@ needing a second copy of the script:
 Omitting that is easy to miss and fails *silently in the direction that looks fine*: the helper falls
 back to `local-token`, the client connects, and every call is attributed to the shared token instead of
 this client. Check with `cognosis token list` — the per-client token should show a recent `last used`.
+
+### Claude Desktop
+
+Claude Desktop has no `headersHelper`, and its config speaks only stdio — a remote server is reached
+through the `mcp-remote` shim. Putting the token in `env` leaves the same unrotatable copy the helper
+exists to avoid, so run the command under a shell and let it read the file:
+
+```json
+"cognosis": {
+  "command": "/bin/sh",
+  "args": [
+    "-c",
+    "exec npx -y mcp-remote http://127.0.0.1:7433 --header \"Authorization: Bearer $(cat \"${COGNOSIS_TOKEN_FILE:-$HOME/.local/state/cognosis/desktop-token}\")\""
+  ]
+}
+```
+
+The config lives at `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS. The
+entry above assumes a POSIX shell at `/bin/sh`; on Windows the equivalent needs a different wrapper.
+
+Unlike `headersHelper`, this resolves the token **once, at launch**. Rotating means restarting Claude
+Desktop, not just rewriting the file — the running process holds the old value until it exits, and the
+symptom of forgetting is a `401` on every call.
+
+Point it at a per-client token (`cognosis token create desktop`) for the same reason Claude Code does;
+the fallback path above is `desktop-token` rather than `local-token` so that omitting
+`COGNOSIS_TOKEN_FILE` does not quietly share the local credential.
 
 ## Session hooks (optional, per repo)
 
