@@ -70,11 +70,17 @@ func sockDir(repoDir, pgdata string) string {
 	if tmp == "" {
 		tmp = "/tmp"
 	}
-	// BLAKE3 for consistency with the rest of the project. This one is key
+	// BLAKE3 for consistency with the rest of the project. This is path
 	// derivation rather than a content hash, so the argument is uniformity, not
-	// correctness — and the consequence is that the lock path moves: an old and
-	// a new binary would take *different* advisory locks and could run at once.
-	// Stop the daemon before upgrading across this change.
+	// correctness.
+	//
+	// Changing it moves this directory, and the consequence is indirect but
+	// real: an old and a new binary place the socket in different places, so
+	// they can reach *different postmasters* — and LockInstance only excludes
+	// daemons that reached the same database. The lock key itself is a fixed
+	// constant and does not move. Stop the daemon before upgrading across this
+	// change. The flake derives the same directory with b3sum so the shell and
+	// this function cannot drift apart.
 	sum := blake3.Sum256([]byte(repoDir))
 	return filepath.Join(tmp, "cognosis-"+hex.EncodeToString(sum[:])[:12])
 }

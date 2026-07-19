@@ -207,10 +207,16 @@ func hardSplit(content string) []string {
 // vault.Note.SrcBlake3) so there is one answer to "did this content change"
 // rather than two.
 //
-// Changing it invalidates every stored chunk hash, so the first run after this
-// re-chunks and re-embeds the whole vault. That is a one-time cost, self-
-// healing, and taken deliberately before 1.0 rather than carrying a second
-// algorithm forward behind a migration.
+// Changing it invalidated every stored chunk hash, and that does **not** heal
+// on restart. Reconciliation decides what to re-index by comparing the
+// file-level digest, which this change did not touch, so no note is re-read and
+// existing rows keep their sha256-era values until each note is next edited.
+//
+// Harmless, and the reason is specific: nothing reads this column. It is
+// written at three sites and never compared, held against a delta re-embedding
+// feature that does not exist yet. Taken as a breaking change before 1.0 rather
+// than carrying a second algorithm forward behind a migration; a vault wanting
+// uniform values now must be rebuilt rather than restarted.
 func hash(s string) string {
 	sum := blake3.Sum256([]byte(s))
 	return hex.EncodeToString(sum[:])

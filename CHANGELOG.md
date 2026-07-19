@@ -27,8 +27,27 @@ All notable changes to Cognosis are documented here. The format follows
   everything in the vault directory, so anything another tool wrote became part of the knowledge
   audit trail — 22% of a real vault's commits touched no note at all, and some carried
   `watch: <note>.md edited out-of-band` subjects while containing only editor churn. It now stages
-  the four stage directories and `log.md`. Existing vaults still *track* those files;
+  the four stage directories, `log.md` and `index.md`. Existing vaults still *track* those files;
   see the setup guide for the one-time `git rm --cached`.
+- **A note's commit no longer sweeps in unrelated staged files, or swallows a concurrent write.**
+  Only the `git add` was scoped; the `git commit` was not, and git commits whatever is in the index —
+  so anything a human had staged in the vault repo rode along under a message naming only the note
+  Cognosis had just written. The commit is now assembled in a scratch index, which also fixes a
+  second problem the obvious scoped form (`git commit -- <paths>`) would have introduced: that is a
+  *partial commit* and reads the working tree, so a note written by another goroutine between the
+  stage and the commit was absorbed into the wrong message and then found nothing left to record —
+  losing that version from vault history with no error anywhere. The commit is now a snapshot taken
+  at stage time, and another party's staged work is neither committed nor discarded.
+- **`index.md` is now versioned.** It carries the vault's `okf_version` declaration — the one field
+  that says how everything else should be read — and Cognosis validates it but never writes it, so
+  it was being skipped as though generated. A format declaration could change or vanish with nothing
+  in the history saying so.
+- **The CLI no longer briefly becomes the daemon it is checking for.** The daemon-ownership probe
+  behind `vault restore` routing and the hard-delete guard acquired the single-instance advisory
+  lock and released it. For the moment it held that lock it *was* the arbiter, so a daemon starting
+  in that window exited with "another cognosis daemon already owns this database", naming a CLI
+  process that had already finished. The probe now reads `pg_locks` instead, which cannot displace
+  anyone.
 - **`cognosis vault restore` no longer races the daemon.** It wrote the vault file and committed
   directly, taking neither the per-path lock the daemon's own writers share nor the path
   normalisation the equivalent MCP tool applies, so a restore concurrent with a compile pass over
@@ -48,11 +67,14 @@ All notable changes to Cognosis are documented here. The format follows
   chunks and embeddings all stay correct while edges go missing. Both were verified by reproducing
   the original failures on a live vault.
 - **`trust_local_errors` config key** (default `false`). Releases the full cause of `internal` and
-  `unavailable` tool failures to a caller the daemon judges local, instead of the redacted summary.
-  It is an operator assertion rather than a detection: under the reverse-proxy topology
-  `docs/remote.md` recommends, the proxy forwards from `127.0.0.1` and every remote caller looks
-  local, so network position alone cannot answer the question. Any proxy-forwarding header
-  withholds the detail regardless, and that check only ever removes trust.
+  `unavailable` tool failures to a local caller, instead of the redacted summary. It is one of three
+  conditions that must all hold: the operator sets the key, `bind_address` is loopback, and the
+  individual call carries no proxy-forwarding header. The key is an operator assertion rather than a
+  detection — under the reverse-proxy topology `docs/remote.md` recommends, the proxy forwards from
+  `127.0.0.1` and every remote caller looks local, so network position alone cannot answer the
+  question. The header check is evaluated per request, since a daemon can be bound to loopback and
+  still be fronted by a proxy on the same host; it only ever removes trust, so a forged marker
+  yields less detail, never more. A call arriving without HTTP header metadata withholds.
 - **`edit_note` MCP tool** — change part of an existing note without resending the whole file. It
   replaces one exact, unique occurrence and then runs the same pipeline as `write_note`:
   revalidation, history commit, re-chunk, re-embed, re-index, referrer repair. An `old_string`
@@ -62,6 +84,26 @@ All notable changes to Cognosis are documented here. The format follows
 
 ### Changed
 
+- **BLAKE3 is now the project's only hashing primitive.** The last three sha256 call sites moved
+  over: chunk content hashes, the derived fallback Postgres socket directory, and the deterministic
+  stub embedding seed. Every content hash that mattered already used BLAKE3, so this leaves one
+  answer to "did this content change" rather than two. Taken as a breaking change rather than a
+  migration, per the pre-1.0 posture. Three consequences worth knowing:
+  - **Stored chunk hashes do not heal on restart.** Reconciliation decides what to re-index from the
+    *file*-level digest, which did not change, so existing rows keep their sha256-era values until
+    each note is next edited. Nothing reads the column — it is written at three sites and never
+    compared — so this is inert; a vault wanting uniform values must be rebuilt, not restarted.
+  - **The derived dev socket directory moved**, which can defeat the single-daemon invariant on that
+    one path. `store.sockDir` hashes the repo path to place a Unix socket when `.pg-data` is too
+    long for `sun_path`, so an old and a new binary can locate *different postmasters* — and the
+    instance lock only excludes daemons that reached the same database. It is narrow: only the
+    dev self-locate path (no `dsn` configured), only when `.pg-data` exceeds 90 characters, and only
+    before `.pg-socket-path` has been written, since that file is consulted first. A configured DSN
+    never reaches it. Where it does apply, **stop the daemon before upgrading.** The dev shell now
+    derives the same directory with `b3sum`, so the shell and `store.sockDir` cannot drift apart
+    again.
+  - Retrieval goldens are unchanged and were not regenerated: the fixture pins its vectors
+    explicitly and never reaches the hash path.
 - **Tool results no longer carry the internal op and error kind.** `write.Pipeline.Edit: validation:
   old_string appears 2 times` made an agent parse past two internal identifiers to reach the
   sentence it could act on. Those identifiers are not lost — the audit log and the structured log

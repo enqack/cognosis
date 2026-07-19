@@ -27,7 +27,11 @@
             if [ -f .pg-socket-path ]; then
               SOCKDIR="$(cat .pg-socket-path)"
             else
-              SOCKDIR="''${TMPDIR:-/tmp}/cognosis-$(echo -n "$PWD" | shasum -a 256 | cut -c1-12)"
+              # BLAKE3, matching store.sockDir: both derive the same fallback
+              # socket directory from the repo path, and a shell using a
+              # different hash would put psql and the daemon on separate
+              # sockets whenever this branch runs before .pg-socket-path exists.
+              SOCKDIR="''${TMPDIR:-/tmp}/cognosis-$(echo -n "$PWD" | ${pkgs.b3sum}/bin/b3sum --no-names | cut -c1-12)"
               echo "$SOCKDIR" > .pg-socket-path
             fi
             mkdir -p "$SOCKDIR"
@@ -112,6 +116,7 @@
             pkgs.golangci-lint  # `mage lint` static analysis
             pkgs.xz             # `mage release` streams .tar.xz through xz(1)
             pkgs.jq             # hooks/session-end-nudge.sh parses the SessionEnd payload
+            pkgs.b3sum          # pgEnv derives the fallback socket dir the same way store.sockDir does
             pkgs.ollama
             pg
             pg-start
