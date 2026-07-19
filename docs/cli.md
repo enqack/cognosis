@@ -64,12 +64,18 @@ lifecycle stays top-level.
 ## MCP tools
 
 Exposed over Streamable HTTP after registering the server with a bearer token (see
-[setup-guide.md](setup-guide.md)). Twelve tools:
+[setup-guide.md](setup-guide.md)). Thirteen tools:
 
 ### Write
 - **`write_note(path, content, project?)`** — validate frontmatter, chunk, embed, and index a note
   atomically. `path` is vault-relative under `entries/`, `notes/`, `reflections/`, or `archive/`. An
   optional frontmatter `summary:` is cached and returned with hits.
+- **`edit_note(path, old_string, new_string)`** — change part of an existing note without resending the
+  whole file, then revalidate, version, re-chunk, re-embed and re-index exactly as `write_note` does.
+  `old_string` is matched literally and must appear **exactly once**: zero or several matches are
+  refused with the count rather than guessed at, since the caller cannot see the file. Empty
+  `new_string` deletes the matched text. The read and the write share one per-path lock, so
+  concurrent edits cannot silently lose one.
 - **`write_reflection(persona, description, content, project?, summary?)`** — write a persona-authored
   note into `reflections/`. Only the dry `description` is embedded; the styled `content` body is never
   indexed. `persona` must be enabled.

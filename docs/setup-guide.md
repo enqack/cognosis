@@ -224,7 +224,7 @@ claude mcp add --transport http cognosis http://127.0.0.1:7433 \
   --header "Authorization: Bearer $(cat ~/.local/state/cognosis/local-token)"
 ```
 
-That exposes the MCP tool surface (`write_note`, `query_knowledge`, … — see [cli.md](cli.md)).
+That exposes the MCP tool surface (`write_note`, `edit_note`, `query_knowledge`, … — see [cli.md](cli.md)).
 
 ## Session hooks (optional, per repo)
 

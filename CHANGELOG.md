@@ -6,6 +6,30 @@ All notable changes to Cognosis are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **`edit_note` MCP tool** — change part of an existing note without resending the whole file. It
+  replaces one exact, unique occurrence and then runs the same pipeline as `write_note`:
+  revalidation, history commit, re-chunk, re-embed, re-index, referrer repair. An `old_string`
+  matching nothing or matching several times is refused with the count, because the caller cannot
+  see the file and "first match" would be a guess about content they are not looking at. The read
+  and the write share one per-path lock, so two concurrent edits cannot silently lose one.
+
+### Changed
+
+- **`write_note` assigns a note id when frontmatter omits one** — a new UUIDv7 for a new path, and
+  the *existing* id when overwriting. The contract requires v7 and the MCP surface previously
+  offered no way to mint one, so every note written through it needed an out-of-band generator.
+  Reuse on overwrite is load-bearing: `UpsertNote` evicts on same-path-different-id, so minting
+  unconditionally would churn a note's identity on every update. A supplied id is still honoured
+  and still rejected if it is not v7.
+- **`write_note`'s description names the constraints previously learned only by rejection** — the
+  legal `category` values per stage, and that notes under `notes/` require non-empty `sources`, so
+  the entry has to be written first.
+- **`query_knowledge` logs per-leg candidate counts** (`vector`, `fts`, `graph`, `fused`). The fused
+  result count cannot say whether the keyword leg contributed anything, and on real traffic it
+  frequently contributes nothing. Counts only, never query text.
+
 ## [0.1.2] - 2026-07-16
 
 Maintenance release: no new memory features, but a pass over how an agent discovers the memory that

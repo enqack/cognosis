@@ -22,6 +22,12 @@ type writeNoteArgs struct {
 	Project string `json:"project,omitempty" jsonschema:"optional cross-check: must match the note's own frontmatter project tag when set"`
 }
 
+type editNoteArgs struct {
+	Path      string `json:"path" jsonschema:"vault-relative path of an existing note"`
+	OldString string `json:"old_string" jsonschema:"exact text to replace, matched literally including whitespace and newlines. Must appear exactly once in the file — if it appears more than once the edit is rejected with the count, so extend the snippet until it is unique."`
+	NewString string `json:"new_string" jsonschema:"replacement text; empty deletes the matched text"`
+}
+
 type queryArgs struct {
 	Text             string `json:"text" jsonschema:"natural-language search text"`
 	Project          string `json:"project,omitempty" jsonschema:"optional project filter"`
@@ -76,6 +82,27 @@ func (s *Server) addTools(srv *mcp.Server) {
 		}
 		s.log.Info("write_note", "path", args.Path, "project", args.Project)
 		return textResult("written: " + args.Path), nil, nil
+	})
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: "edit_note",
+		Description: "Change part of an existing note without resending the whole file — fix a line, add a section, " +
+			"append a source. Replaces one exact, unique occurrence of old_string with new_string, then revalidates, " +
+			"versions, re-chunks, re-embeds and re-indexes exactly as write_note does. " +
+			"Use write_note to create a note or to replace one wholesale; use this for everything smaller. " +
+			"old_string must match the file byte-for-byte and identify exactly one location: if it matches nothing or " +
+			"matches several times the edit is refused and says which, rather than guessing at a file you cannot see.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, args editNoteArgs) (*mcp.CallToolResult, any, error) {
+		if args.Path == "" || args.OldString == "" {
+			return nil, nil, fmt.Errorf("path and old_string are required")
+		}
+		err := s.pipeline.Edit(ctx, args.Path, args.OldString, args.NewString)
+		s.audit(ctx, "edit_note", "", "path="+args.Path, err)
+		if err != nil {
+			return nil, nil, err
+		}
+		s.log.Info("edit_note", "path", args.Path)
+		return textResult("edited: " + args.Path), nil, nil
 	})
 
 	mcp.AddTool(srv, &mcp.Tool{

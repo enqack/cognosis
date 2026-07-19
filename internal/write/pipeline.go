@@ -134,22 +134,106 @@ func (p *Pipeline) ensureNoteID(ctx context.Context, rel, content string) (strin
 // note's own frontmatter — the file is the source of truth, the argument is a
 // cross-check.
 func (p *Pipeline) Write(ctx context.Context, rel, content, project string) error {
-	const op = "write.Pipeline.Write"
+	rel, err := checkPath(rel)
+	if err != nil {
+		return err
+	}
+	lock := p.pathLock(rel)
+	lock.Lock()
+	defer lock.Unlock()
+	return p.writeLocked(ctx, rel, content, project)
+}
 
+// Edit replaces one exact, unique occurrence of oldStr with newStr in an
+// existing note, then lands the result through the same path Write uses —
+// validation, history, chunk, embed, index, link repair.
+//
+// It exists because write_note takes whole-file content, so changing one line
+// of frontmatter meant resending several kilobytes verbatim. During the session
+// that surfaced this, the pragmatic route for small changes was editing the
+// file on disk and letting the watcher reconcile, which made the sanctioned
+// write path the harder one — and cost a note its inbound links when an atomic
+// save was misread as a deletion.
+//
+// Uniqueness is required rather than replacing the first match. A caller
+// cannot see the file, so "first occurrence" is a guess about content they are
+// not looking at; an ambiguous edit that silently picks one is the failure this
+// design exists to avoid. Reporting the count lets the caller extend the
+// snippet until it is unique.
+//
+// The read and the write happen under one path lock. Read-modify-write without
+// it loses an edit whenever two land together, and the loser looks like it
+// succeeded.
+func (p *Pipeline) Edit(ctx context.Context, rel, oldStr, newStr string) error {
+	const op = "write.Pipeline.Edit"
+
+	rel, err := checkPath(rel)
+	if err != nil {
+		return err
+	}
+	if oldStr == "" {
+		return cogerr.Ef(op, cogerr.Validation, "old_string is required; to create a note use write_note")
+	}
+	if oldStr == newStr {
+		return cogerr.Ef(op, cogerr.Validation, "old_string and new_string are identical; nothing to do")
+	}
+
+	lock := p.pathLock(rel)
+	lock.Lock()
+	defer lock.Unlock()
+
+	// The file, not the index: the vault is the source of truth, and the index
+	// can legitimately lag it after an out-of-band edit.
+	abs := filepath.Join(p.VaultDir, filepath.FromSlash(rel))
+	current, err := os.ReadFile(abs) //nolint:gosec // path is vetted by checkPath
+	if err != nil {
+		if os.IsNotExist(err) {
+			return cogerr.Ef(op, cogerr.NotFound, "no note at %s; use write_note to create it", rel)
+		}
+		return cogerr.E(op, cogerr.Internal, err)
+	}
+
+	switch n := strings.Count(string(current), oldStr); n {
+	case 1:
+		// The only case that can be applied unambiguously.
+	case 0:
+		return cogerr.Ef(op, cogerr.NotFound,
+			"old_string does not appear in %s; it must match the file exactly, including whitespace", rel)
+	default:
+		return cogerr.Ef(op, cogerr.Validation,
+			"old_string appears %d times in %s; extend it until it identifies one location", n, rel)
+	}
+
+	return p.writeLocked(ctx, rel, strings.Replace(string(current), oldStr, newStr, 1), "")
+}
+
+// checkPath normalises and vets a vault-relative path.
+func checkPath(rel string) (string, error) {
+	const op = "write.Pipeline.Write"
 	rel = filepath.ToSlash(filepath.Clean(rel))
 	if strings.HasPrefix(rel, "..") || strings.HasPrefix(rel, "/") {
-		return cogerr.Ef(op, cogerr.Validation, "path %q escapes the vault", rel)
+		return "", cogerr.Ef(op, cogerr.Validation, "path %q escapes the vault", rel)
 	}
 	if !strings.HasSuffix(rel, ".md") {
-		return cogerr.Ef(op, cogerr.Validation, "path %q: notes are markdown files", rel)
+		return "", cogerr.Ef(op, cogerr.Validation, "path %q: notes are markdown files", rel)
 	}
 	if vault.IsReserved(rel) {
-		return cogerr.Ef(op, cogerr.Validation, "path %q is a reserved generated file", rel)
+		return "", cogerr.Ef(op, cogerr.Validation, "path %q is a reserved generated file", rel)
 	}
 	if _, ok := vault.StageOf(rel); !ok {
-		return cogerr.Ef(op, cogerr.Validation,
+		return "", cogerr.Ef(op, cogerr.Validation,
 			"path %q is outside the stage folders (entries/, notes/, reflections/, archive/)", rel)
 	}
+	return rel, nil
+}
+
+// writeLocked is Write's body, with the per-path lock already held. Edit needs
+// to read the current file and write the result without another writer
+// interleaving, so validation and the id lookup moved inside the lock: doing
+// them outside left a window where the id check could observe one state and
+// the write commit another.
+func (p *Pipeline) writeLocked(ctx context.Context, rel, content, project string) error {
+	const op = "write.Pipeline.Write"
 
 	content, err := p.ensureNoteID(ctx, rel, content)
 	if err != nil {
@@ -171,10 +255,6 @@ func (p *Pipeline) Write(ctx context.Context, rel, content, project string) erro
 		return cogerr.Ef(op, cogerr.Validation,
 			"project argument %q does not match the note's frontmatter project %q", project, n.Project())
 	}
-
-	lock := p.pathLock(rel)
-	lock.Lock()
-	defer lock.Unlock()
 
 	p.Supp.Suppress(rel)
 	defer p.Supp.Unsuppress(rel)

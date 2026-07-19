@@ -101,7 +101,7 @@ claude mcp add --transport http cognosis http://127.0.0.1:7433 \
   --header "Authorization: Bearer $(cat ~/.local/state/cognosis/local-token)"
 ```
 
-That exposes `write_note`, `query_knowledge`, `list_notes`, `list_decaying`,
+That exposes `write_note`, `edit_note`, `query_knowledge`, `list_notes`, `list_decaying`,
 `get_note`, `compile_lifecycle`, `list_personas`, `get_persona`,
 `write_reflection`, `vault_history`, `restore_note`, and
 `get_migration_status` (see [docs/cli.md](docs/cli.md) for each tool's
