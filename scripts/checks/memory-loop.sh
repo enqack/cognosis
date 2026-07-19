@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Feature: the core memory loop — MCP listening on loopback, then
 # write_note -> query_knowledge (hybrid-ranked) -> get_note round trip ->
-# list_notes, plus contract enforcement and tokenless-401 (harness slice).
+# list_notes, plus contract enforcement, tokenless-401, and edit_note (the
+# surgical write path: unique-match replacement reaching the index, both
+# refusals, stable note id) — all in the harness slice.
 set -euo pipefail
 source "$(dirname "$0")/_lib.sh"
 
@@ -16,6 +18,7 @@ pass "daemon up, MCP listening on $URL"
 
 harness memory-loop || fail "memory-loop harness failed"
 pass "write -> hybrid query -> get -> list round trip over authenticated MCP"
+pass "edit_note replaces a unique match into the index, refuses zero/multi matches, keeps the note id"
 
 echo
 echo "memory-loop check: all criteria pass"
