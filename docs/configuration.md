@@ -31,6 +31,7 @@ Env vars are the config key uppercased with `COGNOSIS_` prefix and `.` → `_`. 
 | `tls.cert_file` | string | `""` | PEM cert path. Set with `key_file` to enable built-in TLS. |
 | `tls.key_file` | string | `""` | PEM key path. Both TLS files set = a non-loopback `bind_address` becomes legal. |
 | `personas` | list | `[{ id: deep-thoughts }]` | Enabled-persona registry (see below). |
+| `trust_local_errors` | bool | `false` | Show a local caller the full cause of internal tool failures instead of a redacted summary. **Must stay `false` if anything proxies this daemon** — see below. |
 
 ### `personas`
 
@@ -52,6 +53,29 @@ entry — the file stays for later reactivation.
 By default the server binds loopback only. To bind a non-loopback address you must set **both**
 `tls.cert_file` and `tls.key_file` (built-in TLS). The recommended remote posture instead keeps
 Cognosis on loopback behind a TLS-terminating reverse proxy — see [remote.md](remote.md).
+
+### `trust_local_errors`
+
+Tool failures of kind `internal` or `unavailable` normally return a summary rather than the
+underlying cause, because those causes carry DSNs, unix socket paths and database users. Setting
+this to `true` releases the full cause — but only to a caller the daemon judges local, meaning a
+loopback peer with no proxy-forwarding headers.
+
+**It is an assertion, not a detection.** The daemon cannot tell a local caller from a remote one by
+network position when a reverse proxy is in front, because the proxy forwards from `127.0.0.1` and
+every remote caller then looks local — and that is the *recommended* remote topology
+([remote.md](remote.md)). Setting this key is you telling the daemon that nothing proxies it.
+
+Two safeguards, neither of which substitutes for getting the setting right:
+
+- Any forwarding header (`X-Forwarded-For`, `Forwarded`, `X-Real-Ip`, `X-Forwarded-Host`) withholds
+  the detail regardless. This only ever *removes* trust: a forged header yields less detail, never
+  more, so it cannot be used to escalate.
+- The default is `false`, so a daemon nobody configured discloses nothing extra.
+
+Leave it unset unless the daemon is reachable only from its own host. The gain is a better error
+message for `cognosis` CLI commands that route through the daemon; the cost of getting it wrong is
+handing infrastructure detail to every remote agent.
 
 ## Managing config from the CLI
 

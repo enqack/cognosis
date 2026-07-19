@@ -16,6 +16,13 @@ All notable changes to Cognosis are documented here. The format follows
   the same vault files through different code paths and serialized only against themselves.
 - **`cognosis status` cannot hang.** Its health-check connection was the one probe without a
   timeout, so an unreachable-but-not-refusing database would block the command indefinitely.
+- **`cognosis vault restore` no longer races the daemon.** It wrote the vault file and committed
+  directly, taking neither the per-path lock the daemon's own writers share nor the path
+  normalisation the equivalent MCP tool applies, so a restore concurrent with a compile pass over
+  the same note interleaved freely.
+- **CLI commands no longer migrate the schema underneath a running daemon.** `withStore` ran
+  `store.Migrate` unconditionally, so any store-using command — including read-only ones like
+  `token list` — could apply a migration to a database a live daemon was serving from.
 
 ### Added
 
@@ -27,6 +34,12 @@ All notable changes to Cognosis are documented here. The format follows
   against the stored edges — the one form of index corruption nothing else notices, since notes,
   chunks and embeddings all stay correct while edges go missing. Both were verified by reproducing
   the original failures on a live vault.
+- **`trust_local_errors` config key** (default `false`). Releases the full cause of `internal` and
+  `unavailable` tool failures to a caller the daemon judges local, instead of the redacted summary.
+  It is an operator assertion rather than a detection: under the reverse-proxy topology
+  `docs/remote.md` recommends, the proxy forwards from `127.0.0.1` and every remote caller looks
+  local, so network position alone cannot answer the question. Any proxy-forwarding header
+  withholds the detail regardless, and that check only ever removes trust.
 - **`edit_note` MCP tool** — change part of an existing note without resending the whole file. It
   replaces one exact, unique occurrence and then runs the same pipeline as `write_note`:
   revalidation, history commit, re-chunk, re-embed, re-index, referrer repair. An `old_string`
@@ -64,6 +77,13 @@ All notable changes to Cognosis are documented here. The format follows
 - **`write_note`'s description names the constraints previously learned only by rejection** — the
   legal `category` values per stage, and that notes under `notes/` require non-empty `sources`, so
   the entry has to be written first.
+- **`cognosis vault restore` routes through the running daemon** when one owns the vault, and
+  refuses rather than falling back when a daemon is present but unreachable — a direct write there
+  is the race. `--force-local` overrides, warning about what it bypasses.
+- **`cognosis note delete --hard` refuses while a daemon owns the database.** It writes Postgres
+  rows, removes the file, rewrites `log.md` and purges git history, none of it under the shared
+  lock, and there is no MCP tool to route it through. `token` and `embeddings` are deliberately
+  unaffected: their DB-direct writes are a coordination medium a running daemon polls.
 - **`query_knowledge` logs per-leg candidate counts** (`vector`, `fts`, `graph`, `fused`). The fused
   result count cannot say whether the keyword leg contributed anything, and on real traffic it
   frequently contributes nothing. Counts only, never query text.
