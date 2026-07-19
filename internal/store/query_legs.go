@@ -16,6 +16,16 @@ import (
 // The three retrieval rankers. The database does per-ranker ranking (it's
 // good at that); reciprocal-rank fusion happens in Go (internal/query), so
 // each leg returns an ordered candidate list, rank = position.
+//
+// Because rank is position, the FTS and graph legs' ORDER BY carries
+// `n.path, c.ordinal` as a tie-break: rows tying on the ranking expression
+// would otherwise come back in physical-row order, which a schema drop +
+// reindex does not preserve. Chunk ids are re-minted on reindex, so
+// (path, ordinal) — derived from vault content — is the stable key. The
+// vector leg carries no tie-break on purpose: pgvector matches an HNSW index
+// only against the bare `<=>` order-by expression (see vectorLegSQL), and the
+// leg is ANN-approximate — graph-build-order dependent — so exact float-tie
+// determinism is not on offer there anyway.
 
 // RankedChunk is one candidate from a single leg, in leg order.
 type RankedChunk struct {
@@ -186,7 +196,7 @@ func ftsLegSQLMode(mode TSQueryMode) string {
 		where c.fts @@ q
 		  and ($2 = '' or n.project = $2)
 		  and ` + timeFilterSQL("$3", "$7", "$5", "$6") + `
-		order by ts_rank_cd(c.fts, q) desc
+		order by ts_rank_cd(c.fts, q) desc, n.path, c.ordinal
 		limit $4`
 }
 
@@ -231,7 +241,7 @@ func graphLegSQL() string {
 		where l.src_note_id = any($1)
 		  and ` + timeFilterSQL("$2", "$6", "$4", "$5") + `
 		group by c.id, n.id, n.path, n.category, c.heading_path, c.content, n.summary
-		order by count(distinct l.src_note_id) desc
+		order by count(distinct l.src_note_id) desc, n.path, c.ordinal
 		limit $3`
 }
 

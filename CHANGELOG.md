@@ -77,6 +77,23 @@ All notable changes to Cognosis are documented here. The format follows
   belonged to, which read as keyword-leg starvation and depressed relevance — a fixture artifact
   that produced a false collateral-damage reading for the fallback.
 
+### Fixed
+
+- **A crash mid-provision no longer wedges the daemon's local token.** `EnsureLocalToken` now writes
+  the token file before inserting its row, so a crash between the two leaves a file whose row never
+  existed — which the next boot detects as unusable and re-mints over — instead of the old order's
+  live row with no file, which the refusal path treated as operator error and blocked startup until a
+  manual `cognosis token revoke local`. A refused mint also removes the file it wrote, so a state dir
+  that failed to provision no longer reads as provisioned.
+- **The "revoke and restart" remedy is now shown only for the collision it fixes.** `store.CreateToken`
+  classifies only a unique violation as a `Conflict`; any other create failure (connection loss,
+  cancellation) is `Internal` and reported as-is, so a transient database error no longer advises the
+  operator to revoke the daemon's token.
+- The FTS and graph retrieval legs carry a `n.path, c.ordinal` tie-break, so rows tying on the ranking
+  expression return in a stable order across a schema drop and reindex rather than in physical-row
+  order. The vector leg stays bare on purpose — pgvector matches its HNSW index only against the plain
+  `<=>` order-by, and the ANN leg is not exactly deterministic anyway.
+
 ## [0.2.0] - 2026-07-19
 
 A correctness release, and a deliberately breaking one. Cognosis is pre-1.0, so breaking changes
