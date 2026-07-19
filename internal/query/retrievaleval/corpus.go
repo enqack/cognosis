@@ -37,6 +37,13 @@ type CorpusSpec struct {
 	// archived note, which is what triggers query.archivedLinkPenalty.
 	ArchivedLinkFrac float64
 
+	// BorrowedTerms controls keyword precision by letting each cluster's
+	// vocabulary carry some of its neighbour's head words: 0 makes the keyword
+	// leg perfectly precise (a conjunction can only match its own cluster) and
+	// therefore makes any ranker comparison vacuous, which is not a corpus
+	// anyone should measure ranking on.
+	BorrowedTerms int
+
 	Dim      int
 	Clusters int
 	Spread   float64
@@ -60,6 +67,7 @@ func DefaultSpec() CorpusSpec {
 		ArchivedFrac:     0.08,
 		LinkDegree:       3,
 		ArchivedLinkFrac: 0.10,
+		BorrowedTerms:    DefaultBorrowedTerms,
 		Dim:              768,
 		Clusters:         40,
 		Spread:           DefaultSpread,
@@ -90,12 +98,49 @@ type Corpus struct {
 	InScope map[string]int
 }
 
-// clusterVocab returns the deterministic word bag for a cluster. Per-cluster
-// vocabularies make cluster membership simultaneously the vector ground truth
-// and a keyword ground truth, which is what lets the FTS leg be scored at all.
-func clusterVocab(cluster int) []string {
-	return topicWords[cluster%len(topicWords)]
+// clusterVocab returns the deterministic word bag for a cluster: its own topic
+// words, plus a borrowed head from its neighbour interleaved at middling
+// frequency.
+//
+// The borrowing is load-bearing and was added after a measurement failed for
+// its absence. With strictly disjoint vocabularies a conjunction drawn from
+// cluster c's words can only match cluster c's chunks, so the keyword leg runs
+// at 100% precision — measured: 1500 of 1500 candidates relevant. A leg that is
+// never wrong cannot be improved, so an oracle re-ranking changed nothing and
+// the ceiling experiment reported a confident "no headroom" that was purely an
+// artifact of the fixture.
+//
+// Overlap does not weaken the ground truth, which is the reason disjointness
+// was chosen in the first place: a chunk's label comes from the cluster that
+// generated it, so a neighbour's chunk surfacing on a borrowed term is
+// correctly labelled irrelevant. What overlap removes is the *identity*
+// between "matches the query" and "is relevant" — and that identity is exactly
+// what has to be breakable for ranking to be measurable at all.
+func clusterVocab(cluster, borrowedTerms int) []string {
+	own := topicWords[cluster%len(topicWords)]
+	borrowed := topicWords[(cluster+len(topicWords)-1)%len(topicWords)][:borrowedTerms]
+	// Interleaved rather than appended: skewedIndex favours low indices, so
+	// borrowed terms parked at the tail would be too rare to ever produce a
+	// cross-cluster match, which is the whole point of borrowing them.
+	// split guards BorrowedTerms=0 and 1: the zero case is a real sweep point
+	// (a perfectly precise keyword leg is the control for any headroom claim),
+	// so it has to build a vocabulary rather than panic on a slice bound.
+	split := min(2, len(borrowed))
+	out := make([]string, 0, len(own)+len(borrowed))
+	out = append(out, own[:4]...)
+	out = append(out, borrowed[:split]...)
+	out = append(out, own[4:]...)
+	out = append(out, borrowed[split:]...)
+	return out
 }
+
+// DefaultBorrowedTerms is the CorpusSpec default: how many of the neighbouring
+// cluster's head words each vocabulary carries. Queries draw from their own
+// head (see queryHeadTerms), so this is precisely the channel by which a query
+// retrieves a chunk that is textually plausible and semantically wrong — which
+// makes it the knob that sets keyword precision, and therefore how much room
+// any keyword ranker has to be better than another.
+const DefaultBorrowedTerms = 4
 
 // Chunk-length bounds. Uniform-length chunks make document-length
 // normalization a no-op, which would make BM25 and ts_rank_cd agree for a
@@ -208,7 +253,7 @@ func Build(t testing.TB, spec CorpusSpec) *Corpus {
 		}
 
 		cluster := rng.Intn(spec.Clusters)
-		vocab := clusterVocab(cluster)
+		vocab := clusterVocab(cluster, spec.BorrowedTerms)
 
 		chunks := make([]store.Chunk, spec.ChunksPerNote)
 		vecs := map[uuid.UUID][]float32{}
@@ -310,7 +355,7 @@ func Build(t testing.TB, spec CorpusSpec) *Corpus {
 	queries := make([]EvalQuery, spec.Queries)
 	for q := range queries {
 		cluster := q % spec.Clusters
-		vocab := clusterVocab(cluster)
+		vocab := clusterVocab(cluster, spec.BorrowedTerms)
 		var b strings.Builder
 		for w := range queryTerms {
 			b.WriteString(vocab[(q+w)%queryHeadTerms])

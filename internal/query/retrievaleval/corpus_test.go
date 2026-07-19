@@ -187,7 +187,7 @@ func TestKeywordLegHasSomethingToRank(t *testing.T) {
 // construction. Asserts on the generator, so it needs no database.
 func TestChunkProseVariesLengthAndTermFrequency(t *testing.T) {
 	rng := rand.New(rand.NewSource(7)) //nolint:gosec // reproducibility, not secrecy
-	vocab := clusterVocab(0)
+	vocab := clusterVocab(0, DefaultBorrowedTerms)
 
 	lengths := map[int]bool{}
 	maxRepeat := 0
