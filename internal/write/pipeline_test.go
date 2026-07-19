@@ -285,3 +285,134 @@ func reconcileVault(ctx context.Context, p *Pipeline, root string) error {
 		return p.Indexer.Index(ctx, n, FileMeta{Mtime: info.ModTime(), Size: info.Size(), Blake3: "reconciled"})
 	})
 }
+
+// noteContentNoID is noteContent with the id line omitted entirely — what an
+// agent holding only the MCP tools can actually produce.
+func noteContentNoID(body string) string {
+	return `---
+category: entry
+project: cognosis
+created: "2026-07-12 09:00:00"
+updated: "2026-07-12 09:00:00"
+---
+` + body
+}
+
+// TestOmittedIDIsMinted — the contract requires a UUIDv7 and the MCP surface
+// offers no way to produce one, so every note written through it previously
+// needed an out-of-band uuid generator. Omitting the id must now work, and must
+// produce an id that satisfies the validator that rejected its absence.
+func TestOmittedIDIsMinted(t *testing.T) {
+	p, s, root, ctx := testPipeline(t)
+	const rel = "entries/minted.md"
+
+	if err := p.Write(ctx, rel, noteContentNoID("Body text.\n"), ""); err != nil {
+		t.Fatal(err)
+	}
+
+	n, err := s.GetNote(ctx, rel)
+	if err != nil {
+		t.Fatalf("note not indexed: %v", err)
+	}
+	if n.ID.Version() != 7 {
+		t.Errorf("minted id is v%d, want v7 — the validator rejects anything else", n.ID.Version())
+	}
+
+	// The id must also reach the file: the vault is the source of truth, and a
+	// note whose id exists only in the index would not survive a rebuild.
+	b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "id: "+n.ID.String()) {
+		t.Errorf("minted id absent from the file on disk:\n%s", b)
+	}
+}
+
+// TestOmittedIDOnExistingPathReusesID is the load-bearing half.
+//
+// UpsertNote treats same-path-different-id as an eviction: it deletes the row
+// and cascades every inbound link away. So minting unconditionally would make
+// "omit the id" a way to silently destroy a note's inbound graph on every
+// update — the same damage an atomic editor save used to cause, by a different
+// route. The id must be reused, and the referrer's edge must survive.
+func TestOmittedIDOnExistingPathReusesID(t *testing.T) {
+	p, s, _, ctx := testPipeline(t)
+	const target = "entries/target.md"
+
+	if err := p.Write(ctx, target, noteContentNoID("First version.\n"), ""); err != nil {
+		t.Fatal(err)
+	}
+	first, err := s.GetNote(ctx, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A second note points at it, so there is an inbound edge to lose.
+	if err := p.Write(ctx, "entries/referrer.md",
+		noteContentNoID("See [[target]] for detail.\n"), ""); err != nil {
+		t.Fatal(err)
+	}
+	referrer, err := s.GetNote(ctx, "entries/referrer.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dsts, err := s.LinkDsts(ctx, referrer.ID); err != nil {
+		t.Fatal(err)
+	} else if len(dsts) != 1 {
+		t.Fatalf("precondition: referrer should link to target, got %v", dsts)
+	}
+
+	// Overwrite the target, again without an id.
+	if err := p.Write(ctx, target, noteContentNoID("Second version.\n"), ""); err != nil {
+		t.Fatal(err)
+	}
+	second, err := s.GetNote(ctx, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.ID != first.ID {
+		t.Errorf("id changed on overwrite: %s -> %s; UpsertNote evicts on same-path-different-id "+
+			"and cascades inbound links away", first.ID, second.ID)
+	}
+	dsts, err := s.LinkDsts(ctx, referrer.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dsts) != 1 || dsts[0] != first.ID {
+		// Verified against the un-fixed code: the edge is not dropped, it is
+		// re-pointed at the newly minted id, because RepairReferrers resolves
+		// wikilinks by basename after the write. So the visible symptom is id
+		// churn rather than a missing edge — the note's identity changes on
+		// every update, which is exactly the stability note ids exist to give,
+		// and anything holding the old id now refers to a row that was evicted.
+		t.Errorf("referrer no longer points at the original note id: got %v, want [%s]", dsts, first.ID)
+	}
+}
+
+// An explicitly supplied id still wins, and a non-v7 one is still rejected —
+// minting is a fallback for an absent value, not a relaxation of the contract.
+func TestSuppliedIDIsHonouredAndStillValidated(t *testing.T) {
+	p, s, _, ctx := testPipeline(t)
+
+	want := uuid.Must(uuid.NewV7()).String()
+	if err := p.Write(ctx, "entries/pinned.md", noteContent(want, "cognosis", "Body.\n"), ""); err != nil {
+		t.Fatal(err)
+	}
+	n, err := s.GetNote(ctx, "entries/pinned.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n.ID.String() != want {
+		t.Errorf("supplied id %s was replaced by %s", want, n.ID)
+	}
+
+	v4 := uuid.Must(uuid.NewRandom()).String()
+	err = p.Write(ctx, "entries/v4.md", noteContent(v4, "cognosis", "Body.\n"), "")
+	if !cogerr.Is(err, cogerr.Validation) {
+		t.Fatalf("a v4 id was accepted: %v", err)
+	}
+	if !strings.Contains(err.Error(), "UUIDv7") {
+		t.Errorf("rejection does not name the requirement: %v", err)
+	}
+}

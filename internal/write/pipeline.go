@@ -67,6 +67,69 @@ func (p *Pipeline) pathLock(rel string) *sync.Mutex {
 	return l
 }
 
+// ensureNoteID fills in a missing frontmatter `id`, returning the content to
+// write. Content that already carries one is returned untouched.
+//
+// The contract requires a UUIDv7 — ids sort lexically by creation, and an id is
+// written once and never rewritten, so the version accepted at write time is
+// permanent. But a caller holding only the MCP tools has no way to mint one:
+// every note written during the session that surfaced this had to shell out to
+// a Go program. Requiring a value the interface cannot produce is a defect in
+// the interface, not a discipline.
+//
+// Reusing the existing id when the path is already indexed is the load-bearing
+// half. Minting unconditionally would hand an existing path a *new* id, and
+// UpsertNote treats same-path-different-id as an eviction: it deletes the row
+// and cascades every inbound link away. Omitting the id on an update would
+// then silently destroy that note's inbound graph — the same damage an atomic
+// editor save used to do, arriving by a different route.
+func (p *Pipeline) ensureNoteID(ctx context.Context, rel, content string) (string, error) {
+	const op = "write.Pipeline.Write"
+
+	// Parse failures and missing frontmatter are the caller's own validation
+	// errors, reported with better context a few lines later. Say nothing here.
+	n, err := vault.ParseNote(rel, []byte(content))
+	if err != nil || n.Frontmatter == nil {
+		// Deliberately swallowed: Write re-parses immediately after this and
+		// reports the same failure with the field-level detail a caller can
+		// act on. Returning it here would replace that with a bare parse error
+		// from a function whose job is only to supply a missing id.
+		return content, nil //nolint:nilerr // Write reports this with better context
+	}
+	if strings.TrimSpace(n.ID()) != "" {
+		return content, nil
+	}
+
+	id := ""
+	if p.Indexer != nil && p.Indexer.Store != nil {
+		switch existing, err := p.Indexer.Store.GetNote(ctx, rel); {
+		case err == nil:
+			id = existing.ID.String()
+		case cogerr.Is(err, cogerr.NotFound):
+			// Genuinely new; fall through to minting.
+		default:
+			// Do not guess. Minting here would risk the eviction above on a
+			// path that may well exist.
+			return "", err
+		}
+	}
+	if id == "" {
+		if id, err = vault.NewNoteID(); err != nil {
+			return "", cogerr.E(op, cogerr.Internal, err)
+		}
+	}
+
+	// Splice textually rather than re-serializing the frontmatter: the vault is
+	// the source of truth and the agent's bytes are written verbatim, so
+	// round-tripping through a YAML marshaller would reorder keys and drop
+	// comments on every write that happened to omit an id.
+	const fence = "---\n"
+	if !strings.HasPrefix(content, fence) {
+		return content, nil // no opening fence; validation will say so
+	}
+	return fence + "id: " + id + "\n" + content[len(fence):], nil
+}
+
 // Write validates and lands one note. project, when non-empty, must match the
 // note's own frontmatter — the file is the source of truth, the argument is a
 // cross-check.
@@ -86,6 +149,11 @@ func (p *Pipeline) Write(ctx context.Context, rel, content, project string) erro
 	if _, ok := vault.StageOf(rel); !ok {
 		return cogerr.Ef(op, cogerr.Validation,
 			"path %q is outside the stage folders (entries/, notes/, reflections/, archive/)", rel)
+	}
+
+	content, err := p.ensureNoteID(ctx, rel, content)
+	if err != nil {
+		return err
 	}
 
 	n, err := vault.ParseNote(rel, []byte(content))

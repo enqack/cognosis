@@ -18,7 +18,7 @@ import (
 
 type writeNoteArgs struct {
 	Path    string `json:"path" jsonschema:"vault-relative path under entries/, notes/, reflections/, or archive/ (e.g. entries/2026-07-12-capture.md)"`
-	Content string `json:"content" jsonschema:"full markdown file content including YAML frontmatter satisfying the contract (id, category, created, updated, ...). id must be a UUIDv7 (time-ordered) — v4 is rejected. An optional one-line summary: key is cached and returned with every retrieval hit."`
+	Content string `json:"content" jsonschema:"full markdown file content including YAML frontmatter satisfying the contract. Omit id and one is assigned (a new UUIDv7 for a new path; the existing id when overwriting, which preserves that note's inbound links) — supply one only to pin a specific id, and it must be a UUIDv7. Required keys: category (entry under entries/; concept, cursed-knowledge or lesson-learned under notes/), created, updated. Notes under notes/ also require sources: a non-empty list of wikilinks to entries or reflections, so write the entry first. An optional one-line summary: key is cached and returned with every retrieval hit."`
 	Project string `json:"project,omitempty" jsonschema:"optional cross-check: must match the note's own frontmatter project tag when set"`
 }
 
