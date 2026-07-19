@@ -2,6 +2,7 @@ package retrievaleval
 
 import (
 	"context"
+	"math/rand"
 	"strings"
 	"testing"
 
@@ -138,5 +139,74 @@ func TestCorpusEngineAndProbesAgree(t *testing.T) {
 	t.Logf("cluster precision = %.3f (chance = %.3f)", cp, chance)
 	if cp <= chance {
 		t.Errorf("cluster precision %.3f at or below chance %.3f: geometry, label and vocabulary disagree", cp, chance)
+	}
+}
+
+// TestKeywordLegHasSomethingToRank is the guard the first corpus lacked.
+//
+// That corpus drew 8 tokens with replacement from a 12-token bag and queried
+// with a 5-term conjunction, so the FTS leg returned 0–2 candidates of a
+// requested 50 — measured, not estimated, and only noticed after a per-leg
+// capacity sweep was added for an unrelated reason. Every keyword number
+// recorded before that point was computed over a near-empty candidate set,
+// and a BM25-vs-ts_rank_cd comparison on it would have been ranking two items.
+//
+// The floor is deliberately low. This asserts the leg is *exercised*, not that
+// it is good — quality is what the sweeps measure, and pinning a high number
+// here would make an ordinary corpus change look like a regression.
+func TestKeywordLegHasSomethingToRank(t *testing.T) {
+	requireEval(t)
+	ctx := context.Background()
+	c := Build(t, smallSpec())
+
+	const pool = 50
+	const floor = 10
+
+	worst := pool + 1
+	worstQuery := ""
+	for _, q := range c.Queries {
+		p, err := c.Store.ProbeFTS(ctx, q.Text, store.Filter{}, pool, nil, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(p.Rows) < worst {
+			worst, worstQuery = len(p.Rows), q.Text
+		}
+	}
+	if worst < floor {
+		t.Errorf("worst FTS candidate count is %d (query %q), want >= %d; "+
+			"websearch_to_tsquery ANDs its terms, so this is the corpus failing to "+
+			"satisfy a %d-term conjunction, not the ranker underperforming",
+			worst, worstQuery, floor, queryTerms)
+	}
+}
+
+// Term frequency and document length must actually vary, or BM25's two
+// advantages over ts_rank_cd — saturating TF, normalizing by length — are
+// unmeasurable on this corpus and any comparison reports a tie by
+// construction. Asserts on the generator, so it needs no database.
+func TestChunkProseVariesLengthAndTermFrequency(t *testing.T) {
+	rng := rand.New(rand.NewSource(7)) //nolint:gosec // reproducibility, not secrecy
+	vocab := clusterVocab(0)
+
+	lengths := map[int]bool{}
+	maxRepeat := 0
+	for i := range 200 {
+		text := chunkProse(rng, vocab, i, 0)
+		words := strings.Fields(text)
+		lengths[len(words)] = true
+		counts := map[string]int{}
+		for _, w := range words {
+			counts[w]++
+		}
+		for _, v := range vocab {
+			maxRepeat = max(maxRepeat, counts[v])
+		}
+	}
+	if len(lengths) < 20 {
+		t.Errorf("only %d distinct chunk lengths over 200 chunks; length normalization is a no-op", len(lengths))
+	}
+	if maxRepeat < 3 {
+		t.Errorf("no topic term repeats more than %dx in any chunk; TF saturation is unmeasurable", maxRepeat)
 	}
 }

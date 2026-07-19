@@ -93,13 +93,63 @@ type Corpus struct {
 // clusterVocab returns the deterministic word bag for a cluster. Per-cluster
 // vocabularies make cluster membership simultaneously the vector ground truth
 // and a keyword ground truth, which is what lets the FTS leg be scored at all.
-func clusterVocab(cluster, n int) []string {
-	out := make([]string, n)
-	for i := range out {
-		out[i] = fmt.Sprintf("lex%03dw%02d", cluster, i)
-	}
-	return out
+func clusterVocab(cluster int) []string {
+	return topicWords[cluster%len(topicWords)]
 }
+
+// Chunk-length bounds. Uniform-length chunks make document-length
+// normalization a no-op, which would make BM25 and ts_rank_cd agree for a
+// reason that is a property of the fixture rather than of either ranker.
+const (
+	chunkMinWords = 40
+	chunkMaxWords = 160
+)
+
+// topicRate is the share of a chunk's words drawn from its cluster vocabulary;
+// the rest come from the shared background pool. Real prose is mostly
+// connective tissue, and the imbalance is what produces an IDF spread.
+const topicRate = 0.30
+
+// skewedIndex biases toward low indices (best of two draws), so a few terms in
+// each pool are frequent and the rest are rare. Flat sampling gives every term
+// the same document frequency, and with uniform IDF there is nothing for a
+// ranking function to weigh.
+func skewedIndex(rng *rand.Rand, n int) int {
+	a, b := rng.Intn(n), rng.Intn(n)
+	return min(a, b)
+}
+
+// chunkProse renders one chunk of prose-like text: variable length, topic
+// terms mixed into background at topicRate, both drawn with skew so term
+// frequency varies within and across chunks.
+func chunkProse(rng *rand.Rand, vocab []string, note, ordinal int) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "note %05d section %d. ", note, ordinal)
+	words := chunkMinWords + rng.Intn(chunkMaxWords-chunkMinWords+1)
+	for w := range words {
+		if w > 0 {
+			b.WriteByte(' ')
+		}
+		if rng.Float64() < topicRate {
+			b.WriteString(vocab[skewedIndex(rng, len(vocab))])
+		} else {
+			b.WriteString(backgroundWords[skewedIndex(rng, len(backgroundWords))])
+		}
+	}
+	b.WriteByte('.')
+	return b.String()
+}
+
+// queryTerms is how many terms an evaluation query carries.
+// websearch_to_tsquery joins them with AND, so this is a hard conjunction:
+// every extra term multiplies the chance of an empty candidate set.
+const queryTerms = 3
+
+// queryHeadTerms bounds queries to each vocabulary's frequent head. Drawing
+// from the rare tail reproduces the original defect — a conjunction no chunk
+// satisfies — and an FTS leg returning nothing cannot rank anything, which is
+// the comparison BM25 work needs to make.
+const queryHeadTerms = 4
 
 // Build seeds the corpus and returns a wired Engine. Skips when
 // COGNOSIS_TEST_DSN is unset.
@@ -129,45 +179,42 @@ func Build(t testing.TB, spec CorpusSpec) *Corpus {
 	var archived []uuid.UUID
 	inScope := map[string]int{}
 
-	// Pass 1: notes and chunks.
+	// Project and status are assigned up front, stratified, from rngs of their
+	// own — not drawn inline from the shared rng.
 	//
-	// Project and status are drawn independently. They must not be derived
-	// from colliding moduli of the same index: a first attempt at this used
-	// i%97 for project and i%25 for status, which made every note in the
-	// smallest project also archived, leaving the selective scope empty.
+	// Both properties have already been silently destroyed once each. First by
+	// colliding moduli (i%97 for project, i%25 for status) which made every
+	// note in the smallest project also archived. Then by an unrelated change
+	// to chunk-text generation: it consumed a different number of draws, which
+	// shifted every subsequent draw and emptied the selective scope again with
+	// the same seed and the same spec.
+	//
+	// Stratification makes the shares exact rather than expected, and separate
+	// rngs mean nothing about *text* can move a note between projects. The
+	// structural shape of the corpus is then a function of the spec alone.
+	projectOf := assignProjects(spec, projects)
+	statusOf := assignStatuses(spec, projectOf)
+
+	// Pass 1: notes and chunks.
 	allVecs := make([][]float32, 0, spec.Notes*spec.ChunksPerNote)
 	for i := range notes {
 		id := uuid.New()
 		path := fmt.Sprintf("notes/n%05d.md", i)
-		project := projects[rng.Intn(len(projects))]
-
-		status := "active"
-		switch r := rng.Float64(); {
-		case r < spec.FalsifiedFrac:
-			status = "falsified"
-		case r < spec.FalsifiedFrac+spec.ArchivedFrac:
-			status = "archived"
-		}
+		project := projectOf[i]
+		status := statusOf[i]
 		notes[i] = noteRec{id, path, project, status}
 		if status == "archived" {
 			archived = append(archived, id)
 		}
 
 		cluster := rng.Intn(spec.Clusters)
-		vocab := clusterVocab(cluster, 12)
+		vocab := clusterVocab(cluster)
 
 		chunks := make([]store.Chunk, spec.ChunksPerNote)
 		vecs := map[uuid.UUID][]float32{}
 		texts := make([]string, spec.ChunksPerNote)
 		for o := range chunks {
-			// Draw a deterministic subset of the cluster's vocabulary.
-			var b strings.Builder
-			fmt.Fprintf(&b, "note %05d section %d about ", i, o)
-			for range 8 {
-				b.WriteString(vocab[rng.Intn(len(vocab))])
-				b.WriteByte(' ')
-			}
-			text := strings.TrimSpace(b.String())
+			text := chunkProse(rng, vocab, i, o)
 			texts[o] = text
 			// Pin the label so geometry, label, and vocabulary agree.
 			syn.Labels[text] = cluster
@@ -263,10 +310,10 @@ func Build(t testing.TB, spec CorpusSpec) *Corpus {
 	queries := make([]EvalQuery, spec.Queries)
 	for q := range queries {
 		cluster := q % spec.Clusters
-		vocab := clusterVocab(cluster, 12)
+		vocab := clusterVocab(cluster)
 		var b strings.Builder
-		for w := range 5 {
-			b.WriteString(vocab[(q+w)%len(vocab)])
+		for w := range queryTerms {
+			b.WriteString(vocab[(q+w)%queryHeadTerms])
 			b.WriteByte(' ')
 		}
 		text := strings.TrimSpace(b.String())
@@ -342,6 +389,67 @@ func chunkIDs(ctx context.Context, s *store.Store, path string) ([]uuid.UUID, er
 }
 
 // weightedProjects expands a project mix into a sampling slice.
+// Salts derive independent rng streams from one spec seed, so a corpus stays
+// reproducible from Seed alone while project, status and text generation
+// cannot perturb each other.
+const (
+	projectSalt = 0x50524f4a
+	statusSalt  = 0x53544154
+)
+
+// assignProjects gives each note a project, in exact proportion to ProjectMix
+// rather than in expectation. Walking the sorted weight pool at a fixed stride
+// guarantees the smallest project is represented at all — a 1% project drawn
+// independently per note can come up empty, and an empty selective scope
+// measures nothing while looking like a passing run.
+func assignProjects(spec CorpusSpec, pool []string) []string {
+	out := make([]string, spec.Notes)
+	for i := range out {
+		out[i] = pool[i*len(pool)/spec.Notes]
+	}
+	rng := rand.New(rand.NewSource(spec.Seed ^ projectSalt)) //nolint:gosec // reproducibility, not secrecy
+	rng.Shuffle(len(out), func(a, b int) { out[a], out[b] = out[b], out[a] })
+	return out
+}
+
+// assignStatuses stratifies status *within* each project rather than across
+// the corpus. That is the load-bearing detail: a global draw can put every
+// note of the smallest project into falsified or archived, which empties the
+// selective scope without emptying the corpus. Flooring the per-group counts
+// means a project too small to afford a falsified note simply does not get
+// one, so a live note always survives.
+func assignStatuses(spec CorpusSpec, projectOf []string) []string {
+	byProject := map[string][]int{}
+	for i, p := range projectOf {
+		byProject[p] = append(byProject[p], i)
+	}
+	names := make([]string, 0, len(byProject))
+	for p := range byProject {
+		names = append(names, p)
+	}
+	sort.Strings(names) // deterministic iteration
+
+	out := make([]string, len(projectOf))
+	rng := rand.New(rand.NewSource(spec.Seed ^ statusSalt)) //nolint:gosec // reproducibility, not secrecy
+	for _, p := range names {
+		idx := byProject[p]
+		rng.Shuffle(len(idx), func(a, b int) { idx[a], idx[b] = idx[b], idx[a] })
+		nFalse := int(float64(len(idx)) * spec.FalsifiedFrac)
+		nArch := int(float64(len(idx)) * spec.ArchivedFrac)
+		for j, n := range idx {
+			switch {
+			case j < nFalse:
+				out[n] = "falsified"
+			case j < nFalse+nArch:
+				out[n] = "archived"
+			default:
+				out[n] = "active"
+			}
+		}
+	}
+	return out
+}
+
 func weightedProjects(mix map[string]float64) []string {
 	const resolution = 1000
 	keys := make([]string, 0, len(mix))
