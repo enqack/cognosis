@@ -2,7 +2,9 @@ package mcpserver
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -144,10 +146,10 @@ func TestRenderContextPreamble(t *testing.T) {
 	}
 }
 
-// registeredTools lists the live tool surface by asking the server over an
+// listedTools returns the live tool surface by asking the server over an
 // in-memory transport, rather than trusting a hand-copied list to stay honest.
 // Registration never touches the store, so nil dependencies are fine here.
-func registeredTools(t *testing.T) map[string]string {
+func listedTools(t *testing.T) []*mcp.Tool {
 	t.Helper()
 	ctx := context.Background()
 
@@ -172,11 +174,60 @@ func registeredTools(t *testing.T) map[string]string {
 	if err != nil {
 		t.Fatalf("list tools: %v", err)
 	}
+	return res.Tools
+}
+
+func registeredTools(t *testing.T) map[string]string {
+	t.Helper()
 	out := map[string]string{}
-	for _, tool := range res.Tools {
+	for _, tool := range listedTools(t) {
 		out[tool.Name] = tool.Description
 	}
 	return out
+}
+
+// TestToolSchemasCarryNoTypeUnions holds every advertised input schema to
+// single-string "type" values. jsonschema-go infers ["null","array"] for Go
+// slices, and a real client (Claude Code, 2026-07-19) that cannot represent
+// union types degraded such a field to untyped, serialized the array argument
+// as a string, and was rejected by this server's own validation. Any tool whose
+// args struct gains a slice or map must register with schemaFor[args]() —
+// this test is what notices when one doesn't.
+func TestToolSchemasCarryNoTypeUnions(t *testing.T) {
+	tools := listedTools(t)
+	if len(tools) == 0 {
+		t.Fatal("no tools registered")
+	}
+	var walk func(toolName, path string, node any)
+	walk = func(toolName, path string, node any) {
+		switch v := node.(type) {
+		case map[string]any:
+			if typ, ok := v["type"]; ok {
+				if _, isArray := typ.([]any); isArray {
+					t.Errorf("tool %s: %s has union type %v; register the tool with schemaFor to collapse it",
+						toolName, path, typ)
+				}
+			}
+			for k, sub := range v {
+				walk(toolName, path+"/"+k, sub)
+			}
+		case []any:
+			for i, sub := range v {
+				walk(toolName, fmt.Sprintf("%s[%d]", path, i), sub)
+			}
+		}
+	}
+	for _, tool := range tools {
+		b, err := json.Marshal(tool.InputSchema)
+		if err != nil {
+			t.Fatalf("marshal %s input schema: %v", tool.Name, err)
+		}
+		var doc any
+		if err := json.Unmarshal(b, &doc); err != nil {
+			t.Fatalf("unmarshal %s input schema: %v", tool.Name, err)
+		}
+		walk(tool.Name, "schema", doc)
+	}
 }
 
 // TestPreambleToolNamesExist guards the drift that makes the preamble worse than

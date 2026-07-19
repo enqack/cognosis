@@ -37,7 +37,8 @@ type writeReflectionArgs struct {
 
 func (s *Server) addLifecycleTools(srv *mcp.Server) {
 	mcp.AddTool(srv, &mcp.Tool{
-		Name: "compile_lifecycle",
+		Name:        "compile_lifecycle",
+		InputSchema: schemaFor[compileArgs](),
 		Description: "Record what you learned about knowledge you ALREADY have — that it held up, that it was wrong, " +
 			"that it is now contested. Reach for this instead of write_note whenever an existing note is the subject: " +
 			"finding a note's claim false is falsify, not a new note saying the opposite; doubting it is dispute, which " +
