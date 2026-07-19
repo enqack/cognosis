@@ -32,7 +32,7 @@ semantic type lives in frontmatter:
 
 ```
 kb/
-├── index.md      (generated)
+├── index.md      (okf_version declaration; validated, never written by Cognosis)
 ├── log.md        (append-only compile audit trail)
 ├── history.md    (generated read-only recovery dashboard)
 ├── entries/      raw, timestamped capture
@@ -41,11 +41,23 @@ kb/
 └── archive/      retired notes
 ```
 
-Cognosis commits only the paths it owns — the four stage directories and `log.md`. The vault
-directory is shared with whatever an operator runs in it (Obsidian is a designed-for workflow), and
-committing everything put editor state into 22% of a real vault's commits, including commits whose
-message named a note they did not contain. `history.md` is excluded for a second reason: it is
-generated *from* `git log`, so tracking it made the dashboard cite its own churn as restorable.
+Cognosis commits only the paths it owns — the four stage directories, `log.md` and `index.md`. The
+vault directory is shared with whatever an operator runs in it (Obsidian is a designed-for
+workflow), and committing everything put editor state into 22% of a real vault's commits, including
+commits whose message named a note they did not contain.
+
+The two other reserved names are treated differently, and the split is not arbitrary. `index.md` is
+versioned despite never being written by Cognosis: it carries the `okf_version` declaration that
+says how everything else should be read, so a change to it must leave a trace. `history.md` is
+excluded because it is generated *from* `git log`, so tracking it made the recovery dashboard cite
+its own churn as restorable.
+
+The commit is assembled in a scratch index rather than the repo's own. Two things follow, and
+neither is achievable with a plain `git commit`. Anything another party has staged in the real index
+is never read, so it cannot ride along under a message naming only the note Cognosis just wrote. And
+the commit is a *snapshot* taken when the paths are staged, not a live read of the working tree — so
+a concurrent writer's file landing mid-commit is not swept into someone else's message, and stays
+pending for its own commit instead of being silently absorbed.
 
 A vault Cognosis creates is seeded with a `.gitignore` for the same paths. Vaults predating that
 still track them — see the troubleshooting row in [setup-guide.md](setup-guide.md) for the one-time
