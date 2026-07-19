@@ -9,7 +9,9 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
+	"errors"
 	"fmt"
+	"io/fs"
 	"math"
 	"net/http"
 	"os"
@@ -163,10 +165,31 @@ func Middleware(s TokenStore, next http.Handler) http.Handler {
 // state dir against an existing database) still needs a fresh mint, since
 // plaintexts are never recoverable from hashes. The file is the local trust
 // boundary — same as the vault itself.
+//
+// Provisioned means the stashed plaintext still authenticates, not merely that
+// the file exists. Both halves are droppable independently: the tokens table
+// lives in the database schema, which the vault contract declares derived and
+// rebuildable, so `drop schema public cascade` — the documented remedy for a
+// migration renumber — takes every token row with it while the file survives.
+// A presence-only check left that file pointing at a deleted row: the daemon
+// reported healthy, `status` said ok, and every client silently 401'd with
+// nothing in the logs connecting the two.
 func EnsureLocalToken(ctx context.Context, s *store.Store, tokenFile string) error {
 	const op = "auth.EnsureLocalToken"
-	if _, err := os.Stat(tokenFile); err == nil {
-		return nil // provisioned; the DB row backing it stays authoritative
+	switch b, err := os.ReadFile(tokenFile); {
+	case err == nil:
+		usable, err := localTokenUsable(ctx, s, tokenFile, strings.TrimSpace(string(b)))
+		if err != nil {
+			return err
+		}
+		if usable {
+			return nil
+		}
+		// Fall through and re-mint over the dead file.
+	case errors.Is(err, fs.ErrNotExist):
+		// Not provisioned yet.
+	default:
+		return cogerr.E(op, cogerr.Internal, err)
 	}
 	plaintext, id, hash, err := Generate()
 	if err != nil {
@@ -186,4 +209,39 @@ func EnsureLocalToken(ctx context.Context, s *store.Store, tokenFile string) err
 		return cogerr.E(op, cogerr.Internal, err)
 	}
 	return nil
+}
+
+// localTokenUsable reports whether the stashed plaintext would still pass
+// Middleware. It runs the same checks in the same order — parse, look up by
+// embedded id, reject revoked, verify the secret — because a divergence here
+// is exactly the failure being fixed: a token that provisioning calls fine and
+// every request calls invalid.
+//
+// The error return is load-bearing and distinct from a false: false means
+// "known dead, re-mint", an error means "unknown". Re-minting on a transient
+// database failure would overwrite a working credential in every client's
+// config with one they have not been given.
+func localTokenUsable(ctx context.Context, s *store.Store, tokenFile, plaintext string) (bool, error) {
+	const op = "auth.EnsureLocalToken"
+	id, secret, ok := parseToken(plaintext)
+	if !ok {
+		return false, nil // truncated or hand-edited: unusable by construction
+	}
+	t, err := s.GetTokenByID(ctx, id)
+	if cogerr.Is(err, cogerr.NotFound) {
+		return false, nil // row dropped with the schema, or a different database
+	}
+	if err != nil {
+		return false, err
+	}
+	if t.RevokedAt != nil {
+		// Deliberate operator action, not drift. Minting a replacement would
+		// undo a revocation silently — and, since the name is taken, under a
+		// second name, leaving the revoked row looking effective. Fail loud
+		// and make deleting the file the explicit re-provision gesture, which
+		// is what the file being the source of truth already means.
+		return false, cogerr.Ef(op, cogerr.Validation,
+			"the local token in %s was revoked; delete the file to provision a new one", tokenFile)
+	}
+	return VerifySecret(secret, t.Hash), nil
 }
