@@ -152,8 +152,16 @@ func (s *Server) addTools(srv *mcp.Server) {
 		// tell whether the keyword leg's AND semantics are starving it in
 		// practice. Counts only: the audit summary records text_len rather
 		// than text, and this holds that line.
+		//
+		// sources/fused_sources count distinct *notes* rather than chunks.
+		// Fusion has no per-note constraint, so a long note contributing many
+		// similar chunks can take most of the answer while a shorter note about
+		// the same event never places. The per-leg counts cannot show that —
+		// the crowding note's chunks are all genuinely relevant — and neither
+		// can `results`, which counts chunks.
 		s.log.Info("query_knowledge", "results", len(results),
-			"vector", stats.Vector, "fts", stats.FTS, "graph", stats.Graph, "fused", stats.Fused)
+			"vector", stats.Vector, "fts", stats.FTS, "graph", stats.Graph, "fused", stats.Fused,
+			"fused_sources", stats.FusedSources, "sources", stats.Sources)
 
 		// Tell the agent when suppressed history exists. Falsified notes are
 		// retained deliberately, but the exclusion happens in SQL, so without

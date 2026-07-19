@@ -193,6 +193,37 @@ type LegStats struct {
 	FTS    int
 	Graph  int
 	Fused  int // distinct candidates after fusion, before the top-K cut
+
+	// FusedSources and Sources count *distinct notes*, before and after the
+	// top-K cut. Fusion is chunk-level with no per-note constraint, so one long
+	// note contributing many similar chunks can occupy most of the answer while
+	// a shorter note about the same event never places — and a chunk-level
+	// count cannot see that, because the crowding note's chunks are all
+	// genuinely relevant.
+	//
+	// Two numbers rather than one because they answer different questions.
+	// Sources says how concentrated the *answer* was. FusedSources says whether
+	// the pool held diversity that the cut then discarded: Sources far below
+	// FusedSources implicates the cut, the two being equal and both low
+	// implicates retrieval upstream of it. Only the first is something a
+	// per-note cap could fix.
+	//
+	// Concentration is not automatically a defect — a query whose answer really
+	// does live in one note *should* return one note. Distinguishing that from
+	// displacement needs ground truth spanning several notes, which these
+	// counts cannot supply; they exist to show whether the situation arises
+	// often enough on real traffic to be worth building that fixture for.
+	FusedSources int
+	Sources      int
+}
+
+// countSources counts distinct notes among fused candidates.
+func countSources[T any](fused []Scored[T], noteID func(T) uuid.UUID) int {
+	seen := make(map[uuid.UUID]struct{}, len(fused))
+	for _, f := range fused {
+		seen[noteID(f.Item)] = struct{}{}
+	}
+	return len(seen)
 }
 
 // Run embeds the query per provider, ranks all legs, and fuses.
@@ -325,9 +356,16 @@ func (e *Engine) RunWithStats(ctx context.Context, text string, opts Options) ([
 		}
 		sort.SliceStable(fused, func(i, j int) bool { return fused[i].Score > fused[j].Score })
 	}
+	// Before the cut, and after: the pair is what separates "the cut
+	// concentrated the answer" from "retrieval never offered anything else".
+	// Taken after the archived-link penalty and the category bias, so both
+	// describe the ordering the caller actually received.
+	noteOf := func(c store.RankedChunk) uuid.UUID { return c.NoteID }
+	stats.FusedSources = countSources(fused, noteOf)
 	if len(fused) > topK {
 		fused = fused[:topK]
 	}
+	stats.Sources = countSources(fused, noteOf)
 	out := make([]Result, len(fused))
 	hitIDs := make([]uuid.UUID, len(fused))
 	for i, f := range fused {
