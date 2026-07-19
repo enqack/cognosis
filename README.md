@@ -139,6 +139,10 @@ boots a daemon in a sandbox against the dev Postgres + Ollama:
 ./scripts/check-all.sh                  # all of the above, in order
 ```
 
+`mage bench` runs the retrieval benchmarks (local-only, never with `-race`). See
+[docs/benchmarking.md](docs/benchmarking.md) for the measurement tiers, the three DSN variables,
+the corpus knobs, and which retrieval questions are already settled.
+
 Integration tests need `COGNOSIS_TEST_DSN` pointing at a Postgres with
 pgvector (the dev shell provides one); Ollama-backed tests skip when no
 server is reachable. The `scripts/checks/*.sh` end-to-end checks additionally

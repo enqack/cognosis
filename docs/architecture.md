@@ -120,6 +120,9 @@ worst scope). RRF consumes rank position with `k=60` damping, so rank 1 scores `
 scores `1/110` — the whole rank range spans 1.8x, while a missing row contributes exactly 0.
 Recall dominates ordering under this fusion.
 
+How to run the harness, what the artifacts mean, and which retrieval questions are already
+closed: [benchmarking.md](benchmarking.md).
+
 The measurement harness behind these numbers is `internal/query/retrievaleval` (local-tier; run
 `scripts/checks/retrieval-eval.sh`, artifacts under its `testdata/`). `TestCandidatePoolWithinScanCapacity`
 guards the invariant in CI.
