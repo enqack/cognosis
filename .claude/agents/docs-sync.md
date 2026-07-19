@@ -15,7 +15,7 @@ Start by reading the change (`git diff HEAD` or the range you were given), then 
 
 | A change to… | must also move |
 |---|---|
-| **An MCP tool** | `internal/mcpserver/tools.go` or `tools_lifecycle.go`; `docs/cli.md` — the tool's entry **and the hardcoded count** ("Twelve tools:"); `README.md` — the literal comma-separated tool list **and** its feature bullet; `CHANGELOG.md` `[Unreleased]`; `scripts/checks/*` + `harness/main.go` if it needs coverage; `hooks/session-end-nudge.sh` if it belongs in the allowlist |
+| **An MCP tool** | `internal/mcpserver/tools.go` or `tools_lifecycle.go`; `docs/cli.md` — the tool's entry **and the hardcoded count** (grep for `tools:` — do not trust a number quoted here, it is exactly what drifts); `README.md` — the literal comma-separated tool list **and** its feature bullet; `CHANGELOG.md` `[Unreleased]`; `scripts/checks/*` + `harness/main.go` if it needs coverage; `hooks/session-end-nudge.sh` if it belongs in the allowlist |
 | **A config key** | `internal/config/config.go` — struct field + `mapstructure` tag + **`v.SetDefault`**; `docs/configuration.md` key table; the sample `config.yaml` in `docs/setup-guide.md` |
 | **An XDG path** | `internal/config/paths.go` accessor; the XDG table in **both** `docs/configuration.md` and `docs/setup-guide.md` |
 | **A CLI command or flag** | `internal/cli/*.go`; `docs/cli.md`; `contrib/*` if it touches the daemon lifecycle; `docs/setup-guide.md` if it's part of setup |

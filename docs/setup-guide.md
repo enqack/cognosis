@@ -296,7 +296,8 @@ a check whose prerequisites are missing reports itself skipped and the run goes 
 
 ```sh
 mage check          # scripts/check-all.sh — daemon, memory-loop, retrieval,
-                    # knowledge, platform, tls, embedding-migration
+                    # knowledge, platform, tls, embedding-migration,
+                    # retrieval-eval
 ```
 
 ---
@@ -312,5 +313,6 @@ mage check          # scripts/check-all.sh — daemon, memory-loop, retrieval,
 | `another cognosis daemon …` / lock refusal | The single-instance invariant: only one daemon per database. Stop the other instance (even on another machine — the Postgres advisory lock is the arbiter). |
 | `no migration found for version N` after a manual DB reset | The derived index is rebuildable, not migrated across a schema renumber. Recreate it: drop the schema (`drop schema public cascade; create schema public;`) or the database, then restart — boot reconciliation re-indexes from the vault. **This also drops the `tokens` table**, so the daemon mints a fresh local token on restart: re-read `local-token` and update any client config holding the old one (see the `401` row). |
 | SessionStart hook does nothing | No `.cognosis-project` marker at/above the repo root (by design). Add one to opt the repo in. |
-| `401` from an MCP call | Missing/typo'd bearer token, or the token was revoked. Re-read `local-token`, or mint one with `cognosis token create <name>`. A client config carrying a *copy* of the token is the usual culprit after a schema rebuild: the daemon re-mints into `local-token`, but nothing rewrites the copy. |
+| `401` from an MCP call | Run `cognosis status` first — a failing `auth` check confirms the stashed token itself no longer authenticates, and a passing one means the caller is sending something else. Otherwise: missing/typo'd bearer token, or the token was revoked. Re-read `local-token`, or mint one with `cognosis token create <name>`. A client config carrying a *copy* of the token is the usual culprit after a schema rebuild: the daemon re-mints into `local-token`, but nothing rewrites the copy. |
 | `local token in … was revoked` on startup | Deliberate: the daemon will not mint around a revocation. Delete `local-token` to provision a new one — the file is the source of truth for whether local access is granted. |
+| `graph FAIL … edge(s) missing` from `cognosis status` | The link graph disagrees with what the indexed note content implies. Links are resolved once at index time and never re-derived, so an edge lost to an interrupted write stays lost — reconciliation confirms drift by content hash and skips an unchanged file forever. Repair by **changing the content** of a named note (`edit_note` — `touch` will not do, for the same hash reason), which re-resolves its links; or drop the schema and restart to rebuild the whole index from the vault. Retrieval still works meanwhile: only the graph leg is degraded. |

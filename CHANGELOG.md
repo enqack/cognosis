@@ -6,6 +6,17 @@ All notable changes to Cognosis are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **The `graph` status check no longer fails on large vaults.** It resolved link targets once per
+  note against a full table scan, so the audit was quadratic and exceeded its own deadline — a
+  healthy daemon reported `graph FAIL` because its vault had grown. Now three queries regardless of
+  size (measured at 2000 notes: 1.92s to 5.2ms).
+- **A concurrent `compile_lifecycle` and `edit_note` can no longer revert each other.** They write
+  the same vault files through different code paths and serialized only against themselves.
+- **`cognosis status` cannot hang.** Its health-check connection was the one probe without a
+  timeout, so an unreachable-but-not-refusing database would block the command indefinitely.
+
 ### Added
 
 - **`cognosis status` gained `auth` and `graph` checks.** The existing five checks answer "the
@@ -25,6 +36,25 @@ All notable changes to Cognosis are documented here. The format follows
 
 ### Changed
 
+- **Tool results no longer carry the internal op and error kind.** `write.Pipeline.Edit: validation:
+  old_string appears 2 times` made an agent parse past two internal identifiers to reach the
+  sentence it could act on. Those identifiers are not lost — the audit log and the structured log
+  still record the full error — they are just off the surface where they were noise.
+- **`Internal` and `Unavailable` causes are withheld from tool results**, replaced with a message
+  naming the class and pointing at the daemon log. Both wrap raw pgx, os and net errors that carry
+  DSNs, unix socket paths, database users and embedding endpoints, none of which an agent can act
+  on and all of which a tool result would carry furthest. The two keep distinct messages, so "retry
+  later" stays distinguishable from "report a bug".
+- **Changing an existing note's id is refused** (`Conflict`). The index treats
+  same-path-different-id as an eviction, dropping the row and re-pointing its inbound links, so a
+  note's identity would churn on any write that supplied a fresh id. Omit the id to keep the
+  existing one.
+- **A blank `id:` is treated as absent** rather than producing a duplicate key. Previously it was
+  rejected with `mapping key "id" already defined at line 1`, naming a line the caller never wrote.
+- **`compile_lifecycle` reports a `skipped` action** for a note whose file changed while the run was
+  in flight. The run walks the vault once and rewrites much later, so it could otherwise overwrite
+  an edit that landed in between; the lifecycle is idempotent, so a skipped note is simply
+  re-evaluated on the next compile.
 - **`write_note` assigns a note id when frontmatter omits one** — a new UUIDv7 for a new path, and
   the *existing* id when overwriting. The contract requires v7 and the MCP surface previously
   offered no way to mint one, so every note written through it needed an out-of-band generator.

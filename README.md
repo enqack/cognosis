@@ -135,6 +135,7 @@ boots a daemon in a sandbox against the dev Postgres + Ollama:
 ./scripts/checks/platform.sh            # auth/audit, context inject, commit capture, service files
 ./scripts/checks/tls.sh                 # built-in TLS: non-loopback bind, handshake, auth still enforced
 ./scripts/checks/embedding-migration.sh # zero-downtime provider migration, under load
+./scripts/checks/retrieval-eval.sh      # local-tier retrieval sweeps (needs COGNOSIS_EVAL_DSN)
 ./scripts/check-all.sh                  # all of the above, in order
 ```
 

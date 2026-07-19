@@ -51,8 +51,10 @@ resume_args=()
 COGNOSIS_SESSION_END_NUDGE_ACTIVE=1 claude -p "The session is ending. If anything durable surfaced this session —
 decisions, gotchas, open questions, completed work — persist it now with the
 cognosis write_note tool (entries/ for raw capture), or write_reflection if a
-notable moment warrants one. If nothing durable happened, do nothing." \
+notable moment warrants one. If you already captured a note this session, use
+edit_note to extend it rather than rewriting the whole file. If nothing durable
+happened, do nothing." \
   ${resume_args[@]+"${resume_args[@]}"} \
-  --allowedTools "mcp__cognosis__write_note,mcp__cognosis__write_reflection,mcp__cognosis__list_personas,mcp__cognosis__get_persona" \
+  --allowedTools "mcp__cognosis__write_note,mcp__cognosis__edit_note,mcp__cognosis__write_reflection,mcp__cognosis__list_personas,mcp__cognosis__get_persona" \
   >/dev/null 2>&1 || true
 exit 0

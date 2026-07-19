@@ -41,14 +41,17 @@ kb/
 └── archive/      retired notes
 ```
 
-Every note carries a frontmatter contract (required `id`, `category`, `created`, `updated`; extra
-decay fields for `notes/`). A validator enforces the contract on every write, so a malformed note is
+Every note carries a frontmatter contract (required `category`, `created`, `updated`; extra decay
+fields for `notes/`). `id` is assigned when omitted — a new one for a new path, the existing one
+when overwriting — so a caller holding only the MCP tools need not mint one. A validator enforces the contract on every write, so a malformed note is
 rejected with the offending field named rather than silently indexed.
 
-`id` is a **UUIDv7** — time-ordered, so ids sort lexically by creation time and index inserts stay
+The `id` is a **UUIDv7** — time-ordered, so ids sort lexically by creation time and index inserts stay
 sequential instead of scattering a b-tree. This is enforced, not advised: an id is written once and
 never rewritten, so any version accepted at write time is permanent. Mint one with
-`vault.NewNoteID()`; every code path that creates a note uses it.
+`vault.NewNoteID()`; every code path that creates a note uses it. Changing an existing note's id is
+refused: the index treats same-path-different-id as an eviction, which drops the row and re-points
+its inbound links.
 
 ## The daemon
 
