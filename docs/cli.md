@@ -44,9 +44,10 @@ lifecycle stays top-level.
 ### Tokens
 | Command | Purpose |
 |---|---|
-| `cognosis token create <name>` | Mint a bearer token; the plaintext is printed once and never stored. |
-| `cognosis token revoke <name>` | Revoke a token (effective on the very next request). |
-| `cognosis token list` | List token names and status. |
+| `cognosis token create <name>` | Mint a bearer token; the plaintext is printed once and never stored. Names are `a-z0-9_-`, 1–32 chars; `local` is reserved for the daemon. |
+| `cognosis token revoke <name>` | Revoke a token (effective on the very next request). Frees the name for reuse. |
+| `cognosis token list` | List token names, id prefix and status. |
+| `cognosis token prune [--dry-run]` | Delete revoked tokens no `audit_log` row references; referenced ones are kept by design. |
 
 ### Config
 | Command | Purpose |

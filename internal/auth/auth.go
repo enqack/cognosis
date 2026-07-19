@@ -39,7 +39,15 @@ const (
 // The plaintext is returned once and never stored.
 func Generate() (plaintext string, id uuid.UUID, hash string, err error) {
 	const op = "auth.Generate"
-	id = uuid.New()
+	// UUIDv7: time-ordered, so ids sort lexically by creation and the id itself
+	// dates a credential — the same contract note ids carry. Safe despite being
+	// predictable, because the id is a lookup key rather than a secret: auth
+	// rests on the Argon2id-verified secret half, and Middleware returns one
+	// 401 for both an unknown id and a bad secret, so there is no oracle.
+	id, err = uuid.NewV7()
+	if err != nil {
+		return "", uuid.Nil, "", cogerr.E(op, cogerr.Internal, err)
+	}
 	secret := make([]byte, 32)
 	if _, err := rand.Read(secret); err != nil {
 		return "", uuid.Nil, "", cogerr.E(op, cogerr.Internal, err)
@@ -106,6 +114,12 @@ func parseToken(tok string) (uuid.UUID, string, bool) {
 	}
 	id, err := uuid.Parse(rest[:36])
 	if err != nil {
+		return uuid.Nil, "", false
+	}
+	// Token ids are UUIDv7, same contract as note ids (vault.NewNoteID). v4 is
+	// rejected rather than merely discouraged: accepting both would leave the
+	// time-ordering property unenforced and silently optional.
+	if id.Version() != 7 {
 		return uuid.Nil, "", false
 	}
 	return id, rest[37:], true
@@ -196,15 +210,20 @@ func EnsureLocalToken(ctx context.Context, s *store.Store, tokenFile string) err
 	if err != nil {
 		return err
 	}
-	// "local" may already be taken by a previous state dir's token — mint
-	// under a unique name rather than failing (old ones are revocable via
-	// `cognosis token list`/`revoke`).
-	name := "local"
-	if err := s.CreateToken(ctx, id, name, hash); err != nil {
-		name = "local-" + id.String()[:8]
-		if err := s.CreateToken(ctx, id, name, hash); err != nil {
-			return err
-		}
+	// Always the plain name. Uniqueness is scoped to live tokens, so a revoked
+	// `local` frees the name and rotation keeps it — which is what makes
+	// `token=local` in a log line always mean exactly the daemon.
+	//
+	// A *live* `local` with no state-dir file means a fresh state dir pointed at
+	// an existing database, or a rotation done out of order. That is operator
+	// error, and this refuses rather than minting under a mangled name: a daemon
+	// whose own token is called something unrecognisable is worse than one that
+	// says what is wrong. Mirrors the revocation refusal in localTokenUsable.
+	if err := s.CreateToken(ctx, id, LocalTokenName, hash); err != nil {
+		return cogerr.Ef(op, cogerr.Validation,
+			"a live token named %q already exists but %s is missing; "+
+				"run `cognosis token revoke %s` and restart to mint a fresh one",
+			LocalTokenName, tokenFile, LocalTokenName)
 	}
 	if err := os.WriteFile(tokenFile, []byte(plaintext+"\n"), 0o600); err != nil {
 		return cogerr.E(op, cogerr.Internal, err)

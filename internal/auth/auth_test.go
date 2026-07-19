@@ -136,20 +136,34 @@ func TestEnsureLocalTokenZeroConfig(t *testing.T) {
 	}
 
 	// Fresh state dir against an existing database (the file is gone, a live
-	// "local" row remains): plaintexts aren't recoverable from hashes, so a
-	// new token must be minted under a fallback name and the file recreated.
+	// "local" row remains). The plaintext is not recoverable from the hash, so
+	// the daemon cannot serve — and it now refuses rather than minting under a
+	// mangled name. `token=local` in a log line therefore always means exactly
+	// the daemon, and the operator decides whether to kill a credential some
+	// client may still be holding.
 	if err := os.Remove(tokenFile); err != nil {
 		t.Fatal(err)
 	}
-	if err := EnsureLocalToken(ctx, s, tokenFile); err != nil {
-		t.Fatal(err)
+	err = EnsureLocalToken(ctx, s, tokenFile)
+	if err == nil {
+		t.Fatal("minted a second local token instead of refusing; the removed " +
+			"local-<8hex> fallback is back")
 	}
-	if _, err := os.Stat(tokenFile); err != nil {
-		t.Fatal("token file not re-minted for a fresh state dir")
+	if !cogerr.Is(err, cogerr.Validation) {
+		t.Fatalf("kind = %v, want Validation (an operator-fixable state, not a failure)", err)
+	}
+	// The remedy has to be in the message: this is the only thing the operator
+	// sees, and the fix is not guessable.
+	if !strings.Contains(err.Error(), "token revoke local") {
+		t.Fatalf("error does not name the remedy: %v", err)
+	}
+	if _, statErr := os.Stat(tokenFile); statErr == nil {
+		t.Fatal("wrote a token file despite refusing to mint")
 	}
 	tokens, err = s.ListTokens(ctx)
-	if err != nil || len(tokens) != 2 {
-		t.Fatalf("tokens after re-mint = %d (%v), want 2", len(tokens), err)
+	if err != nil || len(tokens) != 1 {
+		t.Fatalf("tokens after refusal = %d (%v), want 1 — nothing should have been minted",
+			len(tokens), err)
 	}
 }
 
@@ -185,7 +199,6 @@ func authenticates(t *testing.T, s *store.Store, plaintext string) bool {
 // the state dir is untouched. On main this test fails at the last assertion —
 // the file is byte-identical and still dead.
 func TestEnsureLocalTokenRepairsAStaleFile(t *testing.T) {
-	s, _ := storetest.New(t)
 	ctx := context.Background()
 
 	for _, tc := range []struct {
@@ -214,6 +227,10 @@ func TestEnsureLocalTokenRepairsAStaleFile(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			// A store per subtest. Sharing one let "row gone" mint a live
+			// `local`, which then made "unparseable" exercise the
+			// name-already-taken path instead of the repair it names.
+			s, _ := storetest.New(t)
 			tokenFile := filepath.Join(t.TempDir(), "local-token")
 			stale := tc.content(t)
 			if err := os.WriteFile(tokenFile, []byte(stale), 0o600); err != nil {
@@ -302,5 +319,60 @@ func TestEnsureLocalTokenRefusesToUndoRevocation(t *testing.T) {
 	tokens, err2 := s.ListTokens(ctx)
 	if err2 != nil || len(tokens) != 1 {
 		t.Fatalf("tokens = %d (%v), want 1 — a replacement was minted around the revocation", len(tokens), err2)
+	}
+}
+
+// TestEnsureLocalTokenReusesLocalNameAfterRevocation is the headline of the
+// name-reuse change. Rotating the local token used to burn the name `local`
+// forever, leaving the daemon running as `local-<8hex>`; uniqueness is now
+// scoped to live rows, so the revoked row keeps its name for the audit join
+// without squatting it.
+//
+// Against the old global UNIQUE this fails: the live row comes back named
+// `local-<8hex>`.
+func TestEnsureLocalTokenReusesLocalNameAfterRevocation(t *testing.T) {
+	s, _ := storetest.New(t)
+	ctx := context.Background()
+	tokenFile := filepath.Join(t.TempDir(), "local-token")
+
+	if err := EnsureLocalToken(ctx, s, tokenFile); err != nil {
+		t.Fatal(err)
+	}
+	// The documented rotation: revoke, then remove the file, then restart.
+	// Both must precede the restart — with the file present the daemon refuses
+	// to mint around a revocation.
+	if err := s.RevokeToken(ctx, LocalTokenName); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(tokenFile); err != nil {
+		t.Fatal(err)
+	}
+	if err := EnsureLocalToken(ctx, s, tokenFile); err != nil {
+		t.Fatal(err)
+	}
+
+	tokens, err := s.ListTokens(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tokens) != 2 {
+		t.Fatalf("tokens = %d, want 2 (the revoked one is kept for the audit join)", len(tokens))
+	}
+	var live []string
+	for _, tk := range tokens {
+		if tk.RevokedAt == nil {
+			live = append(live, tk.Name)
+		}
+	}
+	if len(live) != 1 || live[0] != LocalTokenName {
+		t.Fatalf("live tokens = %v, want exactly [%q] — the name was not reused",
+			live, LocalTokenName)
+	}
+	b, err := os.ReadFile(tokenFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !authenticates(t, s, strings.TrimSpace(string(b))) {
+		t.Fatal("re-minted local token does not authenticate")
 	}
 }

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -84,6 +85,77 @@ func (s *Store) ListTokens(ctx context.Context) ([]Token, error) {
 			return nil, cogerr.E(op, cogerr.Internal, err)
 		}
 		out = append(out, t)
+	}
+	if rows.Err() != nil {
+		return nil, cogerr.E(op, cogerr.Internal, rows.Err())
+	}
+	return out, nil
+}
+
+// prunableTokens is the single definition of "safe to delete": revoked, and no
+// audit row points at it. Shared by PrunableTokens and PruneRevokedTokens so a
+// dry-run can never preview a different set than the delete performs — a
+// preview that can drift from its action is worse than no preview.
+//
+// Referenced tokens are kept deliberately. audit_log joins to tokens.name at
+// read time and its FK is NO ACTION, so deleting a referenced row would error
+// rather than dangle — this predicate means the error is never reached, and the
+// FK stays as the backstop that would turn a bug here into a failure rather
+// than a silently broken join.
+const prunableTokens = `revoked_at is not null
+	and not exists (select 1 from audit_log a where a.token_id = tokens.id)`
+
+// PrunableTokens names the tokens PruneRevokedTokens would delete.
+func (s *Store) PrunableTokens(ctx context.Context) ([]string, error) {
+	const op = "store.PrunableTokens"
+	rows, err := s.pool.Query(ctx,
+		`select name from tokens where `+prunableTokens+` order by name`)
+	if err != nil {
+		return nil, cogerr.E(op, cogerr.Internal, err)
+	}
+	defer rows.Close()
+	return scanNames(op, rows)
+}
+
+// PruneRevokedTokens deletes revoked tokens nothing in audit_log references and
+// returns their names. Live tokens are never touched.
+func (s *Store) PruneRevokedTokens(ctx context.Context) ([]string, error) {
+	const op = "store.PruneRevokedTokens"
+	rows, err := s.pool.Query(ctx,
+		`delete from tokens where `+prunableTokens+` returning name`)
+	if err != nil {
+		return nil, cogerr.E(op, cogerr.Internal, err)
+	}
+	defer rows.Close()
+	names, err := scanNames(op, rows)
+	if err != nil {
+		return nil, err
+	}
+	// DELETE ... RETURNING admits no ORDER BY; sort here so output is
+	// deterministic and comparable against PrunableTokens.
+	sort.Strings(names)
+	return names, nil
+}
+
+// CountRevokedTokens counts revoked rows, so prune can report how many it kept
+// — which is the answer to "why is my revoked token still listed".
+func (s *Store) CountRevokedTokens(ctx context.Context) (int, error) {
+	var n int
+	if err := s.pool.QueryRow(ctx,
+		`select count(*) from tokens where revoked_at is not null`).Scan(&n); err != nil {
+		return 0, cogerr.E("store.CountRevokedTokens", cogerr.Internal, err)
+	}
+	return n, nil
+}
+
+func scanNames(op string, rows pgx.Rows) ([]string, error) {
+	var out []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, cogerr.E(op, cogerr.Internal, err)
+		}
+		out = append(out, name)
 	}
 	if rows.Err() != nil {
 		return nil, cogerr.E(op, cogerr.Internal, rows.Err())

@@ -62,9 +62,12 @@ create table if not exists embedding_providers (
 
 -- Bearer-token auth + audit trail. Only Argon2id hashes are stored; the
 -- plaintext token is printed once at creation and never again.
+-- name carries no table-level UNIQUE: uniqueness is scoped to live tokens by
+-- tokens_live_name_idx below, so a revoked row keeps its name for the audit
+-- join without squatting it.
 create table if not exists tokens (
   id           uuid primary key default gen_random_uuid(),
-  name         text not null unique,
+  name         text not null,
   token_hash   text not null,
   created_at   timestamptz not null default now(),
   revoked_at   timestamptz,
@@ -114,6 +117,13 @@ create index if not exists chunks_fts_idx on chunks using gin (fts);
 create index if not exists links_dst_idx on links (dst_note_id);
 create index if not exists audit_log_ts_idx on audit_log (ts);
 create index if not exists audit_log_token_idx on audit_log (token_id);
+
+-- One *live* token per name. Rotation is revoke-then-recreate under the same
+-- name, so the daemon keeps the plain name `local` across rotations and clients
+-- keep a stable `token=<name>` attribution attribute. Revoked rows stay for the
+-- audit_log join, which keys on token_id and so is unaffected by reuse.
+create unique index if not exists tokens_live_name_idx
+  on tokens (name) where revoked_at is null;
 
 -- At most one migration may be in progress.
 create unique index if not exists migration_state_single_active

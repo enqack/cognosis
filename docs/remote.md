@@ -87,10 +87,16 @@ Keep each token out of the client's config file — see
 
 **Mint one token per client even locally.** A shared token makes every caller indistinguishable in both
 the audit table and the log, which silently ruins any telemetry drawn from them — an agent debugging
-retrieval writes traffic that looks exactly like ordinary use. Leave the auto-minted `local` token
-alone: `EnsureLocalToken` refuses to mint around a revoked one, so revoking it stops the daemon booting
-until the state-dir file is deleted, and `cognosis token create local` would collide with the name it
-reserves.
+retrieval writes traffic that looks exactly like ordinary use.
+
+Leave the auto-minted `local` token to the daemon. `cognosis token create local` is rejected —
+`local` is reserved, so an operator cannot take the name the daemon mints under. Rotating it is a
+three-step sequence documented in [setup-guide.md](setup-guide.md#rotating-the-local-token); revoking
+it without removing the state-dir file stops the daemon booting.
+
+Rotating any other token is just `revoke <name>` then `create <name>`: names are unique among live
+tokens only, so the name comes back. Revoked rows accumulate for the audit trail —
+`cognosis token prune` clears the ones nothing references and keeps the rest by design.
 
 ## Threat notes
 

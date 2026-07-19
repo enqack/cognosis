@@ -6,6 +6,19 @@ All notable changes to Cognosis are documented here. The format follows
 
 ## [Unreleased]
 
+### Breaking
+
+- **Token names are now unique among *live* tokens only, and token ids are UUIDv7.** Both change the
+  schema and the token format, so this **requires a full rebuild**: stop the daemon,
+  `drop schema public cascade; create schema public;`, restart. The vault is the source of truth and
+  the derived index rebuilds from it, but **the `tokens` table is destroyed** — every token must be
+  re-minted and every client re-pointed at its new token file. `parseToken` rejects UUIDv4 ids, so
+  tokens minted before this release cannot authenticate even if their rows survived.
+
+  Rotation is the payoff: `revoke <name>` then `create <name>` reuses the name, instead of burning it
+  and forcing `desktop-2`, `desktop-3`. The daemon keeps the plain name `local` across rotations, so
+  `token=local` in a log line always means the daemon itself.
+
 ### Added
 
 - **The keyword leg falls back to OR when its conjunction comes back near-empty.**
@@ -19,6 +32,16 @@ All notable changes to Cognosis are documented here. The format follows
   0.400 while firing on zero of 30 healthy queries. `LegStats.FTSFallback` reports when it fires and
   is logged per query, because a silent fallback is indistinguishable from a healthy keyword leg in
   the counts.
+- **`cognosis token prune`** deletes revoked tokens that nothing in `audit_log` references, with
+  `--dry-run` sharing the delete's predicate so a preview cannot drift from the action. Referenced
+  tokens are kept by design — the audit trail joins to them — so a revoked token surviving a prune
+  means it was used. Clears the `ci-revoke-*` rows `scripts/checks/platform.sh` leaks per run.
+- **`cognosis token create` validates names** (`a-z0-9_-`, 1–32 characters) and rejects `local`.
+  Previously it validated nothing, so `token create local` succeeded and pushed the daemon onto a
+  fallback name, after which the documented remedy `cognosis token revoke local` revoked the
+  operator's token rather than the daemon's.
+- `cognosis token list` shows an id prefix, which disambiguates the several revoked rows a rotated
+  client leaves behind under one name.
 - `store.RankFTSMode` exposes the tsquery connective; `store.RankFTS` keeps its signature and
   semantics.
 - `internal/query/retrievaleval` can generate queries that starve the keyword leg — markers unique
@@ -37,6 +60,11 @@ All notable changes to Cognosis are documented here. The format follows
 
 ### Changed
 
+- **`EnsureLocalToken` no longer mints under a `local-<8hex>` fallback.** A live `local` row with no
+  state-dir file is operator error — a fresh state dir pointed at an existing database, or a
+  mis-ordered rotation — and the daemon now refuses to start, naming the remedy, rather than running
+  under a name nothing recognises. Repair of a genuinely stale file (the post-rebuild case the
+  function exists for) is unchanged.
 - Request-scoped log calls in `internal/mcpserver` now use slog's `*Context` variants. A plain `Info()`
   there silently drops the caller's identity, so it is enforced two ways: a test that parses the package
   and fails naming `file:line`, and `sloglint`'s `context` check scoped to that package alone.

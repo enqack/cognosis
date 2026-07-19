@@ -274,10 +274,20 @@ and never in `audit_log` — separable by client.
 **A missing `token=` identifies daemon-internal work, not broken attribution.** The watcher, the
 migration worker, CLI-driven lifecycle compiles and every startup line run with no authenticated caller.
 
-Two asymmetries are deliberate. The log records the token *name* while `audit_log` records its *id*:
-the table can join to `tokens.name` at read time and `internal/store/tokens.go` has no delete (revocation
-only sets `revoked_at`, so the join never dangles), whereas a text stream has no join available to
-whoever is reading it. And request-scoped log calls must use slog's `*Context` variants or the identity
+Two asymmetries are deliberate. The log records the token *name* while `audit_log` records its *id* —
+**a name identifies a client, an id identifies a credential.** That split is what lets a name be
+reused: rotating a client's token keeps `token=desktop` meaning Desktop, while `audit_log.token_id`
+still pins exactly which credential made each call. Token ids are UUIDv7, so they are time-ordered
+and generations sort. `cognosis token prune` is the only delete and refuses any row `audit_log`
+references, so the read-time join to `tokens.name` never dangles; the FK's NO ACTION is the backstop
+that would turn a bug there into an error rather than a silent orphan.
+
+Names are unique among **live** tokens only (`tokens_live_name_idx`), so a revoked row keeps its name
+for the audit trail without reserving it. `local` is reserved from operator creation
+(`auth.ValidateTokenName`) and the daemon mints under exactly that name or refuses — so `token=local`
+always means the daemon itself.
+
+Request-scoped log calls must use slog's `*Context` variants or the identity
 is silently dropped — enforced by `TestRequestScopedLogsCarryContext`, which parses the package, plus
 `sloglint`'s `context` check scoped to `internal/mcpserver`.
 

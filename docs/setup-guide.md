@@ -237,20 +237,26 @@ applies locally too: a shared token makes every caller indistinguishable in `aud
 
 ## Rotating the local token
 
-**Deleting `local-token` mints a replacement; it does not invalidate the old one.** Both steps are
-required, and the order matters:
+**Deleting `local-token` does not invalidate the old credential** — it only removes your copy. Both
+steps are required, and **both must happen before the restart**:
 
 ```sh
-rm "$XDG_STATE_HOME/cognosis/local-token"   # or ~/.local/state/cognosis/local-token
-cognosis stop && cognosis start             # daemon mints a fresh token into the file
-cognosis token list                         # find the row the OLD token belonged to
-cognosis token revoke local                 # revoke it — the deletion alone did not
+cognosis token revoke local                 # the old credential dies on the next request
+rm "$XDG_STATE_HOME/cognosis/local-token"   # before restarting, not after
+cognosis stop && cognosis start             # mints a fresh token, under the same name `local`
 ```
 
-The reason is `tokens.name`: it is UNIQUE and revoked rows keep their name forever, so the daemon
-cannot reuse `local`. It mints under `local-<8hex>` instead and the original `local` row stays **live**
-until explicitly revoked. Skipping the revoke leaves a working credential in circulation — which
-matters if the reason for rotating was that the old token leaked.
+The order is not arbitrary, and each wrong order fails differently:
+
+- **Restarting with the file still present** → the daemon refuses to start. It will not mint around
+  a revocation while a file points at the revoked row (see the `local token in … was revoked` row
+  under [Troubleshooting](#troubleshooting)).
+- **Restarting before the revoke** → the old row is still live and owns the name, so the daemon
+  refuses to start rather than renaming itself. The error names the fix.
+
+The name survives because uniqueness applies to **live** tokens only: the revoked row keeps its name
+for the audit trail without reserving it. So `token=local` in a log line always means the daemon,
+across any number of rotations.
 
 Verify the old token is actually dead rather than assuming it:
 
@@ -259,12 +265,19 @@ curl -s -o /dev/null -w '%{http_code}\n' \
   -H "Authorization: Bearer <the old token>" http://127.0.0.1:7433/   # expect 401
 ```
 
-Revoke `local` only *after* the file has been re-minted. Revoking while the file still points at that
-row leaves the daemon refusing to start — it will not mint around a revocation (see the
-`local token in … was revoked` row under [Troubleshooting](#troubleshooting)).
-
 Any client still holding the old token now gets `401`, including ones you forgot about; `cognosis token
 list` shows `last used` per token, which is the quickest way to find them.
+
+Other tokens rotate the same way, without the file dance:
+
+```sh
+cognosis token revoke desktop
+cognosis token create desktop   # same name, new credential
+```
+
+Revoked rows accumulate for the audit trail. `cognosis token prune` deletes the ones nothing in
+`audit_log` references; the rest are kept **by design**, so a revoked token surviving a prune means
+it was used, not that the prune failed.
 
 ---
 
@@ -436,7 +449,8 @@ mage check          # scripts/check-all.sh — daemon, memory-loop, retrieval,
 | `no migration found for version N` after a manual DB reset | The derived index is rebuildable, not migrated across a schema renumber. Recreate it: drop the schema (`drop schema public cascade; create schema public;`) or the database, then restart — boot reconciliation re-indexes from the vault. **This also drops the `tokens` table**, so the daemon mints a fresh local token on restart: re-read `local-token` and update any client config holding the old one (see the `401` row). No revoke is needed here — dropping the table removes the rows outright, unlike [rotation](#rotating-the-local-token). |
 | SessionStart hook does nothing | No `.cognosis-project` marker at/above the repo root (by design). Add one to opt the repo in. |
 | `401` from an MCP call | Run `cognosis status` first — a failing `auth` check confirms the stashed token itself no longer authenticates, and a passing one means the caller is sending something else. Otherwise: missing/typo'd bearer token, or the token was revoked. Re-read `local-token`, or mint one with `cognosis token create <name>`. A client config carrying a *copy* of the token is the usual culprit after a schema rebuild: the daemon re-mints into `local-token`, but nothing rewrites the copy. |
-| `local token in … was revoked` on startup | Deliberate: the daemon will not mint around a revocation. Delete `local-token` to provision a new one — the file is the source of truth for whether local access is granted. The replacement is minted under `local-<8hex>`, not `local`, because the revoked row keeps that name; `cognosis token list` will show both. |
-| Rotated the local token but the old one still works | Deleting `local-token` mints a replacement without invalidating the old row, which stays live under the name `local`. Revoke it explicitly — see [Rotating the local token](#rotating-the-local-token). |
+| `local token in … was revoked` on startup | Deliberate: the daemon will not mint around a revocation. Delete `local-token` to provision a new one — the file is the source of truth for whether local access is granted. The replacement reuses the name `local`; the revoked row stays for the audit trail until `cognosis token prune`. |
+| `a live token named "local" already exists but … is missing` on startup | The database has a live `local` row but the state-dir file is gone — a fresh state dir pointed at an existing database, or a rotation done out of order. The plaintext cannot be recovered from the hash, so the daemon refuses rather than minting under a mangled name. `cognosis token revoke local`, then restart. |
+| Rotated the local token but the old one still works | Deleting `local-token` removes your copy without revoking the row. Revoke it explicitly — see [Rotating the local token](#rotating-the-local-token). |
 | Vault history full of `.obsidian` or `history.md` commits | Vaults created before this behaviour existed still *track* those files, and `.gitignore` alone does not untrack. Cognosis no longer commits them, but the already-tracked copies keep showing as modified — which also makes `note delete --hard` retry, since git refuses to rewrite history on a dirty tree. One-time cleanup: `cd "$XDG_DATA_HOME/cognosis/kb" && git rm -r --cached --quiet .obsidian/workspace.json .obsidian/graph.json history.md && git commit -m "stop tracking editor and generated state"`. Nothing is deleted from disk. |
 | `graph FAIL … edge(s) missing` from `cognosis status` | The link graph disagrees with what the indexed note content implies. Links are resolved once at index time and never re-derived, so an edge lost to an interrupted write stays lost — reconciliation confirms drift by content hash and skips an unchanged file forever. Repair by **changing the content** of a named note (`edit_note` — `touch` will not do, for the same hash reason), which re-resolves its links; or drop the schema and restart to rebuild the whole index from the vault. Retrieval still works meanwhile: only the graph leg is degraded. |
