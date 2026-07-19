@@ -257,10 +257,49 @@ func TestSuppressedPathIgnored(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	w.Suppress("entries/mine.md")
-	writeEntry(t, root, "entries/mine.md", entryContent(uuid.NewString()))
+	writeEntry(t, root, "entries/mine.md", entryContent(uuid.Must(uuid.NewV7()).String()))
 	time.Sleep(500 * time.Millisecond) // would have been indexed by now if not suppressed
 	if _, err := s.GetNote(ctx, "entries/mine.md"); !cogerr.Is(err, cogerr.NotFound) {
 		t.Fatalf("suppressed path was indexed anyway: %v", err)
 	}
 	w.Unsuppress("entries/mine.md")
+}
+
+// TestBatchIndexResolvesLinksRegardlessOfOrder pins the graph against index
+// order. Link resolution matches notes already in the index, so in a batch a
+// note whose target is indexed later loses that edge — and nothing repairs it,
+// because reconciliation confirms drift by content hash and an unchanged file
+// is skipped forever. A rebuild after dropping the schema therefore silently
+// produced a partial graph.
+//
+// "zzz" sorts after "aaa", so aaa (the source) is walked and indexed first,
+// which is exactly the losing order.
+func TestBatchIndexResolvesLinksRegardlessOfOrder(t *testing.T) {
+	w, s, root, ctx := testWatcher(t)
+
+	target := uuid.Must(uuid.NewV7()).String()
+	writeEntry(t, root, "entries/zzz-target.md", entryContent(target))
+
+	src := uuid.Must(uuid.NewV7()).String()
+	writeEntry(t, root, "entries/aaa-source.md", `---
+id: `+src+`
+category: entry
+created: "2026-07-12 09:00:00"
+updated: "2026-07-12 09:00:00"
+---
+Refers to [[zzz-target]] in the body.
+`)
+
+	if err := w.Reconcile(ctx, s); err != nil {
+		t.Fatal(err)
+	}
+
+	srcID := uuid.MustParse(src)
+	dsts, err := s.LinkDsts(ctx, srcID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dsts) != 1 || dsts[0] != uuid.MustParse(target) {
+		t.Fatalf("link from aaa-source to zzz-target missing after batch index: got %v", dsts)
+	}
 }

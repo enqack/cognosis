@@ -103,8 +103,32 @@ func (ix *Indexer) Index(ctx context.Context, n *vault.Note, meta FileMeta) erro
 	return ix.Store.IndexNote(ctx, sn, storeChunks, vecsByTable, links)
 }
 
+// Relink re-resolves a note's outbound links against the current index and
+// rewrites its edges. Chunks and embeddings are untouched — this is only the
+// graph.
+//
+// It exists because link resolution is order-dependent: resolveLinks matches
+// against notes already in the index, so a note indexed before its targets
+// loses those edges, and the "dangling targets become resolvable when their
+// note lands" promise below is never actually kept by anything. A batch index
+// (boot reconciliation, or a rebuild after dropping the schema) therefore
+// silently ends up with a partial graph, and no ordinary operation repairs it:
+// reconciliation confirms drift by content hash, so an unchanged file is
+// skipped forever.
+func (ix *Indexer) Relink(ctx context.Context, n *vault.Note) error {
+	links, err := ix.resolveLinks(ctx, n)
+	if err != nil {
+		return err
+	}
+	id, err := uuid.Parse(n.ID())
+	if err != nil {
+		return cogerr.Ef("write.Relink", cogerr.Validation, "%s: bad id: %v", n.Path, err)
+	}
+	return ix.Store.SetLinks(ctx, id, links)
+}
+
 // resolveLinks maps the note's outbound wikilink/source targets to note ids;
-// dangling targets are dropped (they become resolvable when their note lands).
+// dangling targets are dropped. They are NOT self-healing — see Relink.
 func (ix *Indexer) resolveLinks(ctx context.Context, n *vault.Note) ([]store.Link, error) {
 	refs := vault.Targets(n)
 	if len(refs) == 0 {

@@ -108,17 +108,17 @@ func Run(ctx context.Context, cfg *config.Config, log *slog.Logger, opts Options
 	defer releaseInstance()
 	log.Info("single-instance lock held", "pid", os.Getpid(), "lock", cfg.Paths().LockFile())
 
-	// 4. Boot-time vault reconciliation.
-	if opts.Reconciler != nil {
-		if err := opts.Reconciler.Reconcile(ctx, s); err != nil {
-			return fmt.Errorf("startup: vault reconciliation: %w", err)
-		}
-		log.Info("vault reconciled")
-	}
-
-	// 5. Embedding provider reachability — fatal, not degraded — then table
+	// 4. Embedding provider reachability — fatal, not degraded — then table
 	// provisioning (probe/known dimension → create table + index → register
 	// as active).
+	//
+	// This must precede reconciliation. Indexing a note embeds its chunks, so
+	// reconciliation needs an active provider; against a fresh schema there
+	// isn't one yet, and every note failed with "no active embedding provider
+	// registered" — the vault only indexed on a *second* boot, once the
+	// provider row from the first boot existed. Ordinary restarts hid it
+	// because the row persists. Failing the health check before touching the
+	// vault is also the better failure: no half-reconciled index.
 	if opts.Embedder != nil {
 		if err := opts.Embedder.Health(ctx); err != nil {
 			return fmt.Errorf("startup: embedding provider: %w", err)
@@ -135,6 +135,14 @@ func Run(ctx context.Context, cfg *config.Config, log *slog.Logger, opts Options
 			"model", opts.Embedder.Model(), "dim", dim, "table", table)
 	} else {
 		log.Info("embedding provider not configured; skipped")
+	}
+
+	// 5. Boot-time vault reconciliation.
+	if opts.Reconciler != nil {
+		if err := opts.Reconciler.Reconcile(ctx, s); err != nil {
+			return fmt.Errorf("startup: vault reconciliation: %w", err)
+		}
+		log.Info("vault reconciled")
 	}
 
 	// 6. Serve: run components until cancellation.

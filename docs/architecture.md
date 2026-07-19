@@ -58,9 +58,13 @@ Startup is a linear, fail-fast sequence — any failure in the first steps is fa
 2. schema migrations (auto-applied, embedded SQL)
 3. history repo init
 4. **single-instance lock** (below) — before any reconciliation
-5. boot reconciliation of the vault into the index
-6. embedding-provider reachability + table provisioning
+5. embedding-provider reachability + table provisioning
+6. boot reconciliation of the vault into the index
 7. serve: MCP server + file watcher + migration worker
+
+Provisioning precedes reconciliation because indexing a note embeds its chunks: against a fresh
+schema there is no active provider yet, and reconciliation would fail every note and only index the
+vault on a second boot.
 
 In the serve phase, per-item background work in the file watcher and migration worker recovers from
 panics (logged and isolated to that one item) rather than crashing the daemon; a panic in a primary

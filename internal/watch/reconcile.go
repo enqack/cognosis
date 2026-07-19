@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -92,12 +93,6 @@ func (w *Watcher) reconcile(ctx context.Context, forceHash bool) error {
 		return err
 	}
 
-	type candidate struct {
-		rel   string
-		abs   string
-		mtime time.Time
-		size  int64
-	}
 	var candidates []candidate
 	onDisk := map[string]bool{}
 
@@ -144,11 +139,6 @@ func (w *Watcher) reconcile(ctx context.Context, forceHash bool) error {
 	}
 
 	// Hash candidates in a worker pool; only confirmed drift gets re-indexed.
-	type drifted struct {
-		candidate
-		hash    string
-		content []byte
-	}
 	var (
 		driftMu sync.Mutex
 		drifts  []drifted
@@ -185,11 +175,38 @@ func (w *Watcher) reconcile(ctx context.Context, forceHash bool) error {
 	}
 	wg.Wait()
 
+	// The hash workers append concurrently, so drifts arrives in completion
+	// order — meaning the index order, and therefore which links resolve on
+	// the first pass, varies run to run. Sort so a reconcile is reproducible
+	// and so tests can pin the order that used to lose edges.
+	sort.Slice(drifts, func(i, j int) bool { return drifts[i].rel < drifts[j].rel })
+
 	changed := 0
+	indexed := make([]drifted, 0, len(drifts))
 	for _, d := range drifts {
 		if err := w.indexFile(ctx, d.rel, d.content, d.mtime, d.size, d.hash); err == nil {
 			changed++
+			indexed = append(indexed, d)
 		}
+	}
+
+	// Second pass: re-resolve links now that every note from this batch is in
+	// the index. Link resolution matches against notes already indexed, so on
+	// the first pass a note whose target came later in the loop silently lost
+	// that edge — and nothing repaired it afterwards, because reconciliation
+	// confirms drift by content hash and an unchanged file is skipped forever.
+	// A rebuild after dropping the schema therefore produced a partial graph.
+	// Cost is one resolve + SetLinks per note; no chunking, no embedding.
+	//
+	// This closes the within-batch ordering hole, which is the one a rebuild
+	// hits. It does NOT close the later-arrival case: if note A references B
+	// and B is created in some *later* run, A is unchanged, so A is not in
+	// this batch and its dangling ref to B stays dangling. resolveLinks'
+	// promise that dangling targets "become resolvable when their note lands"
+	// is still unkept for that path — repairing it needs a reverse lookup from
+	// a landing note to whoever references its basename, which nothing stores.
+	if len(indexed) > 1 {
+		w.relinkBatch(ctx, indexed)
 	}
 
 	// Deletions: indexed paths that no longer exist on disk.
@@ -212,6 +229,44 @@ func (w *Watcher) reconcile(ctx context.Context, forceHash bool) error {
 		w.log.Info("reconciliation applied", "changed", changed, "hashed", len(candidates))
 	}
 	return nil
+}
+
+// candidate is a vault file the fast path could not rule out.
+type candidate struct {
+	rel   string
+	abs   string
+	mtime time.Time
+	size  int64
+}
+
+// drifted is one file whose on-disk content differs from the index.
+type drifted struct {
+	candidate
+	hash    string
+	content []byte
+}
+
+// relinkBatch re-resolves outbound links for every note indexed in this run,
+// repairing edges that were dangling when their note was indexed ahead of its
+// targets. Failures are logged, not fatal: a missing edge degrades the graph
+// leg of retrieval, it does not corrupt the index.
+func (w *Watcher) relinkBatch(ctx context.Context, batch []drifted) {
+	repaired := 0
+	for _, d := range batch {
+		if ctx.Err() != nil {
+			return
+		}
+		n, err := vault.ParseNote(d.rel, d.content)
+		if err != nil {
+			continue // already reported by indexFile
+		}
+		if err := w.indexer().Relink(ctx, n); err != nil {
+			w.log.Error("relink failed", "path", d.rel, "reason", err)
+			continue
+		}
+		repaired++
+	}
+	w.log.Debug("links re-resolved after batch index", "notes", repaired)
 }
 
 // indexFile validates one file and routes it through the shared indexing
