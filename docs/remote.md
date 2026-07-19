@@ -76,7 +76,16 @@ cognosis token list
 ```
 
 Each client sends `Authorization: Bearer <token>`. Every tool call is audit-logged (`audit_log` table)
-under the resolved token identity with redacted argument summaries — never note content.
+under the resolved token identity with redacted argument summaries — never note content. MCP-originated
+log lines also carry `token=<name>`, so per-leg retrieval counters can be attributed per client; a
+missing `token=` marks daemon-internal work rather than a gap.
+
+**Mint one token per client even locally.** A shared token makes every caller indistinguishable in both
+the audit table and the log, which silently ruins any telemetry drawn from them — an agent debugging
+retrieval writes traffic that looks exactly like ordinary use. Leave the auto-minted `local` token
+alone: `EnsureLocalToken` refuses to mint around a revoked one, so revoking it stops the daemon booting
+until the state-dir file is deleted, and `cognosis token create local` would collide with the name it
+reserves.
 
 ## Threat notes
 

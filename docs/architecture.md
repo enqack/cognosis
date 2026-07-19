@@ -264,6 +264,27 @@ path isn't a write-per-request). A zero-config local token is minted on first st
 audit-logged under the resolved token identity, with a redacted `args_summary` that never contains note
 content. Non-loopback binds require TLS; see [remote.md](remote.md).
 
+### Log attribution
+
+MCP-originated log lines carry `token=<name>`, added by `auth.NewIdentityHandler` from the identity
+`auth.Middleware` puts in the request context. This is what makes per-leg retrieval telemetry —
+`query_knowledge`'s `vector`/`fts`/`graph`/`sources`/`fts_fallback` counters, which live only in the log
+and never in `audit_log` — separable by client.
+
+**A missing `token=` identifies daemon-internal work, not broken attribution.** The watcher, the
+migration worker, CLI-driven lifecycle compiles and every startup line run with no authenticated caller.
+
+Two asymmetries are deliberate. The log records the token *name* while `audit_log` records its *id*:
+the table can join to `tokens.name` at read time and `internal/store/tokens.go` has no delete (revocation
+only sets `revoked_at`, so the join never dangles), whereas a text stream has no join available to
+whoever is reading it. And request-scoped log calls must use slog's `*Context` variants or the identity
+is silently dropped — enforced by `TestRequestScopedLogsCarryContext`, which parses the package, plus
+`sloglint`'s `context` check scoped to `internal/mcpserver`.
+
+Per-client attribution requires per-client tokens; a shared token makes every caller look identical.
+If that ever proves insufficient, the MCP SDK exposes `req.GetSession().ID()` in receiving middleware,
+which distinguishes clients even on one token.
+
 ## Deletion
 
 Two paths: **soft delete** (archival via `compile_lifecycle`, the only deletion an agent can do —

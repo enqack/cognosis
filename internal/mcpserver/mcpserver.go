@@ -235,6 +235,14 @@ func (s *Server) toolError(req *mcp.CallToolRequest, err error) error {
 
 // audit records one tool call under the caller's token identity. summary must
 // already be redacted (identifying args only — never note content).
+//
+// Stores TokenID rather than the name, which is the opposite of what the
+// structured log does (see auth.NewIdentityHandler). Deliberate: audit_log is
+// queryable and can join to tokens.name at read time, and internal/store/tokens.go
+// has no delete — revocation only sets revoked_at — so that join never dangles.
+// The log is an append-only text stream with no join available to whoever reads
+// it, so it carries the human-readable name. Different media, different
+// normalization; a denormalized copy here would be a second source of truth.
 func (s *Server) audit(ctx context.Context, tool, project, summary string, callErr error) {
 	var tokenID *uuid.UUID
 	if id, ok := auth.FromContext(ctx); ok {
@@ -245,7 +253,7 @@ func (s *Server) audit(ctx context.Context, tool, project, summary string, callE
 		msg = callErr.Error()
 	}
 	if err := s.store.AppendAudit(ctx, tokenID, tool, project, summary, callErr == nil, msg); err != nil {
-		s.log.Error("audit append failed", "tool", tool, "reason", err)
+		s.log.ErrorContext(ctx, "audit append failed", "tool", tool, "reason", err)
 	}
 }
 
@@ -284,6 +292,11 @@ func (s *Server) Run(ctx context.Context) error {
 		}()
 		errCh <- serveErr
 	}()
+	// Deliberately not InfoContext: this is startup, before any request, so
+	// there is no authenticated caller to attribute it to. logcontext_test.go
+	// allowlists this message — see auth.NewIdentityHandler on why a missing
+	// token= means daemon-internal work rather than broken attribution.
+	//nolint:sloglint // startup, before any request: no caller to attribute to
 	s.log.Info("mcp server listening", "addr", s.bind, "tls", s.tls.Enabled())
 
 	select {

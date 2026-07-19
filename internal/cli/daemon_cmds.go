@@ -42,7 +42,12 @@ func newStartCmd() *cobra.Command {
 				return nil
 			}
 
-			log := slog.New(slog.NewTextHandler(os.Stderr, nil))
+			// The identity wrapper is applied here, at the only slog.New in
+			// non-test code, so every logger derived from it attributes
+			// request-scoped lines to the calling token. Nothing automated
+			// covers this line: the handler's own tests construct their own
+			// logger, so they pass whether or not this wrapping exists.
+			log := slog.New(auth.NewIdentityHandler(slog.NewTextHandler(os.Stderr, nil)))
 			ctx, cancel := daemon.SignalContext(cmd.Context())
 			defer cancel()
 

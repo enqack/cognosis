@@ -48,6 +48,8 @@ linters:
   # runs real work off a long-lived struct-held context while a separate
   # context governs only the load loop's own stop condition.
   settings:
+    sloglint:
+      context: all
     gosec:
       # Every other gosec finding got a real code fix (tightened file/dir
       # permissions, an explicit bounds check, a widening-only numeric
@@ -74,6 +76,16 @@ linters:
         - G304
         - G703
         - G704
+
+  # sloglint's context check is scoped to internal/mcpserver: only there does a
+  # contextless log call lose something (the caller's token identity, added by
+  # auth.NewIdentityHandler). Daemon-internal logging has no caller by
+  # construction and must stay exempt.
+  exclusions:
+    rules:
+      - linters: [sloglint]
+        path-except: internal/mcpserver/
+        text: "should be used instead"
 
 # Report every finding (no capping) so the suite is honest and green-means-clean.
 issues:

@@ -61,7 +61,7 @@ func (s *Server) addLifecycleTools(srv *mcp.Server) {
 		if err != nil {
 			return nil, nil, s.toolError(req, err)
 		}
-		s.log.Info("compile_lifecycle", "actions", len(report.Actions), "dry_run", args.DryRun)
+		s.log.InfoContext(ctx, "compile_lifecycle", "actions", len(report.Actions), "dry_run", args.DryRun)
 		return textResult(report.String()), nil, nil
 	})
 
@@ -128,7 +128,7 @@ func (s *Server) addLifecycleTools(srv *mcp.Server) {
 		if err != nil {
 			return nil, nil, s.toolError(req, err)
 		}
-		s.log.Info("write_reflection", "persona", args.Persona, "path", rel)
+		s.log.InfoContext(ctx, "write_reflection", "persona", args.Persona, "path", rel)
 		return textResult("written: " + rel), nil, nil
 	})
 }

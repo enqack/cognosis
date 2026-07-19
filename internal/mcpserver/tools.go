@@ -81,7 +81,7 @@ func (s *Server) addTools(srv *mcp.Server) {
 		if err != nil {
 			return nil, nil, s.toolError(req, err)
 		}
-		s.log.Info("write_note", "path", args.Path, "project", args.Project)
+		s.log.InfoContext(ctx, "write_note", "path", args.Path, "project", args.Project)
 		return textResult("written: " + args.Path), nil, nil
 	})
 
@@ -102,7 +102,7 @@ func (s *Server) addTools(srv *mcp.Server) {
 		if err != nil {
 			return nil, nil, s.toolError(req, err)
 		}
-		s.log.Info("edit_note", "path", args.Path)
+		s.log.InfoContext(ctx, "edit_note", "path", args.Path)
 		return textResult("edited: " + args.Path), nil, nil
 	})
 
@@ -159,7 +159,7 @@ func (s *Server) addTools(srv *mcp.Server) {
 		// the same event never places. The per-leg counts cannot show that —
 		// the crowding note's chunks are all genuinely relevant — and neither
 		// can `results`, which counts chunks.
-		s.log.Info("query_knowledge", "results", len(results),
+		s.log.InfoContext(ctx, "query_knowledge", "results", len(results),
 			"vector", stats.Vector, "fts", stats.FTS, "graph", stats.Graph, "fused", stats.Fused,
 			"fused_sources", stats.FusedSources, "sources", stats.Sources,
 			"fts_fallback", stats.FTSFallback)

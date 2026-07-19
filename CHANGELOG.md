@@ -26,8 +26,20 @@ All notable changes to Cognosis are documented here. The format follows
   AND returns exactly one wrong candidate. `TestKeywordORFallbackSweep` sweeps the threshold over
   both regimes plus a healthy control, and is wired into `scripts/checks/retrieval-eval.sh`.
 
+- **MCP-originated log lines carry `token=<name>`.** `auth.NewIdentityHandler` wraps the daemon's slog
+  handler and annotates any record logged with a context carrying an authenticated identity. This makes
+  per-leg retrieval telemetry separable by client: `query_knowledge`'s `vector`/`fts`/`graph`/`sources`/
+  `fts_fallback` counters live only in the log, never in `audit_log`, so before this there was no way to
+  tell one caller's query shape from another's — an agent investigating retrieval produced traffic
+  indistinguishable from ordinary use. A missing `token=` marks daemon-internal work (watcher, migration
+  worker, CLI-driven compiles), not a gap. Requires per-client tokens to be useful; see remote.md.
+  `audit_log` is unchanged and still keys on `token_id`, which joins to `tokens.name` at read time.
+
 ### Changed
 
+- Request-scoped log calls in `internal/mcpserver` now use slog's `*Context` variants. A plain `Info()`
+  there silently drops the caller's identity, so it is enforced two ways: a test that parses the package
+  and fails naming `file:line`, and `sloglint`'s `context` check scoped to that package alone.
 - The golden fused ranking moved: `notes/scoped.md` now places above `entries/vault.md` for the
   fixture query. The fallback fires on that corpus and surfaces a note containing one query term
   above one containing none, which is the intended effect. `TestTuningFTSFallbackReachesRun` pins
