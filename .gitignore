@@ -12,3 +12,8 @@ contrib/flake.lock
 
 # IDE / editor
 .idea/
+
+# Retrieval-eval sweeps rewrite these on every run — recorded measurements
+# for a human to read, never diffed or asserted against (bounds are asserted in
+# the tests). A committed copy is just whoever ran the sweep last.
+internal/query/retrievaleval/testdata/

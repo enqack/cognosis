@@ -1,9 +1,0 @@
-fused top-8 overlap, pre-fix vs shipped scan settings — 8000 chunks, 30 queries
-pre-fix = hnsw.ef_search=40 + hnsw.iterative_scan=off (pgvector defaults)
-shipped = store.Connect's settings (ef_search=100 + iterative_scan=relaxed_order)
-
-CONFIGURATION               RBO  JACCARD    CHANGED NOTE
-default scope             0.941    0.985          2 2/30 queries returned different top-8
-scope=wide                0.810    0.687         19 19/30 queries returned different top-8
-no graph leg              0.962    1.000          0 identical — the fix changes nothing the agent sees here
-vector only               0.962    1.000          0 identical — the fix changes nothing the agent sees here
