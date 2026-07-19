@@ -3,6 +3,8 @@ package write
 import (
 	"context"
 
+	"github.com/google/uuid"
+
 	"github.com/enqack/cognosis/internal/vault"
 )
 
@@ -45,49 +47,70 @@ func (ix *Indexer) AuditGraph(ctx context.Context) (GraphAudit, error) {
 	if err != nil {
 		return g, err
 	}
-	const maxSample = 5
+
+	// Three queries for the whole audit, regardless of vault size: the notes,
+	// every basename resolved at once, and every edge at once. The first
+	// version issued a ResolveBasenames (a full scan of notes) plus a LinkDsts
+	// per note, so a few thousand notes exceeded the caller's deadline and the
+	// audit reported FAIL on a perfectly healthy daemon.
+	type parsed struct {
+		id   uuid.UUID
+		note *vault.Note
+	}
+	var docs []parsed
+	var names []string
 	for _, r := range notes {
 		stage, ok := vault.StageOf(r.Path)
 		if !ok {
 			continue
 		}
-		g.Notes++
-
 		n := &vault.Note{Path: r.Path, Stage: stage, Frontmatter: r.Frontmatter, Body: r.Body}
-		want, err := ix.resolveLinks(ctx, n)
-		if err != nil {
-			return g, err
+		docs = append(docs, parsed{r.ID, n})
+		for _, ref := range vault.Targets(n) {
+			names = append(names, linkKey(ref))
 		}
-		have, err := ix.Store.LinkDsts(ctx, r.ID)
-		if err != nil {
-			return g, err
-		}
+	}
+	g.Notes = len(docs)
+
+	resolved, err := ix.Store.ResolveBasenames(ctx, names)
+	if err != nil {
+		return g, err
+	}
+	edges, err := ix.Store.AllLinks(ctx)
+	if err != nil {
+		return g, err
+	}
+
+	const maxSample = 5
+	for _, d := range docs {
+		want := linksFrom(d.note, resolved)
+		have := edges[d.id]
 		g.Edges += len(have)
 
-		// Compare destinations only. resolveLinks already drops dangling refs
-		// and self-links, so anything it returns should have an edge.
-		haveSet := make(map[string]bool, len(have))
+		// Compare destinations only. linksFrom already drops dangling refs and
+		// self-links, so anything it returns should have an edge.
+		haveSet := make(map[uuid.UUID]bool, len(have))
 		for _, id := range have {
-			haveSet[id.String()] = true
+			haveSet[id] = true
 		}
-		wantSet := make(map[string]bool, len(want))
+		wantSet := make(map[uuid.UUID]bool, len(want))
 		missing := 0
 		for _, l := range want {
-			wantSet[l.Dst.String()] = true
-			if !haveSet[l.Dst.String()] {
+			wantSet[l.Dst] = true
+			if !haveSet[l.Dst] {
 				missing++
 			}
 		}
 		extra := 0
 		for _, id := range have {
-			if !wantSet[id.String()] {
+			if !wantSet[id] {
 				extra++
 			}
 		}
 		g.Missing += missing
 		g.Extra += extra
 		if (missing > 0 || extra > 0) && len(g.Sample) < maxSample {
-			g.Sample = append(g.Sample, r.Path)
+			g.Sample = append(g.Sample, d.note.Path)
 		}
 	}
 	return g, nil

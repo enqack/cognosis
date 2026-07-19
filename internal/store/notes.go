@@ -249,38 +249,6 @@ type Referrer struct {
 // over-match (a name inside a code fence still counts), which is harmless:
 // the caller re-resolves through vault.Targets, and a note that turns out not
 // to reference the target simply rewrites the same edges it already had.
-// AllReferrers returns every note with the columns needed to re-derive its
-// outbound links. It exists for the graph audit in `cognosis status`, which
-// compares the edges the index holds against the edges the indexed content
-// implies — a difference means the link graph decayed, which is invisible to
-// every other check because notes, chunks and embeddings are all still correct.
-func (s *Store) AllReferrers(ctx context.Context) ([]Referrer, error) {
-	const op = "store.AllReferrers"
-	rows, err := s.pool.Query(ctx, `select id, path, frontmatter, content from notes order by path`)
-	if err != nil {
-		return nil, cogerr.E(op, cogerr.Internal, err)
-	}
-	defer rows.Close()
-	var out []Referrer
-	for rows.Next() {
-		var r Referrer
-		var fm []byte
-		if err := rows.Scan(&r.ID, &r.Path, &fm, &r.Body); err != nil {
-			return nil, cogerr.E(op, cogerr.Internal, err)
-		}
-		if len(fm) > 0 {
-			if err := json.Unmarshal(fm, &r.Frontmatter); err != nil {
-				return nil, cogerr.E(op, cogerr.Internal, err)
-			}
-		}
-		out = append(out, r)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, cogerr.E(op, cogerr.Internal, err)
-	}
-	return out, nil
-}
-
 func (s *Store) ReferrersOf(ctx context.Context, names []string) ([]Referrer, error) {
 	const op = "store.ReferrersOf"
 	if len(names) == 0 {
@@ -326,6 +294,38 @@ func (s *Store) ReferrersOf(ctx context.Context, names []string) ([]Referrer, er
 	}
 	if rows.Err() != nil {
 		return nil, cogerr.E(op, cogerr.Internal, rows.Err())
+	}
+	return out, nil
+}
+
+// AllReferrers returns every note with the columns needed to re-derive its
+// outbound links. It exists for the graph audit in `cognosis status`, which
+// compares the edges the index holds against the edges the indexed content
+// implies — a difference means the link graph decayed, which is invisible to
+// every other check because notes, chunks and embeddings are all still correct.
+func (s *Store) AllReferrers(ctx context.Context) ([]Referrer, error) {
+	const op = "store.AllReferrers"
+	rows, err := s.pool.Query(ctx, `select id, path, frontmatter, content from notes order by path`)
+	if err != nil {
+		return nil, cogerr.E(op, cogerr.Internal, err)
+	}
+	defer rows.Close()
+	var out []Referrer
+	for rows.Next() {
+		var r Referrer
+		var fm []byte
+		if err := rows.Scan(&r.ID, &r.Path, &fm, &r.Body); err != nil {
+			return nil, cogerr.E(op, cogerr.Internal, err)
+		}
+		if len(fm) > 0 {
+			if err := json.Unmarshal(fm, &r.Frontmatter); err != nil {
+				return nil, cogerr.E(op, cogerr.Internal, err)
+			}
+		}
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, cogerr.E(op, cogerr.Internal, err)
 	}
 	return out, nil
 }
@@ -434,6 +434,30 @@ func (s *Store) CountChunks(ctx context.Context, path string) (int, error) {
 
 // LinkDsts returns the destination ids of a note's outbound edges —
 // introspection for tests and link-graph tooling.
+// AllLinks returns every edge grouped by source note. One query for the whole
+// graph: the alternative is a LinkDsts round trip per note, which is what made
+// the status graph audit scale with the square of the vault.
+func (s *Store) AllLinks(ctx context.Context) (map[uuid.UUID][]uuid.UUID, error) {
+	const op = "store.AllLinks"
+	rows, err := s.pool.Query(ctx, `select src_note_id, dst_note_id from links`)
+	if err != nil {
+		return nil, cogerr.E(op, cogerr.Internal, err)
+	}
+	defer rows.Close()
+	out := map[uuid.UUID][]uuid.UUID{}
+	for rows.Next() {
+		var src, dst uuid.UUID
+		if err := rows.Scan(&src, &dst); err != nil {
+			return nil, cogerr.E(op, cogerr.Internal, err)
+		}
+		out[src] = append(out[src], dst)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, cogerr.E(op, cogerr.Internal, err)
+	}
+	return out, nil
+}
+
 func (s *Store) LinkDsts(ctx context.Context, src uuid.UUID) ([]uuid.UUID, error) {
 	const op = "store.LinkDsts"
 	rows, err := s.pool.Query(ctx, `select dst_note_id from links where src_note_id = $1`, src)

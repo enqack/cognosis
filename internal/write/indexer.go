@@ -177,30 +177,43 @@ func (ix *Indexer) resolveLinks(ctx context.Context, n *vault.Note) ([]store.Lin
 	if len(refs) == 0 {
 		return nil, nil
 	}
-	key := func(r vault.Ref) string {
-		if r.Project != "" {
-			return r.Project + ":" + r.Name
-		}
-		return r.Name
-	}
 	names := make([]string, 0, len(refs))
 	for _, r := range refs {
-		names = append(names, key(r))
+		names = append(names, linkKey(r))
 	}
 	resolved, err := ix.Store.ResolveBasenames(ctx, names)
 	if err != nil {
 		return nil, err
 	}
+	return linksFrom(n, resolved), nil
+}
+
+// linkKey renders a ref the way ResolveBasenames keys its result.
+func linkKey(r vault.Ref) string {
+	if r.Project != "" {
+		return r.Project + ":" + r.Name
+	}
+	return r.Name
+}
+
+// linksFrom turns a note's refs into edges against an already-resolved
+// basename map. Split out of resolveLinks so the graph audit can resolve every
+// note against one map instead of issuing a lookup per note: ResolveBasenames
+// scans the whole notes table on each call, so per-note resolution made the
+// audit O(N) full scans and blew its own deadline on any sizeable vault —
+// reporting FAIL on a healthy daemon, from the check whose point is to be
+// trusted.
+func linksFrom(n *vault.Note, resolved map[string]uuid.UUID) []store.Link {
 	selfID, _ := uuid.Parse(n.ID())
 	var out []store.Link
-	for _, r := range refs {
-		dst, ok := resolved[key(r)]
+	for _, r := range vault.Targets(n) {
+		dst, ok := resolved[linkKey(r)]
 		if !ok || dst == selfID {
 			continue // dangling or self-link
 		}
 		out = append(out, store.Link{Dst: dst, Kind: string(r.Kind)})
 	}
-	return out, nil
+	return out
 }
 
 // toStoreNote converts a contract-valid vault note plus file identity into

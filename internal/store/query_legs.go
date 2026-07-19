@@ -136,7 +136,6 @@ func (s *Store) RankVector(ctx context.Context, table string, vec []float32,
 	return out, nil
 }
 
-// ftsLegSQL renders the keyword leg.
 // TSQueryMode selects how a query string becomes a tsquery. The keyword leg's
 // candidate set — not its ordering — is what dominates fused output (measured:
 // deleting the leg changes every query, perfectly reordering it changes ~2 in
@@ -167,6 +166,8 @@ func tsqueryExpr(mode TSQueryMode) string {
 	return `websearch_to_tsquery('english', $1)`
 }
 
+// ftsLegSQL renders the keyword leg as the request path uses it: websearch
+// semantics, terms joined with AND.
 func ftsLegSQL() string { return ftsLegSQLMode(TSQueryWebsearch) }
 
 func ftsLegSQLMode(mode TSQueryMode) string {

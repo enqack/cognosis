@@ -168,10 +168,16 @@ func Status(ctx context.Context, cfg *config.Config) []Check {
 	// editor's atomic save silently cost the graph an inbound edge with notes,
 	// chunks and embeddings all still correct. "The process is up and the
 	// dependencies answer" is not the same claim as "the thing works".
-	if s, err := store.Connect(ctx, dsn); err == nil {
+	// Bounded like every other probe here. cobra's cmd.Context() carries no
+	// deadline, and a firewall that DROPs rather than RSTs would hang
+	// `cognosis status` indefinitely — the command an operator runs precisely
+	// when the database is misbehaving.
+	hctx, hcancel := context.WithTimeout(ctx, 3*time.Second)
+	defer hcancel()
+	if s, err := store.Connect(hctx, dsn); err == nil {
 		defer s.Close()
 
-		actx, acancel := context.WithTimeout(ctx, 5*time.Second)
+		actx, acancel := context.WithTimeout(hctx, 5*time.Second)
 		if err := auth.CheckLocalToken(actx, s, cfg.Paths().TokenFile()); err != nil {
 			checks = append(checks, Check{"auth", false, cogerr.Message(err)})
 		} else {
@@ -179,7 +185,7 @@ func Status(ctx context.Context, cfg *config.Config) []Check {
 		}
 		acancel()
 
-		gctx, gcancel := context.WithTimeout(ctx, 15*time.Second)
+		gctx, gcancel := context.WithTimeout(hctx, 15*time.Second)
 		ix := &write.Indexer{Store: s} // no provider: the audit reads, never indexes
 		switch g, err := ix.AuditGraph(gctx); {
 		case err != nil:
