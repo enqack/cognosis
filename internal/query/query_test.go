@@ -324,3 +324,44 @@ func TestExplainVectorLegUsesHNSW(t *testing.T) {
 	}
 	t.Logf("recorded %s", artifact)
 }
+
+// TestCountSuppressedFalsified backs the retrieval hint that tells an agent
+// suppressed history exists. Without it, falsified notes are filtered in SQL
+// and the caller sees nothing at all — so an agent in an unusual context
+// silently reinvents what the vault already ruled out.
+func TestCountSuppressedFalsified(t *testing.T) {
+	_, dsn, ctx := fixture(t)
+	s, err := store.Connect(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	// moon.md is the fixture's falsified note; its body is moonBody.
+	n, err := s.CountSuppressedFalsified(ctx, "moon", store.Filter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Errorf("count = %d, want 1 (the falsified moon note matches 'moon')", n)
+	}
+
+	// Nothing is being suppressed when the caller already asked for them —
+	// reporting a count there would tell the agent to do what it just did.
+	n, err = s.CountSuppressedFalsified(ctx, "moon", store.Filter{IncludeFalsified: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Errorf("count = %d with include_falsified, want 0", n)
+	}
+
+	// A query matching only live notes must not claim suppressed history.
+	n, err = s.CountSuppressedFalsified(ctx, "gardening", store.Filter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Errorf("count = %d for a query no falsified note matches, want 0", n)
+	}
+}

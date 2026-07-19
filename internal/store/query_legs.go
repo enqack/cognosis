@@ -216,6 +216,41 @@ func (s *Store) RankGraph(ctx context.Context, seeds []uuid.UUID,
 	return out, nil
 }
 
+// CountSuppressedFalsified reports how many falsified notes the keyword leg
+// would have matched but the default filter excluded.
+//
+// It exists so retrieval can say "3 falsified notes also matched" instead of
+// silently returning nothing about them. Falsified notes are retained on
+// purpose — the vault records what it stopped believing — but the filtering
+// happens in SQL, so an agent working in an unusual context has no way to
+// notice that suppressed history exists and quietly reinvents it.
+//
+// Deliberately keyword-only: it reuses the FTS predicate, so it costs one
+// query and no embedding round trip. That makes it exact for the keyword leg
+// and blind to notes only the vector leg would have found — an undercount, and
+// the caller phrases it as "at least". Making it exact would mean re-running
+// every leg with the filter inverted, which is a second full retrieval per
+// query for a hint.
+func (s *Store) CountSuppressedFalsified(ctx context.Context, text string, f Filter) (int, error) {
+	const op = "store.CountSuppressedFalsified"
+	if f.IncludeFalsified {
+		return 0, nil // nothing is being suppressed
+	}
+	var n int
+	err := s.pool.QueryRow(ctx, `
+		select count(distinct n.path)
+		from chunks c
+		join notes n on n.path = c.note_path,
+		websearch_to_tsquery('english', $1) q
+		where c.fts @@ q
+		  and n.status = 'falsified'
+		  and ($2 = '' or n.project = $2)`, text, f.Project).Scan(&n)
+	if err != nil {
+		return 0, cogerr.E(op, cogerr.Internal, err)
+	}
+	return n, nil
+}
+
 // ArchivedLinkers returns the subset of the given note ids that hold an
 // outbound link to a soft-deleted (faded/archived) note. The RRF fusion layer
 // uses it to penalize chunks that describe a shelved concept: a dense old

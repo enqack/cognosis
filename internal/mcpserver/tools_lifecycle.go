@@ -38,8 +38,13 @@ type writeReflectionArgs struct {
 func (s *Server) addLifecycleTools(srv *mcp.Server) {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "compile_lifecycle",
-		Description: "Run one explicit knowledge-lifecycle pass: reinforce/falsify/dispute/graduate are agent-justified inputs; " +
-			"decay and archival are automatic. Nothing is inferred; dry_run previews without writing.",
+		Description: "Record what you learned about knowledge you ALREADY have — that it held up, that it was wrong, " +
+			"that it is now contested. Reach for this instead of write_note whenever an existing note is the subject: " +
+			"finding a note's claim false is falsify, not a new note saying the opposite; doubting it is dispute, which " +
+			"keeps it decaying until a later reinforce clears it. Writing a fresh note instead leaves the old claim " +
+			"live and retrievable, so retrieval returns both and neither is marked. " +
+			"reinforce/falsify/dispute/graduate are agent-justified inputs; decay and archival are automatic. " +
+			"Nothing is inferred from mention alone; dry_run previews without writing.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args compileArgs) (*mcp.CallToolResult, any, error) {
 		report, err := s.lifecycle.Run(ctx, lifecycle.Options{
 			Reinforce: args.Reinforce,

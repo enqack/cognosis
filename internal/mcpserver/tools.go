@@ -9,6 +9,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/enqack/cognosis/internal/query"
+	"github.com/enqack/cognosis/internal/store"
 	"github.com/enqack/cognosis/internal/vault"
 )
 
@@ -117,7 +118,21 @@ func (s *Server) addTools(srv *mcp.Server) {
 			return nil, nil, err
 		}
 		s.log.Info("query_knowledge", "results", len(results))
-		return textResult(Format(results)), nil, nil
+
+		// Tell the agent when suppressed history exists. Falsified notes are
+		// retained deliberately, but the exclusion happens in SQL, so without
+		// this an agent in an unusual context sees nothing and reinvents what
+		// the vault already stopped believing. Best-effort: a failed count must
+		// not fail the query it annotates.
+		out := Format(results)
+		if n, cerr := s.store.CountSuppressedFalsified(ctx, args.Text, store.Filter{
+			Project:          args.Project,
+			IncludeFalsified: args.IncludeFalsified,
+		}); cerr == nil && n > 0 {
+			out += fmt.Sprintf("\n(at least %d falsified note(s) also matched and were excluded — "+
+				"pass include_falsified to see what was ruled out and why.)\n", n)
+		}
+		return textResult(out), nil, nil
 	})
 
 	mcp.AddTool(srv, &mcp.Tool{
