@@ -16,6 +16,19 @@ All notable changes to Cognosis are documented here. The format follows
   the same vault files through different code paths and serialized only against themselves.
 - **`cognosis status` cannot hang.** Its health-check connection was the one probe without a
   timeout, so an unreachable-but-not-refusing database would block the command indefinitely.
+- **`cognosis note delete --hard` no longer half-completes.** The history rewrite ran last, after
+  the index row, the file and `log.md` were already gone — and it is the step that fails, because
+  `git filter-branch` refuses a dirty working tree and the vault is dirty whenever an editor or the
+  daemon is writing. A failure left the note erased from the vault but still present in history, a
+  state no retry could reach. The rewrite now runs first, so a failure destroys nothing; pending
+  drift is committed before it; and the removal is committed after, instead of being left for
+  whatever happened to commit next.
+- **Vault history no longer records editor state or the generated dashboard.** `CommitAll` staged
+  everything in the vault directory, so anything another tool wrote became part of the knowledge
+  audit trail — 22% of a real vault's commits touched no note at all, and some carried
+  `watch: <note>.md edited out-of-band` subjects while containing only editor churn. It now stages
+  the four stage directories and `log.md`. Existing vaults still *track* those files;
+  see the setup guide for the one-time `git rm --cached`.
 - **`cognosis vault restore` no longer races the daemon.** It wrote the vault file and committed
   directly, taking neither the per-path lock the daemon's own writers share nor the path
   normalisation the equivalent MCP tool applies, so a restore concurrent with a compile pass over

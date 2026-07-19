@@ -31,6 +31,15 @@ const (
 	StageArchive    Stage = "archive"     // retired notes
 )
 
+// Stages is every processing-stage folder, in the order StageOf accepts them.
+// Single source of truth for "which directories does Cognosis own": StageOf
+// validates against it, and the history repo stages exactly these paths so a
+// tool writing elsewhere in the vault directory cannot end up in the knowledge
+// audit trail.
+func Stages() []Stage {
+	return []Stage{StageEntry, StageNote, StageReflection, StageArchive}
+}
+
 // Note is one parsed markdown file. Path is vault-relative.
 type Note struct {
 	Path        string
@@ -73,9 +82,10 @@ func (n *Note) Status() string {
 // outside the four stage folders (e.g. the root index.md).
 func StageOf(relPath string) (Stage, bool) {
 	first := strings.SplitN(filepath.ToSlash(relPath), "/", 2)[0]
-	switch Stage(first) {
-	case StageEntry, StageNote, StageReflection, StageArchive:
-		return Stage(first), true
+	for _, st := range Stages() {
+		if Stage(first) == st {
+			return st, true
+		}
 	}
 	return "", false
 }

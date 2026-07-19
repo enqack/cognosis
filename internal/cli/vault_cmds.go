@@ -196,24 +196,44 @@ func hardDelete(cmd *cobra.Command, rel string) error {
 		if err := refuseIfDaemonOwns(ctx, s, "a hard delete"); err != nil {
 			return err
 		}
-		// 1. The derived index: notes row cascades chunks, links, and every
+		hist := vault.NewHistory(cfg.KBPath)
+
+		// Order matters, and it used to be wrong. The history rewrite is the
+		// step that fails for environmental reasons — git refuses to rewrite a
+		// dirty tree — and it ran last, after the row, the file and log.md were
+		// already gone. A failure left the note erased from the vault but still
+		// present in history: the opposite of what was asked for, and a state no
+		// retry could reach.
+		//
+		// So the fragile step goes first. If it fails now, nothing has been
+		// destroyed and the command can simply be run again.
+
+		// 1. Vault history: every prior version of the note is purged.
+		if err := hist.PurgePath(ctx, rel); err != nil {
+			return err
+		}
+		// 2. The derived index: notes row cascades chunks, links, and every
 		// provider embedding table.
 		if err := s.DeleteNote(ctx, rel); err != nil {
 			return err
 		}
-		// 2. The file itself.
+		// 3. The file itself.
 		abs := filepath.Join(cfg.KBPath, filepath.FromSlash(rel))
 		if err := os.Remove(abs); err != nil && !os.IsNotExist(err) {
 			return err
 		}
-		// 3. log.md tombstones: the append-only log yields to erasure here —
+		// 4. log.md tombstones: the append-only log yields to erasure here —
 		// the one operation allowed to rewrite it.
 		base := strings.TrimSuffix(filepath.Base(rel), ".md")
 		if err := tombstoneLog(cfg.KBPath, base); err != nil {
 			return err
 		}
-		// 4. Vault history: every prior version of the note is purged.
-		if err := vault.NewHistory(cfg.KBPath).PurgePath(ctx, rel); err != nil {
+		// 5. Commit the removal and the tombstoned log. Without this the vault
+		// repo is left dirty and the erasure only lands whenever something else
+		// happens to commit — which, with the daemon stopped, may be never.
+		// The purged content is already gone from history, so this commit
+		// records the deletion and nothing more.
+		if err := hist.CommitAll(ctx, "hard-delete: "+rel); err != nil {
 			return err
 		}
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(),

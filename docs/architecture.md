@@ -41,6 +41,16 @@ kb/
 └── archive/      retired notes
 ```
 
+Cognosis commits only the paths it owns — the four stage directories and `log.md`. The vault
+directory is shared with whatever an operator runs in it (Obsidian is a designed-for workflow), and
+committing everything put editor state into 22% of a real vault's commits, including commits whose
+message named a note they did not contain. `history.md` is excluded for a second reason: it is
+generated *from* `git log`, so tracking it made the dashboard cite its own churn as restorable.
+
+A vault Cognosis creates is seeded with a `.gitignore` for the same paths. Vaults predating that
+still track them — see the troubleshooting row in [setup-guide.md](setup-guide.md) for the one-time
+`git rm --cached`.
+
 Every note carries a frontmatter contract (required `category`, `created`, `updated`; extra decay
 fields for `notes/`). `id` is assigned when omitted — a new one for a new path, the existing one
 when overwriting — so a caller holding only the MCP tools need not mint one. A validator enforces the contract on every write, so a malformed note is

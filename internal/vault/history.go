@@ -69,19 +69,70 @@ func (h *History) EnsureRepo(ctx context.Context) error {
 	if _, err := h.git(ctx, "init", "-q"); err != nil {
 		return cogerr.E(op, cogerr.Internal, err)
 	}
+	// Seeded only here, on the git-init path, so an existing vault is never
+	// written to: the early return above means this never runs twice.
+	if err := os.WriteFile(filepath.Join(h.dir, ".gitignore"), []byte(seedGitignore), 0o600); err != nil {
+		return cogerr.E(op, cogerr.Internal, err)
+	}
 	return nil
 }
 
-// CommitAll stages everything and commits with the given message. A clean
-// tree is not an error — reconciliation may find no drift to record.
+// seedGitignore is written into a vault Cognosis creates.
+//
+// It is belt to CommitAll's braces rather than the primary mechanism — the
+// pathspec there already prevents these from being committed. This exists so
+// `git status` in the vault is quiet for a human, and so the files do not read
+// as "untracked, probably should be added".
+//
+// .obsidian is not ignored wholesale: app.json, appearance.json and
+// core-plugins.json are genuine user configuration worth versioning. Only the
+// two that Obsidian rewrites continuously are listed, matching Obsidian's own
+// guidance for shared vaults.
+const seedGitignore = `# Generated from git log on every boot and compile — regenerable, and tracking
+# it would make the dashboard list its own commits as restorable.
+history.md
+
+# Obsidian rewrites these continuously while it is open. The rest of
+# .obsidian/ is real configuration and stays tracked.
+.obsidian/workspace.json
+.obsidian/graph.json
+`
+
+// CommitAll stages the paths Cognosis owns and commits with the given message.
+// A clean tree is not an error — reconciliation may find no drift to record.
+//
+// The pathspec is the point. This was `git add -A`, so anything any tool left
+// in the vault directory became part of the knowledge audit trail: on a real
+// vault, 22% of commits touched no note at all, and some carried
+// "watch: <note>.md edited out-of-band" subjects while containing only editor
+// state, because by the time the commit ran the note was already recorded and
+// all that remained to stage was churn.
+//
+// Staging only what Cognosis defines also makes the emptiness check below
+// meaningful: a sweep that finds nothing but an editor's scratch files now
+// commits nothing, rather than manufacturing a commit that says otherwise.
 func (h *History) CommitAll(ctx context.Context, message string) error {
 	const op = "vault.History.CommitAll"
 	gitIndexMu.Lock()
 	defer gitIndexMu.Unlock()
-	if _, err := h.git(ctx, "add", "-A"); err != nil {
+
+	paths, err := h.presentOwnedPaths(ctx)
+	if err != nil {
+		return err
+	}
+	if len(paths) == 0 {
+		return nil // nothing Cognosis owns exists yet
+	}
+	// `--` then the paths: everything after is a pathspec, never a rev. `-A`
+	// within a pathspec still records deletions inside those paths.
+	add := append([]string{"add", "-A", "--"}, paths...)
+	if _, err := h.git(ctx, add...); err != nil {
 		return cogerr.E(op, cogerr.Internal, err)
 	}
-	out, err := h.git(ctx, "status", "--porcelain")
+	// Scoped to the same paths, or an untracked editor file would make this
+	// non-empty and produce an empty commit.
+	status := append([]string{"status", "--porcelain", "--"}, paths...)
+	out, err := h.git(ctx, status...)
 	if err != nil {
 		return cogerr.E(op, cogerr.Internal, err)
 	}
@@ -92,6 +143,56 @@ func (h *History) CommitAll(ctx context.Context, message string) error {
 		return cogerr.E(op, cogerr.Internal, err)
 	}
 	return nil
+}
+
+// ownedPaths lists the vault-relative paths the history repo records: the
+// processing stages, plus the append-only lifecycle log.
+//
+// Derived from vault.Stages() rather than restated, so adding a stage cannot
+// silently leave it unversioned. history.md is deliberately absent — it is
+// generated from git log, so committing it makes the dashboard cite its own
+// churn as restorable.
+func ownedPaths() []string {
+	out := make([]string, 0, len(Stages())+1)
+	for _, st := range Stages() {
+		out = append(out, string(st))
+	}
+	return append(out, "log.md")
+}
+
+// presentOwnedPaths narrows ownedPaths to those git will accept as a pathspec.
+//
+// git errors on a pathspec matching nothing in either the working tree or the
+// index, and a vault need not contain every stage directory. Tracked-but-absent
+// paths are kept deliberately: a stage directory deleted wholesale still has
+// files in the index, and dropping it here would leave that deletion
+// unrecorded.
+func (h *History) presentOwnedPaths(ctx context.Context) ([]string, error) {
+	const op = "vault.History.CommitAll"
+	var missing []string
+	out := make([]string, 0, len(ownedPaths()))
+	for _, p := range ownedPaths() {
+		if _, err := os.Stat(filepath.Join(h.dir, filepath.FromSlash(p))); err == nil {
+			out = append(out, p)
+			continue
+		}
+		missing = append(missing, p)
+	}
+	if len(missing) == 0 {
+		return out, nil
+	}
+	// ls-files exits zero on an unmatched pathspec, so this is safe to ask.
+	tracked, err := h.git(ctx, append([]string{"ls-files", "--"}, missing...)...)
+	if err != nil {
+		return nil, cogerr.E(op, cogerr.Internal, err)
+	}
+	for _, p := range missing {
+		if strings.Contains(tracked, p+"/") || strings.Contains(tracked, p+"\n") ||
+			strings.TrimSpace(tracked) == p {
+			out = append(out, p)
+		}
+	}
+	return out, nil
 }
 
 // Log returns the one-line history for a vault-relative path (newest first) —
@@ -264,15 +365,46 @@ func (h *History) Restore(ctx context.Context, ref, relPath string) error {
 // coordinate with, which is what makes this tractable.
 func (h *History) PurgePath(ctx context.Context, relPath string) error {
 	const op = "vault.History.PurgePath"
+
+	// filter-branch refuses outright on a dirty working tree ("Cannot rewrite
+	// branches: You have unstaged changes"), and this repo is dirty most of the
+	// time: history.md is generated and rewritten on every daemon boot and
+	// compile pass. Committing first is what the daemon does routinely, and it
+	// preserves the pending drift rather than discarding it — the alternative,
+	// stashing across a history rewrite, leaves the stash pointing at commits
+	// that no longer exist.
+	//
+	// Retried, because committing once is not enough. The vault has live
+	// external writers — the daemon regenerates history.md, and an open
+	// Obsidian rewrites .obsidian/workspace.json continuously — so the tree can
+	// be dirtied again in the milliseconds between the commit and the rewrite.
+	// Observed exactly that: the pre-purge commit landed and filter-branch
+	// still refused.
+	//
+	// A few attempts covers the ordinary case. If an editor is writing
+	// continuously this still gives up rather than looping, and it gives up
+	// having destroyed nothing — the caller runs this before it touches the
+	// file, the row or the log.
+	const attempts = 3
+	var lastErr error
+	for i := range attempts {
+		// Outside the lock: CommitAll takes gitIndexMu itself.
+		if err := h.CommitAll(ctx, "pre-purge: commit pending drift so history can be rewritten"); err != nil {
+			return err
+		}
+		lastErr = h.purgeOnce(ctx, relPath)
+		if lastErr == nil {
+			break
+		}
+		if i == attempts-1 {
+			return cogerr.Ef(op, cogerr.Conflict,
+				"could not rewrite history after %d attempts: something keeps writing to the vault "+
+					"(an open editor, or the daemon). Close it and retry — nothing has been deleted: %v",
+				attempts, lastErr)
+		}
+	}
 	gitIndexMu.Lock()
 	defer gitIndexMu.Unlock()
-	// filter-branch is deprecated in favor of the out-of-tree filter-repo,
-	// but it ships with git itself — no new dependency for one rare path.
-	if _, err := h.git(ctx, "filter-branch", "--force", "--index-filter",
-		"git rm --cached --ignore-unmatch -- "+shellQuote(relPath),
-		"--prune-empty", "--", "--all"); err != nil {
-		return cogerr.E(op, cogerr.Internal, err)
-	}
 	// Drop the safety refs and unreachable objects so the content is gone,
 	// not just unreferenced.
 	_ = os.RemoveAll(filepath.Join(h.dir, ".git", "refs", "original"))
@@ -283,6 +415,18 @@ func (h *History) PurgePath(ctx context.Context, relPath string) error {
 		return cogerr.E(op, cogerr.Internal, err)
 	}
 	return nil
+}
+
+// purgeOnce is one filter-branch attempt. filter-branch is deprecated in
+// favour of the out-of-tree filter-repo, but it ships with git itself — no new
+// dependency for one rare path.
+func (h *History) purgeOnce(ctx context.Context, relPath string) error {
+	gitIndexMu.Lock()
+	defer gitIndexMu.Unlock()
+	_, err := h.git(ctx, "filter-branch", "--force", "--index-filter",
+		"git rm --cached --ignore-unmatch -- "+shellQuote(relPath),
+		"--prune-empty", "--", "--all")
+	return err
 }
 
 func shellQuote(s string) string {
