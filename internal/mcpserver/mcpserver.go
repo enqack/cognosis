@@ -109,11 +109,22 @@ func requireLoopback(bind string, tls config.TLS) error {
 // past two internal identifiers to reach the sentence it can act on. The op and
 // kind are not lost — audit and the structured log still record the full error.
 //
-// Internal is deliberately not passed through. Those causes are raw pgx, os and
-// net errors, and they carry DSNs, unix socket paths and schema names; one of
-// this project's own log lines already contains a full socket path from a
-// failed connect. An agent cannot act on any of it, and a tool result is the
-// one place it would travel furthest.
+// Internal and Unavailable are deliberately not passed through. Both wrap raw
+// pgx, os and net errors that carry DSNs, unix socket paths, database users and
+// embedding endpoints — one of this project's own log lines contains
+// "failed to connect to `user=sysop database=cognosis`: /Users/…/.s.PGSQL.5434"
+// verbatim. An agent cannot act on any of it, and a tool result is the one
+// place it would travel furthest.
+//
+// Gating on Kind at this boundary rather than redacting at each call site is
+// deliberate. There are 16 raw-wrapped Unavailable sites today and the
+// author-written ones still interpolate the endpoint, so per-site redaction is
+// 22 edits that a 23rd site silently defeats. Here it holds for every site that
+// will ever exist.
+//
+// Nothing actionable is lost: Unavailable means a dependency is down, and the
+// remedy is always operator-side. The two kinds get distinct messages so the
+// caller can still tell "retry later" from "report a bug".
 func toolError(err error) error {
 	if err == nil {
 		return nil
@@ -122,8 +133,17 @@ func toolError(err error) error {
 	if !errors.As(err, &e) {
 		return err // not a domain error (argument checks, SDK errors): already plain
 	}
-	if e.Kind == cogerr.Internal {
+	// Exhaustive on purpose. This is a redaction boundary, so a newly added
+	// Kind must force an explicit decision about whether its causes are safe to
+	// hand a remote caller, rather than defaulting to exposure.
+	switch e.Kind {
+	case cogerr.Internal:
 		return fmt.Errorf("internal error (see the daemon log for detail)")
+	case cogerr.Unavailable:
+		return fmt.Errorf("a required service is unavailable (see the daemon log for detail)")
+	case cogerr.NotFound, cogerr.Conflict, cogerr.Validation:
+		// Author-written and actionable: which field, which path, what to do
+		// instead. These are the messages the caller needs to fix its call.
 	}
 	return fmt.Errorf("%s", cogerr.Message(err))
 }

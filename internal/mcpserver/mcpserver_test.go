@@ -271,3 +271,39 @@ func TestToolErrorHandlesKindWithoutCause(t *testing.T) {
 		t.Errorf("toolError = %q, want the kind name", got)
 	}
 }
+
+// TestToolErrorWithholdsUnavailableDetail — the redaction originally gated on
+// Internal alone, but the errors that actually carry connection detail are
+// classified Unavailable: pool.Begin failures and the embedding provider both
+// wrap raw pgx/net errors, and even the author-written ones interpolate the
+// endpoint. A remote agent was receiving the database user, database name and
+// unix socket path in a tool result.
+func TestToolErrorWithholdsUnavailableDetail(t *testing.T) {
+	for _, c := range []struct{ name, secret string }{
+		{"pgx pool", "failed to connect to `user=sysop database=cognosis`: /Users/sysop/.pg-data/.s.PGSQL.5434"},
+		{"embedding endpoint", `Post "http://10.0.0.7:11434/api/embed": dial tcp 10.0.0.7:11434: connect: refused`},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			got := toolError(cogerr.E("store.UpsertNote", cogerr.Unavailable, errors.New(c.secret))).Error()
+			for _, leak := range []string{"user=", "database=", ".s.PGSQL", "10.0.0.7", "/Users/"} {
+				if strings.Contains(got, leak) {
+					t.Errorf("tool result leaks %q: %s", leak, got)
+				}
+			}
+			if !strings.Contains(got, "unavailable") {
+				t.Errorf("message does not say the dependency is down: %s", got)
+			}
+		})
+	}
+}
+
+// The two withheld kinds must stay distinguishable: "retry later" and "report a
+// bug" are different instructions, and collapsing them into one message would
+// make the redaction cost the caller something real.
+func TestToolErrorDistinguishesUnavailableFromInternal(t *testing.T) {
+	unavail := toolError(cogerr.E("op", cogerr.Unavailable, errors.New("x"))).Error()
+	internal := toolError(cogerr.E("op", cogerr.Internal, errors.New("x"))).Error()
+	if unavail == internal {
+		t.Errorf("both kinds produce %q; the caller cannot tell a transient outage from a bug", unavail)
+	}
+}
