@@ -83,6 +83,8 @@ build_bin() {
 # Default bind is a random loopback port; sets PORT/URL. An explicit bind sets
 # PORT from it, so callers that need to reach the daemon on a different host than
 # it binds (tls.sh binds 0.0.0.0 and connects over loopback) can still find it.
+# The bind argument really is optional — most callers pass none.
+# shellcheck disable=SC2120
 boot_daemon() {
   : "${BIN:?call build_bin first}"
   if [ -n "${1:-}" ]; then

@@ -116,6 +116,7 @@
             pkgs.golangci-lint  # `mage lint` static analysis
             pkgs.xz             # `mage release` streams .tar.xz through xz(1)
             pkgs.jq             # hooks/session-end-nudge.sh parses the SessionEnd payload
+            pkgs.shellcheck     # lints scripts/checks/*.sh and hooks/*.sh
             pkgs.b3sum          # pgEnv derives the fallback socket dir the same way store.sockDir does
             pkgs.ollama
             pg
