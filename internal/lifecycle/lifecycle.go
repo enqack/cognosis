@@ -13,6 +13,7 @@ package lifecycle
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"path/filepath"
@@ -98,7 +99,7 @@ type Options struct {
 
 // Action is one lifecycle event in a run's report.
 type Action struct {
-	Kind   string // reinforced | refreshed | decayed | archived-faded | archived-ancient | falsified | disputed | dispute-cleared | graduated | promoted
+	Kind   string // reinforced | refreshed | decayed | archived-faded | archived-ancient | falsified | disputed | dispute-cleared | graduated | promoted | skipped
 	Note   string // wikilink basename
 	Detail string
 }
@@ -141,7 +142,11 @@ type Engine struct {
 	VaultDir string
 	Hist     *vault.History
 	Supp     write.Suppressor
-	Log      *slog.Logger
+	// Locks must be the same *write.PathLocks the Pipeline uses. Without it a
+	// concurrent edit_note can silently revert a reinforce this run just wrote:
+	// both writers touch the same file and only one of them was serializing.
+	Locks *write.PathLocks
+	Log   *slog.Logger
 	// Query, when set, powers Options.Verify's retrieval-augmented pass.
 	Query *query.Engine
 }
@@ -347,7 +352,16 @@ func (e *Engine) run(ctx context.Context, opts Options) (*Report, error) {
 			}
 			report.Actions = append(report.Actions, Action{"falsified", name, detail})
 			if !opts.DryRun {
-				if err := e.rewrite(ctx, n, n.Path); err != nil {
+				switch err := e.rewrite(ctx, n, n.Path); {
+				case errors.Is(err, ErrChangedDuringRun):
+					// Somebody wrote this note while the run was in flight.
+					// Report it and move on: the lifecycle is idempotent, so
+					// whatever was due is due again next run against the note
+					// as it now is.
+					report.Actions = append(report.Actions, Action{"skipped", name,
+						"(changed during the run; re-evaluate on the next compile)"})
+					continue
+				case err != nil:
 					return nil, err
 				}
 				changedFiles++
@@ -366,7 +380,16 @@ func (e *Engine) run(ctx context.Context, opts Options) (*Report, error) {
 			n.SetFM("disputed_at", opts.Now.Format(vault.TimeLayout))
 			report.Actions = append(report.Actions, Action{"disputed", name, "(" + reason + ")"})
 			if !opts.DryRun {
-				if err := e.rewrite(ctx, n, n.Path); err != nil {
+				switch err := e.rewrite(ctx, n, n.Path); {
+				case errors.Is(err, ErrChangedDuringRun):
+					// Somebody wrote this note while the run was in flight.
+					// Report it and move on: the lifecycle is idempotent, so
+					// whatever was due is due again next run against the note
+					// as it now is.
+					report.Actions = append(report.Actions, Action{"skipped", name,
+						"(changed during the run; re-evaluate on the next compile)"})
+					continue
+				case err != nil:
 					return nil, err
 				}
 				changedFiles++
@@ -502,7 +525,16 @@ func (e *Engine) run(ctx context.Context, opts Options) (*Report, error) {
 				n.DeleteFM("disputed_at")
 			}
 			if !opts.DryRun && !willArchive {
-				if err := e.rewrite(ctx, n, n.Path); err != nil {
+				switch err := e.rewrite(ctx, n, n.Path); {
+				case errors.Is(err, ErrChangedDuringRun):
+					// Somebody wrote this note while the run was in flight.
+					// Report it and move on: the lifecycle is idempotent, so
+					// whatever was due is due again next run against the note
+					// as it now is.
+					report.Actions = append(report.Actions, Action{"skipped", name,
+						"(changed during the run; re-evaluate on the next compile)"})
+					continue
+				case err != nil:
 					return nil, err
 				}
 				changedFiles++
@@ -560,7 +592,16 @@ func (e *Engine) run(ctx context.Context, opts Options) (*Report, error) {
 			n.SetFM("graduated_at", opts.Now.Format(vault.TimeLayout))
 			report.Actions = append(report.Actions, Action{"graduated", name, "(canon in place)"})
 			if !opts.DryRun {
-				if err := e.rewrite(ctx, n, n.Path); err != nil {
+				switch err := e.rewrite(ctx, n, n.Path); {
+				case errors.Is(err, ErrChangedDuringRun):
+					// Somebody wrote this note while the run was in flight.
+					// Report it and move on: the lifecycle is idempotent, so
+					// whatever was due is due again next run against the note
+					// as it now is.
+					report.Actions = append(report.Actions, Action{"skipped", name,
+						"(changed during the run; re-evaluate on the next compile)"})
+					continue
+				case err != nil:
 					return nil, err
 				}
 				changedFiles++

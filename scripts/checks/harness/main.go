@@ -338,8 +338,13 @@ func knowledge(ctx context.Context) error {
 
 	// Vault history: read the log, mediate a rollback.
 	histPath := "entries/know-history.md"
+	// No id: write_note mints one for a new path and reuses the existing one
+	// when overwriting. Minting a fresh id per version — what this did before —
+	// gave the same path a different identity on every write, which evicts the
+	// note row and re-points its inbound links. The check passed anyway, so the
+	// suite was exercising that eviction and calling it success.
 	mk := func(body string) string {
-		return fmt.Sprintf("---\nid: %s\ncategory: entry\ncreated: %q\nupdated: %q\n---\n%s\n", uuid.Must(uuid.NewV7()).String(), now, now, body)
+		return fmt.Sprintf("---\ncategory: entry\ncreated: %q\nupdated: %q\n---\n%s\n", now, now, body)
 	}
 	if _, err := call(ctx, s, "write_note", map[string]any{"path": histPath, "content": mk("VERSION-ALPHA original")}); err != nil {
 		return fmt.Errorf("history write v1: %w", err)

@@ -113,7 +113,8 @@ func Validate(relPath string, fm map[string]any, hasFM bool) []Problem {
 	}
 
 	if !hasFM {
-		return []Problem{p("", "missing YAML frontmatter; every note needs at least `id`, `category`, `created`, `updated`")}
+		return []Problem{p("", "missing YAML frontmatter; every note needs at least `category`, `created`, `updated` "+
+			"(`id` is assigned when omitted). Frontmatter must open with `---` on the very first line")}
 	}
 
 	var probs []Problem

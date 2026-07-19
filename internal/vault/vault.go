@@ -7,6 +7,7 @@
 package vault
 
 import (
+	"encoding/hex"
 	"fmt"
 	"io"
 	"io/fs"
@@ -14,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/zeebo/blake3"
 	"gopkg.in/yaml.v3"
 
 	"github.com/enqack/cognosis/internal/cogerr"
@@ -36,6 +38,20 @@ type Note struct {
 	Frontmatter map[string]any
 	FMNode      *yaml.Node // lossless round-trip re-serialization
 	Body        string
+
+	// SrcBlake3 is the digest of the bytes this note was parsed from, so a
+	// writer that mutates a note long after reading it can tell whether the
+	// file moved underneath it. lifecycle.Compile walks the whole vault once
+	// and rewrites notes much later, so its read-to-write window is a whole
+	// run — long enough for an agent's edit to land and be silently
+	// overwritten.
+	//
+	// BLAKE3 to match write.FileMeta.Blake3 and the watcher's drift detection,
+	// which hash the same bytes for the same purpose. Comparable by
+	// construction, and one algorithm for "did this content change" rather than
+	// two. This is a change detector, not a security control — there is no
+	// adversary in a race between two of the daemon's own writers.
+	SrcBlake3 string
 }
 
 func (n *Note) str(key string) string {
@@ -86,7 +102,11 @@ func ParseNote(relPath string, content []byte) (*Note, error) {
 	const op = "vault.ParseNote"
 	fm, body, hasFM := SplitFrontmatter(content)
 	stage, _ := StageOf(relPath)
-	n := &Note{Path: filepath.ToSlash(relPath), Stage: stage, Body: body}
+	sum := blake3.Sum256(content)
+	n := &Note{
+		Path: filepath.ToSlash(relPath), Stage: stage, Body: body,
+		SrcBlake3: hex.EncodeToString(sum[:]),
+	}
 	if hasFM {
 		var node yaml.Node
 		if err := yaml.Unmarshal([]byte(fm), &node); err != nil {

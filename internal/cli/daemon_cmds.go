@@ -96,6 +96,10 @@ func newStartCmd() *cobra.Command {
 					lc := &lifecycle.Engine{
 						Store: s, Indexer: ix, VaultDir: cfg.KBPath,
 						Hist: hist, Supp: w, Log: log, Query: engine,
+						// The *same* locks the pipeline uses, not a second set.
+						// Both write the same vault files, and a compile run can
+						// overlap an agent's edit_note on the same note.
+						Locks: pipeline.Locks,
 					}
 					srv, err := mcpserver.NewTLS(cfg.BindAddress, cfg.KBPath, log, pipeline, engine, s, lc, personas, cfg.TLS)
 					if err != nil {

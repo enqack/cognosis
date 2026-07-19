@@ -7,7 +7,6 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/zeebo/blake3"
 
@@ -36,8 +35,9 @@ type Pipeline struct {
 	Hist     *vault.History
 	Supp     Suppressor
 
-	mu    sync.Mutex
-	locks map[string]*sync.Mutex
+	// Locks is shared with every other writer of the same vault — notably
+	// lifecycle.Engine, which writes files directly. See PathLocks.
+	Locks *PathLocks
 }
 
 func NewPipeline(ix *Indexer, vaultDir string, hist *vault.History, supp Suppressor) *Pipeline {
@@ -49,22 +49,52 @@ func NewPipeline(ix *Indexer, vaultDir string, hist *vault.History, supp Suppres
 		VaultDir: vaultDir,
 		Hist:     hist,
 		Supp:     supp,
-		locks:    map[string]*sync.Mutex{},
+		Locks:    NewPathLocks(),
 	}
 }
 
-// pathLock returns the mutex for one vault-relative path, creating it on
-// first use. Concurrent writes to the same path serialize; different paths
-// proceed independently.
-func (p *Pipeline) pathLock(rel string) *sync.Mutex {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	l, ok := p.locks[rel]
-	if !ok {
-		l = &sync.Mutex{}
-		p.locks[rel] = l
+// rejectIDChange refuses a write that would give an existing path a different
+// id.
+//
+// upsertNoteTx runs `delete from notes where path = $1 and id <> $2`, so a
+// changed id evicts the row and cascades its inbound edges. ensureNoteID
+// already avoids that for an *omitted* id, but that guard was one-sided: a
+// supplied-but-different id evicted just the same, and edit_note — advertised
+// for fixing a line or appending a source — made that a one-call operation on
+// frontmatter the caller can now see and edit.
+//
+// The observable damage is subtler than "links are lost": RepairReferrers
+// re-resolves wikilinks by basename after the write, so edges are re-pointed at
+// the new id rather than dropped. What breaks is identity. An id is written
+// once and never rewritten precisely so it survives moves and renames, and
+// anything holding the old one — an external reference, an earlier retrieval
+// result — now names a row that no longer exists.
+//
+// Conflict rather than Validation: the content is well-formed, it just
+// disagrees with the note already at that path.
+func (p *Pipeline) rejectIDChange(ctx context.Context, rel string, n *vault.Note) error {
+	const op = "write.Pipeline.Write"
+	if p.Indexer == nil || p.Indexer.Store == nil {
+		return nil
 	}
-	return l
+	supplied := strings.TrimSpace(n.ID())
+	if supplied == "" {
+		return nil // ensureNoteID owns this case
+	}
+	existing, err := p.Indexer.Store.GetNote(ctx, rel)
+	if cogerr.Is(err, cogerr.NotFound) {
+		return nil // new path: any valid id is fine
+	}
+	if err != nil {
+		return err
+	}
+	if supplied == existing.ID.String() {
+		return nil
+	}
+	return cogerr.Ef(op, cogerr.Conflict,
+		"%s already has id %s; changing a note's id evicts it and re-points every inbound link. "+
+			"Omit the id to keep the existing one, or write to a different path",
+		rel, existing.ID)
 }
 
 // ensureNoteID fills in a missing frontmatter `id`, returning the content to
@@ -127,7 +157,34 @@ func (p *Pipeline) ensureNoteID(ctx context.Context, rel, content string) (strin
 	if !strings.HasPrefix(content, fence) {
 		return content, nil // no opening fence; validation will say so
 	}
-	return fence + "id: " + id + "\n" + content[len(fence):], nil
+	// A present-but-blank `id:` means the same thing as no id at all, and it is
+	// one of the most natural ways to write "not filled in yet". Splicing on
+	// top of it produced two `id` keys, and YAML rejects that with
+	// `mapping key "id" already defined at line 1` — an error naming a line the
+	// caller never wrote, on the exact case this feature exists to serve. Drop
+	// the blank key rather than stacking a second one over it.
+	body := dropBlankIDKey(content[len(fence):])
+	return fence + "id: " + id + "\n" + body, nil
+}
+
+// dropBlankIDKey removes a top-level `id:` line with no value from the
+// frontmatter block. Scoped to the frontmatter and to column zero so an `id:`
+// inside a nested mapping, or inside the note body, is untouched.
+func dropBlankIDKey(afterFence string) string {
+	end := strings.Index(afterFence, "\n---")
+	if end < 0 {
+		return afterFence // unterminated frontmatter; validation reports it
+	}
+	fm, rest := afterFence[:end], afterFence[end:]
+	lines := strings.Split(fm, "\n")
+	out := lines[:0]
+	for _, l := range lines {
+		if after, ok := strings.CutPrefix(l, "id:"); ok && strings.TrimSpace(after) == "" {
+			continue
+		}
+		out = append(out, l)
+	}
+	return strings.Join(out, "\n") + rest
 }
 
 // Write validates and lands one note. project, when non-empty, must match the
@@ -138,9 +195,7 @@ func (p *Pipeline) Write(ctx context.Context, rel, content, project string) erro
 	if err != nil {
 		return err
 	}
-	lock := p.pathLock(rel)
-	lock.Lock()
-	defer lock.Unlock()
+	defer p.Locks.Lock(rel)()
 	return p.writeLocked(ctx, rel, content, project)
 }
 
@@ -178,9 +233,7 @@ func (p *Pipeline) Edit(ctx context.Context, rel, oldStr, newStr string) error {
 		return cogerr.Ef(op, cogerr.Validation, "old_string and new_string are identical; nothing to do")
 	}
 
-	lock := p.pathLock(rel)
-	lock.Lock()
-	defer lock.Unlock()
+	defer p.Locks.Lock(rel)()
 
 	// The file, not the index: the vault is the source of truth, and the index
 	// can legitimately lag it after an out-of-band edit.
@@ -242,6 +295,9 @@ func (p *Pipeline) writeLocked(ctx context.Context, rel, content, project string
 
 	n, err := vault.ParseNote(rel, []byte(content))
 	if err != nil {
+		return err
+	}
+	if err := p.rejectIDChange(ctx, rel, n); err != nil {
 		return err
 	}
 	if probs := vault.Validate(rel, n.Frontmatter, n.Frontmatter != nil); len(probs) > 0 {

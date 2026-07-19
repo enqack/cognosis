@@ -3,6 +3,7 @@ package lifecycle
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -22,6 +23,31 @@ import (
 // (the mutation must not have produced an invalid file), writes it atomically
 // with the watcher suppressed, and reindexes through the shared core.
 func (e *Engine) rewrite(ctx context.Context, n *vault.Note, rel string) error {
+	if e.Locks != nil {
+		defer e.Locks.Lock(rel)()
+	}
+	return e.rewriteLocked(ctx, n, rel)
+}
+
+// ErrChangedDuringRun reports that a note's file was written by somebody else
+// between the run reading it and this write.
+//
+// It is a skip, not a failure. Compile walks the vault once and rewrites much
+// later, so its read-to-write window spans the whole run; the shared path lock
+// serializes the writes but cannot make a stale in-memory note fresh. Writing
+// anyway would silently revert whatever landed in between — an agent's
+// edit_note, most likely — and the file and index would then agree on the
+// wrong content, which is exactly what reconciliation cannot detect.
+//
+// Skipping is safe because the lifecycle is idempotent and runs repeatedly:
+// whatever was due this run is due again next run, computed from the note as it
+// now is.
+var ErrChangedDuringRun = errors.New("note changed during the run; skipped to avoid reverting it")
+
+// rewriteLocked is rewrite with the path lock already held. move needs both its
+// source and destination locked for the whole operation, and the mutex is not
+// reentrant, so it takes both up front and calls this.
+func (e *Engine) rewriteLocked(ctx context.Context, n *vault.Note, rel string) error {
 	const op = "lifecycle.rewrite"
 	out, err := n.Serialize()
 	if err != nil {
@@ -45,6 +71,21 @@ func (e *Engine) rewrite(ctx context.Context, n *vault.Note, rel string) error {
 		defer e.Supp.Unsuppress(rel)
 	}
 	abs := filepath.Join(e.VaultDir, filepath.FromSlash(rel))
+	// Under the lock, confirm the file is still the one this note was parsed
+	// from. A missing file is not a conflict: move writes its destination
+	// before deleting the source.
+	if n.SrcBlake3 != "" {
+		switch cur, err := os.ReadFile(abs); { //nolint:gosec // path is inside the configured vault
+		case os.IsNotExist(err):
+		case err != nil:
+			return cogerr.E(op, cogerr.Internal, err)
+		default:
+			cursum := blake3.Sum256(cur)
+			if hex.EncodeToString(cursum[:]) != n.SrcBlake3 {
+				return ErrChangedDuringRun
+			}
+		}
+	}
 	if err := vault.WriteFileAtomic(abs, out); err != nil {
 		return err
 	}
@@ -53,6 +94,10 @@ func (e *Engine) rewrite(ctx context.Context, n *vault.Note, rel string) error {
 		return cogerr.E(op, cogerr.Internal, err)
 	}
 	sum := blake3.Sum256(out)
+	// Adopt the bytes just written, so a second mutation of the same note in
+	// one run does not read as a conflict with itself. Same digest the index
+	// gets — computed once.
+	n.SrcBlake3 = hex.EncodeToString(sum[:])
 	return e.Indexer.Index(ctx, reparsed, write.FileMeta{
 		Mtime: info.ModTime(), Size: info.Size(), Blake3: hex.EncodeToString(sum[:]),
 	})
@@ -64,6 +109,14 @@ func (e *Engine) rewrite(ctx context.Context, n *vault.Note, rel string) error {
 func (e *Engine) move(ctx context.Context, n *vault.Note, dest string) error {
 	const op = "lifecycle.move"
 	src := n.Path
+	// Both paths for the whole operation, acquired in a fixed global order.
+	// move writes the destination and then deletes the source, so releasing
+	// either early would expose a state where the note exists at both paths or
+	// neither. Ordering by path rather than by role is what keeps a pair of
+	// opposing moves from deadlocking.
+	if e.Locks != nil {
+		defer e.Locks.LockTwo(src, dest)()
+	}
 	absDest := filepath.Join(e.VaultDir, filepath.FromSlash(dest))
 	if _, err := os.Stat(absDest); err == nil {
 		return cogerr.Ef(op, cogerr.Conflict, "move %s: destination %s already exists", src, dest)
@@ -74,7 +127,7 @@ func (e *Engine) move(ctx context.Context, n *vault.Note, dest string) error {
 	}
 	n.Path = dest
 	n.Stage = stage
-	if err := e.rewrite(ctx, n, dest); err != nil {
+	if err := e.rewriteLocked(ctx, n, dest); err != nil {
 		return err
 	}
 	if e.Supp != nil {

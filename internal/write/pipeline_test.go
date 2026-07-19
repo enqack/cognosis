@@ -563,3 +563,134 @@ func TestConcurrentEditsDoNotLoseOne(t *testing.T) {
 		}
 	}
 }
+
+// TestIDChangeOnExistingPathRejected — the eviction guard was one-sided: an
+// omitted id reused the existing one, but a *supplied* different id still
+// evicted the row. edit_note made that a one-call operation on frontmatter the
+// caller can see, so the tool added to prevent link damage could cause it.
+//
+// What actually breaks is identity rather than links: RepairReferrers
+// re-resolves wikilinks by basename after the write, so edges follow the new
+// id. An id is written once precisely so it survives moves, and anything
+// holding the old one names a row that no longer exists.
+func TestIDChangeOnExistingPathRejected(t *testing.T) {
+	p, s, _, ctx := testPipeline(t)
+	const rel = "entries/pinned.md"
+
+	if err := p.Write(ctx, rel, noteContentNoID("first\n"), ""); err != nil {
+		t.Fatal(err)
+	}
+	original, err := s.GetNote(ctx, rel)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	other := uuid.Must(uuid.NewV7()).String()
+
+	// Via write_note.
+	err = p.Write(ctx, rel, noteContent(other, "", "second\n"), "")
+	if !cogerr.Is(err, cogerr.Conflict) {
+		t.Fatalf("write with a different id: err = %v, want Conflict", err)
+	}
+	if !strings.Contains(err.Error(), original.ID.String()) {
+		t.Errorf("refusal does not name the existing id: %v", err)
+	}
+
+	// Via edit_note, which is the newly reachable route.
+	err = p.Edit(ctx, rel, "id: "+original.ID.String(), "id: "+other)
+	if !cogerr.Is(err, cogerr.Conflict) {
+		t.Fatalf("edit changing the id: err = %v, want Conflict", err)
+	}
+
+	after, err := s.GetNote(ctx, rel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.ID != original.ID {
+		t.Errorf("id changed despite the refusal: %s -> %s", original.ID, after.ID)
+	}
+}
+
+// Re-supplying the *same* id must still work — the guard rejects a change, not
+// the presence of an id, and round-tripping a note's own frontmatter is the
+// most ordinary thing a caller does.
+func TestSameIDOnExistingPathAccepted(t *testing.T) {
+	p, s, _, ctx := testPipeline(t)
+	const rel = "entries/same.md"
+
+	if err := p.Write(ctx, rel, noteContentNoID("first\n"), ""); err != nil {
+		t.Fatal(err)
+	}
+	n, err := s.GetNote(ctx, rel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Write(ctx, rel, noteContent(n.ID.String(), "", "second\n"), ""); err != nil {
+		t.Fatalf("re-supplying the note's own id was rejected: %v", err)
+	}
+	after, _ := s.GetNote(ctx, rel)
+	if after.ID != n.ID || !strings.Contains(after.Content, "second") {
+		t.Errorf("write did not land: id %s, content %q", after.ID, after.Content)
+	}
+}
+
+// TestBlankIDKeyTreatedAsAbsent — `id:` with no value means the same thing as
+// no id line, and it is one of the most natural ways an agent writes "not
+// filled in yet". Splicing a second key over it produced two `id` mappings and
+// YAML rejected the write with `mapping key "id" already defined at line 1` —
+// an error naming a line the caller never wrote, firing on the exact case the
+// minting feature exists to serve.
+func TestBlankIDKeyTreatedAsAbsent(t *testing.T) {
+	p, s, root, ctx := testPipeline(t)
+
+	for _, c := range []struct{ name, idLine string }{
+		{"empty", "id:"},
+		{"trailing space", "id: "},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			rel := "entries/blank-" + strings.ReplaceAll(c.name, " ", "-") + ".md"
+			content := "---\n" + c.idLine + "\ncategory: entry\n" +
+				"created: \"2026-07-12 09:00:00\"\nupdated: \"2026-07-12 09:00:00\"\n---\nbody\n"
+			if err := p.Write(ctx, rel, content, ""); err != nil {
+				t.Fatalf("blank id rejected: %v", err)
+			}
+			n, err := s.GetNote(ctx, rel)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if n.ID.Version() != 7 {
+				t.Errorf("minted id is v%d, want v7", n.ID.Version())
+			}
+			b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := strings.Count(string(b), "id:"); got != 1 {
+				t.Errorf("file has %d id keys, want 1:\n%s", got, b)
+			}
+		})
+	}
+}
+
+// An `id:` nested inside another mapping, or appearing in the body, must
+// survive — dropBlankIDKey is scoped to top-level frontmatter keys.
+func TestBlankIDDropDoesNotTouchNestedOrBody(t *testing.T) {
+	p, _, root, ctx := testPipeline(t)
+	const rel = "entries/nested.md"
+	content := "---\ncategory: entry\n" +
+		"created: \"2026-07-12 09:00:00\"\nupdated: \"2026-07-12 09:00:00\"\n" +
+		"meta:\n  id:\n---\n```\nid:\n```\n"
+	if err := p.Write(ctx, rel, content, ""); err != nil {
+		t.Fatalf("write rejected: %v", err)
+	}
+	b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "  id:") {
+		t.Errorf("nested id key was stripped:\n%s", b)
+	}
+	if !strings.Contains(string(b), "```\nid:\n```") {
+		t.Errorf("body id line was stripped:\n%s", b)
+	}
+}
