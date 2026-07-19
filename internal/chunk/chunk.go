@@ -10,9 +10,10 @@
 package chunk
 
 import (
-	"crypto/sha256"
 	"encoding/hex"
 	"strings"
+
+	"github.com/zeebo/blake3"
 
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
@@ -201,7 +202,16 @@ func hardSplit(content string) []string {
 	return out
 }
 
+// hash is the chunk content digest. BLAKE3, matching every other content hash
+// in the project (write.FileMeta.Blake3, the watcher's drift detection,
+// vault.Note.SrcBlake3) so there is one answer to "did this content change"
+// rather than two.
+//
+// Changing it invalidates every stored chunk hash, so the first run after this
+// re-chunks and re-embeds the whole vault. That is a one-time cost, self-
+// healing, and taken deliberately before 1.0 rather than carrying a second
+// algorithm forward behind a migration.
 func hash(s string) string {
-	sum := sha256.Sum256([]byte(s))
+	sum := blake3.Sum256([]byte(s))
 	return hex.EncodeToString(sum[:])
 }

@@ -5,7 +5,6 @@ package store
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"log/slog"
@@ -17,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	pgxvec "github.com/pgvector/pgvector-go/pgx"
+	"github.com/zeebo/blake3"
 
 	"github.com/enqack/cognosis/internal/cogerr"
 )
@@ -70,7 +70,12 @@ func sockDir(repoDir, pgdata string) string {
 	if tmp == "" {
 		tmp = "/tmp"
 	}
-	sum := sha256.Sum256([]byte(repoDir))
+	// BLAKE3 for consistency with the rest of the project. This one is key
+	// derivation rather than a content hash, so the argument is uniformity, not
+	// correctness — and the consequence is that the lock path moves: an old and
+	// a new binary would take *different* advisory locks and could run at once.
+	// Stop the daemon before upgrading across this change.
+	sum := blake3.Sum256([]byte(repoDir))
 	return filepath.Join(tmp, "cognosis-"+hex.EncodeToString(sum[:])[:12])
 }
 

@@ -6,9 +6,10 @@ package embedtest
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/binary"
 	"math"
+
+	"github.com/zeebo/blake3"
 )
 
 // Stub is a deterministic embed.Provider. Dim defaults to 8 — small keeps
@@ -54,7 +55,12 @@ func (s *Stub) vec(text string) []float32 {
 	if v, ok := s.Vectors[text]; ok {
 		return v
 	}
-	sum := sha256.Sum256([]byte(text))
+	// BLAKE3, for one hashing primitive across the project. This is a seed for
+	// deterministic vectors rather than a content hash, so nothing about
+	// correctness turns on it — but changing it changes every stub vector, and
+	// therefore the fused rankings the goldens pin. Those were regenerated with
+	// this change; a golden diff here is expected, not a retrieval regression.
+	sum := blake3.Sum256([]byte(text))
 	v := make([]float32, s.dim())
 	var norm float64
 	for i := range v {
