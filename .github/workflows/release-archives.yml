@@ -23,8 +23,26 @@ jobs:
       - name: build release artifacts
         run: nix develop --command mage release
 
+      # The release card body is the tagged version's CHANGELOG headline prose
+      # plus its Breaking section — the details stay in CHANGELOG.md, which the
+      # card links to. One source of truth; the card can never say something
+      # the log does not. test -s fails the workflow when the tagged version
+      # has no CHANGELOG section, instead of shipping an empty card.
+      - name: extract changelog headline
+        run: |
+          awk -v ver="${GITHUB_REF_NAME#v}" '
+            $0 ~ "^## \\[" ver "\\]" {hit=1; keep=1; next}
+            !hit {next}
+            /^## \[/ {exit}
+            /^### Breaking/ {keep=1; print; next}
+            /^### / {keep=0; next}
+            keep {print}' CHANGELOG.md > release-body.md
+          test -s release-body.md
+          printf '\nFull details in the [changelog](https://github.com/enqack/cognosis/blob/%s/CHANGELOG.md).\n' "$GITHUB_REF_NAME" >> release-body.md
+
       - uses: softprops/action-gh-release@v2
         with:
+          body_path: release-body.md
           files: |
             dist/*.tar.gz
             dist/*.tar.xz

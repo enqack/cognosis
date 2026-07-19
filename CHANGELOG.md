@@ -6,6 +6,14 @@ All notable changes to Cognosis are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-19
+
+A recall and identity release, breaking once more. The keyword leg learns to fall back to OR when
+its AND conjunction starves — measured before shipped — and tokens get a rebuilt identity: names
+scoped to live rows, UUIDv7 ids, a full schema rebuild required. Around the edges: crash-safe
+local-token provisioning, a deterministic tie-break for reproducible retrieval, and tool schemas
+real clients can actually parse.
+
 ### Breaking
 
 - **Token names are now unique among *live* tokens only, and token ids are UUIDv7.** Both change the
@@ -76,6 +84,8 @@ All notable changes to Cognosis are documented here. The format follows
   unaffected). With 40 clusters over 25 notes most generated queries asked for a cluster no note
   belonged to, which read as keyword-leg starvation and depressed relevance — a fixture artifact
   that produced a false collateral-damage reading for the fallback.
+- `contrib/cognosis-mcp-headers`, a helper that reads the local token file at connect time so
+  client configs never carry a copy of the token.
 
 ### Fixed
 
@@ -93,6 +103,17 @@ All notable changes to Cognosis are documented here. The format follows
   expression return in a stable order across a schema drop and reindex rather than in physical-row
   order. The vector leg stays bare on purpose — pgvector matches its HNSW index only against the plain
   `<=>` order-by, and the ANN leg is not exactly deterministic anyway.
+- **Shutdown drains the watcher and MCP server before releasing the instance locks.** The daemon
+  previously returned on cancellation without waiting for its runners, so the single-instance lock
+  could release while a watcher write was still in flight — observed as a dirty vault tree failing
+  a hard delete's history rewrite. Runners are now drained (bounded by a 15s timeout) before any
+  lock releases.
+- **Advertised tool schemas no longer use nullable-type unions.** jsonschema-go infers
+  `["null","array"]` for Go slices — technically correct, but a real client that models only
+  single-type schemas degraded the field to untyped, serialized the array argument as a string,
+  and was rejected by this server's own validation (observed with `compile_lifecycle`'s
+  `reinforce` from Claude Code). Schemas are now collapsed to the single non-null type at
+  registration, and a test holds every advertised input schema to that form.
 
 ## [0.2.0] - 2026-07-19
 
@@ -414,7 +435,8 @@ Postgres index, and serves its memory over MCP (Streamable HTTP).
 
 - Slack/Discord bridge (explicitly post-v1).
 
-[unreleased]: https://github.com/enqack/cognosis/compare/v0.2.0...HEAD
+[unreleased]: https://github.com/enqack/cognosis/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/enqack/cognosis/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/enqack/cognosis/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/enqack/cognosis/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/enqack/cognosis/compare/v0.1.0...v0.1.1
