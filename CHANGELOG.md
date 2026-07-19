@@ -4,57 +4,30 @@ All notable changes to Cognosis are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project aims to follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] - 2026-07-19
 
-### Fixed
+A correctness release, and a deliberately breaking one. Cognosis is pre-1.0, so breaking changes
+take a MINOR bump rather than a migration; three land here.
 
-- **The `graph` status check no longer fails on large vaults.** It resolved link targets once per
-  note against a full table scan, so the audit was quadratic and exceeded its own deadline — a
-  healthy daemon reported `graph FAIL` because its vault had grown. Now three queries regardless of
-  size (measured at 2000 notes: 1.92s to 5.2ms).
-- **A concurrent `compile_lifecycle` and `edit_note` can no longer revert each other.** They write
-  the same vault files through different code paths and serialized only against themselves.
-- **`cognosis status` cannot hang.** Its health-check connection was the one probe without a
-  timeout, so an unreachable-but-not-refusing database would block the command indefinitely.
-- **`cognosis note delete --hard` no longer half-completes.** The history rewrite ran last, after
-  the index row, the file and `log.md` were already gone — and it is the step that fails, because
-  `git filter-branch` refuses a dirty working tree and the vault is dirty whenever an editor or the
-  daemon is writing. A failure left the note erased from the vault but still present in history, a
-  state no retry could reach. The rewrite now runs first, so a failure destroys nothing; pending
-  drift is committed before it; and the removal is committed after, instead of being left for
-  whatever happened to commit next.
-- **Vault history no longer records editor state or the generated dashboard.** `CommitAll` staged
-  everything in the vault directory, so anything another tool wrote became part of the knowledge
-  audit trail — 22% of a real vault's commits touched no note at all, and some carried
-  `watch: <note>.md edited out-of-band` subjects while containing only editor churn. It now stages
-  the four stage directories, `log.md` and `index.md`. Existing vaults still *track* those files;
-  see the setup guide for the one-time `git rm --cached`.
-- **A note's commit no longer sweeps in unrelated staged files, or swallows a concurrent write.**
-  Only the `git add` was scoped; the `git commit` was not, and git commits whatever is in the index —
-  so anything a human had staged in the vault repo rode along under a message naming only the note
-  Cognosis had just written. The commit is now assembled in a scratch index, which also fixes a
-  second problem the obvious scoped form (`git commit -- <paths>`) would have introduced: that is a
-  *partial commit* and reads the working tree, so a note written by another goroutine between the
-  stage and the commit was absorbed into the wrong message and then found nothing left to record —
-  losing that version from vault history with no error anywhere. The commit is now a snapshot taken
-  at stage time, and another party's staged work is neither committed nor discarded.
-- **`index.md` is now versioned.** It carries the vault's `okf_version` declaration — the one field
-  that says how everything else should be read — and Cognosis validates it but never writes it, so
-  it was being skipped as though generated. A format declaration could change or vanish with nothing
-  in the history saying so.
-- **The CLI no longer briefly becomes the daemon it is checking for.** The daemon-ownership probe
-  behind `vault restore` routing and the hard-delete guard acquired the single-instance advisory
-  lock and released it. For the moment it held that lock it *was* the arbiter, so a daemon starting
-  in that window exited with "another cognosis daemon already owns this database", naming a CLI
-  process that had already finished. The probe now reads `pg_locks` instead, which cannot displace
-  anyone.
-- **`cognosis vault restore` no longer races the daemon.** It wrote the vault file and committed
-  directly, taking neither the per-path lock the daemon's own writers share nor the path
-  normalisation the equivalent MCP tool applies, so a restore concurrent with a compile pass over
-  the same note interleaved freely.
-- **CLI commands no longer migrate the schema underneath a running daemon.** `withStore` ran
-  `store.Migrate` unconditionally, so any store-using command — including read-only ones like
-  `token list` — could apply a migration to a database a live daemon was serving from.
+**BLAKE3 replaces the last sha256 call sites.** Stored chunk hashes keep their old values until each
+note is next edited — nothing reads that column, so it is inert. The derived Postgres socket
+directory also moves, and that one is not inert: **stop the daemon before upgrading.** An old and a
+new binary can otherwise place the socket in different directories, reach different postmasters, and
+both run at once, because the single-instance advisory lock only excludes daemons that reached the
+same database. This applies only when no `dsn` is configured and the daemon self-locates a dev
+Postgres whose `.pg-data` path exceeds 90 characters; a configured DSN never reaches it.
+
+**`cognosis vault restore` now routes through the daemon** when one owns the vault, so a restore
+takes the same per-path lock as every other writer. It refuses rather than falling back if the
+daemon owns the vault but cannot be reached — `--force-local` is the documented way through.
+
+**`cognosis note delete --hard` is refused while a daemon owns the vault.** There is no MCP
+equivalent to route it through, so stop the daemon first.
+
+One further upgrade action, for vaults created before this release: generated and editor state is no
+longer committed, but already-tracked copies stay tracked and will keep the vault repo dirty — which
+also blocks `note delete --hard`. The one-time `git rm --cached` is in
+[the setup guide](docs/setup-guide.md).
 
 ### Added
 
@@ -142,6 +115,56 @@ All notable changes to Cognosis are documented here. The format follows
 - **`query_knowledge` logs per-leg candidate counts** (`vector`, `fts`, `graph`, `fused`). The fused
   result count cannot say whether the keyword leg contributed anything, and on real traffic it
   frequently contributes nothing. Counts only, never query text.
+
+### Fixed
+
+- **The `graph` status check no longer fails on large vaults.** It resolved link targets once per
+  note against a full table scan, so the audit was quadratic and exceeded its own deadline — a
+  healthy daemon reported `graph FAIL` because its vault had grown. Now three queries regardless of
+  size (measured at 2000 notes: 1.92s to 5.2ms).
+- **A concurrent `compile_lifecycle` and `edit_note` can no longer revert each other.** They write
+  the same vault files through different code paths and serialized only against themselves.
+- **`cognosis status` cannot hang.** Its health-check connection was the one probe without a
+  timeout, so an unreachable-but-not-refusing database would block the command indefinitely.
+- **`cognosis note delete --hard` no longer half-completes.** The history rewrite ran last, after
+  the index row, the file and `log.md` were already gone — and it is the step that fails, because
+  `git filter-branch` refuses a dirty working tree and the vault is dirty whenever an editor or the
+  daemon is writing. A failure left the note erased from the vault but still present in history, a
+  state no retry could reach. The rewrite now runs first, so a failure destroys nothing; pending
+  drift is committed before it; and the removal is committed after, instead of being left for
+  whatever happened to commit next.
+- **Vault history no longer records editor state or the generated dashboard.** `CommitAll` staged
+  everything in the vault directory, so anything another tool wrote became part of the knowledge
+  audit trail — 22% of a real vault's commits touched no note at all, and some carried
+  `watch: <note>.md edited out-of-band` subjects while containing only editor churn. It now stages
+  the four stage directories, `log.md` and `index.md`. Existing vaults still *track* those files;
+  see the setup guide for the one-time `git rm --cached`.
+- **A note's commit no longer sweeps in unrelated staged files, or swallows a concurrent write.**
+  Only the `git add` was scoped; the `git commit` was not, and git commits whatever is in the index —
+  so anything a human had staged in the vault repo rode along under a message naming only the note
+  Cognosis had just written. The commit is now assembled in a scratch index, which also fixes a
+  second problem the obvious scoped form (`git commit -- <paths>`) would have introduced: that is a
+  *partial commit* and reads the working tree, so a note written by another goroutine between the
+  stage and the commit was absorbed into the wrong message and then found nothing left to record —
+  losing that version from vault history with no error anywhere. The commit is now a snapshot taken
+  at stage time, and another party's staged work is neither committed nor discarded.
+- **`index.md` is now versioned.** It carries the vault's `okf_version` declaration — the one field
+  that says how everything else should be read — and Cognosis validates it but never writes it, so
+  it was being skipped as though generated. A format declaration could change or vanish with nothing
+  in the history saying so.
+- **The CLI no longer briefly becomes the daemon it is checking for.** The daemon-ownership probe
+  behind `vault restore` routing and the hard-delete guard acquired the single-instance advisory
+  lock and released it. For the moment it held that lock it *was* the arbiter, so a daemon starting
+  in that window exited with "another cognosis daemon already owns this database", naming a CLI
+  process that had already finished. The probe now reads `pg_locks` instead, which cannot displace
+  anyone.
+- **`cognosis vault restore` no longer races the daemon.** It wrote the vault file and committed
+  directly, taking neither the per-path lock the daemon's own writers share nor the path
+  normalisation the equivalent MCP tool applies, so a restore concurrent with a compile pass over
+  the same note interleaved freely.
+- **CLI commands no longer migrate the schema underneath a running daemon.** `withStore` ran
+  `store.Migrate` unconditionally, so any store-using command — including read-only ones like
+  `token list` — could apply a migration to a database a live daemon was serving from.
 
 ## [0.1.2] - 2026-07-16
 
@@ -301,7 +324,8 @@ Postgres index, and serves its memory over MCP (Streamable HTTP).
 
 - Slack/Discord bridge (explicitly post-v1).
 
-[unreleased]: https://github.com/enqack/cognosis/compare/v0.1.2...HEAD
+[unreleased]: https://github.com/enqack/cognosis/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/enqack/cognosis/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/enqack/cognosis/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/enqack/cognosis/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/enqack/cognosis/releases/tag/v0.1.0
