@@ -175,15 +175,45 @@ func Run(ctx context.Context, cfg *config.Config, log *slog.Logger, opts Options
 		}(r)
 	}
 
+	// Shutdown must drain the runners before returning: the deferred lock
+	// releases fire on return, and a watcher mid-write still owns the vault in
+	// every sense that matters. Returning without waiting released the
+	// single-instance lock while an index commit was in flight — observed as a
+	// dirty vault tree failing PurgePath's filter-branch in the daemon check.
+	// The watcher handles events synchronously in its Run loop, so cancel +
+	// drain lets an in-flight write finish; the timeout bounds a runner that
+	// ignores cancellation (an embed call mid-flight can take seconds).
 	select {
 	case <-ctx.Done():
 		log.Info("shutting down", "reason", ctx.Err())
+		cancel()
+		drainRunners(errCh, len(runners), log)
 		return nil
 	case err := <-errCh:
+		cancel()
+		drainRunners(errCh, len(runners)-1, log)
 		if err != nil && ctx.Err() == nil {
 			return fmt.Errorf("component failed: %w", err)
 		}
 		return nil
+	}
+}
+
+// runnerDrainTimeout bounds how long shutdown waits for runners to observe
+// cancellation. Generous because an in-flight index includes an embedding
+// HTTP call; bounded because a hung runner must not wedge shutdown forever —
+// past it, locks release anyway and the warning names the trade.
+const runnerDrainTimeout = 15 * time.Second
+
+func drainRunners(errCh <-chan error, n int, log *slog.Logger) {
+	deadline := time.After(runnerDrainTimeout)
+	for range n {
+		select {
+		case <-errCh:
+		case <-deadline:
+			log.Warn("shutdown: runners did not stop within the drain timeout; releasing locks anyway")
+			return
+		}
 	}
 }
 
