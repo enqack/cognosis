@@ -51,8 +51,17 @@ func Daemonize(ctx context.Context, paths config.Paths) (int, error) {
 	if err := cmd.Start(); err != nil {
 		return 0, cogerr.E(op, cogerr.Internal, err)
 	}
+	// Read the pid *before* releasing. Release sets Process.Pid to -1 to mark
+	// the handle spent, and Go does not specify whether a non-call operand in a
+	// return statement is evaluated before or after a call beside it — so
+	// `return cmd.Process.Pid, cmd.Process.Release()` reported -1 rather than
+	// the child's pid, in the one message whose job is to say what started.
+	pid := cmd.Process.Pid
 	// Deliberately not waiting: the child owns its own lifetime now.
-	return cmd.Process.Pid, cmd.Process.Release()
+	if err := cmd.Process.Release(); err != nil {
+		return 0, cogerr.E(op, cogerr.Internal, err)
+	}
+	return pid, nil
 }
 
 // Stop signals the running daemon (SIGTERM) and waits for the lock to clear.
