@@ -124,7 +124,11 @@ func isLoopbackHost(host string) bool {
 	if ip := net.ParseIP(host); ip != nil {
 		return ip.IsLoopback()
 	}
-	addrs, err := net.LookupHost(host)
+	// Bounded: this runs on the startup path, and a name that needs longer than
+	// this to resolve has not been shown to be local either way.
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	addrs, err := (&net.Resolver{}).LookupHost(ctx, host)
 	if err != nil || len(addrs) == 0 {
 		return false
 	}
