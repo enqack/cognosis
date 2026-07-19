@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -127,5 +128,21 @@ func (p *Pipeline) Write(ctx context.Context, rel, content, project string) erro
 	sum := blake3.Sum256([]byte(content))
 	meta := FileMeta{Mtime: info.ModTime(), Size: info.Size(), Blake3: hex.EncodeToString(sum[:])}
 
-	return p.Indexer.Index(ctx, n, meta)
+	if err := p.Indexer.Index(ctx, n, meta); err != nil {
+		return err
+	}
+
+	// A note landing can resolve edges that were dangling: anything already in
+	// the vault referencing this basename dropped that link when it was
+	// indexed, and would never be revisited on its own (it is unchanged, so
+	// drift detection skips it). Repair those now, while the fact that this
+	// note just arrived is known.
+	//
+	// Non-fatal: the write itself succeeded, and a missing edge degrades the
+	// graph leg of retrieval rather than corrupting anything.
+	base := strings.TrimSuffix(path.Base(rel), ".md")
+	if _, err := p.Indexer.RepairReferrers(ctx, []string{base}, map[string]bool{rel: true}); err != nil {
+		return nil //nolint:nilerr // the write landed; link repair is best-effort
+	}
+	return nil
 }

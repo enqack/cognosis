@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -199,14 +200,17 @@ func (w *Watcher) reconcile(ctx context.Context, forceHash bool) error {
 	// Cost is one resolve + SetLinks per note; no chunking, no embedding.
 	//
 	// This closes the within-batch ordering hole, which is the one a rebuild
-	// hits. It does NOT close the later-arrival case: if note A references B
-	// and B is created in some *later* run, A is unchanged, so A is not in
-	// this batch and its dangling ref to B stays dangling. resolveLinks'
-	// promise that dangling targets "become resolvable when their note lands"
-	// is still unkept for that path — repairing it needs a reverse lookup from
-	// a landing note to whoever references its basename, which nothing stores.
+	// hits. The later-arrival case — A references B, B created in some later
+	// run, A unchanged and so never revisited — is closed by the third pass.
 	if len(indexed) > 1 {
 		w.relinkBatch(ctx, indexed)
+	}
+	// Third pass: repair notes *outside* this batch that reference something
+	// in it. Those referrers are unchanged on disk, so drift detection will
+	// never look at them again on its own, and their edge to a note that only
+	// just landed would stay dangling forever.
+	if len(indexed) > 0 {
+		w.repairReferrers(ctx, indexed)
 	}
 
 	// Deletions: indexed paths that no longer exist on disk.
@@ -267,6 +271,25 @@ func (w *Watcher) relinkBatch(ctx context.Context, batch []drifted) {
 		repaired++
 	}
 	w.log.Debug("links re-resolved after batch index", "notes", repaired)
+}
+
+// repairReferrers re-resolves links of notes that reference anything just
+// indexed, excluding the batch itself (relinkBatch already covered it).
+func (w *Watcher) repairReferrers(ctx context.Context, batch []drifted) {
+	names := make([]string, 0, len(batch))
+	skip := make(map[string]bool, len(batch))
+	for _, d := range batch {
+		names = append(names, strings.TrimSuffix(path.Base(d.rel), ".md"))
+		skip[d.rel] = true
+	}
+	n, err := w.indexer().RepairReferrers(ctx, names, skip)
+	if err != nil {
+		w.log.Error("referrer link repair failed", "reason", err)
+		return
+	}
+	if n > 0 {
+		w.log.Info("repaired links in notes referencing newly indexed files", "notes", n)
+	}
 }
 
 // indexFile validates one file and routes it through the shared indexing

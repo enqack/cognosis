@@ -127,8 +127,51 @@ func (ix *Indexer) Relink(ctx context.Context, n *vault.Note) error {
 	return ix.Store.SetLinks(ctx, id, links)
 }
 
+// RepairReferrers re-resolves the outbound links of every note that mentions
+// one of the given basenames, so edges pointing at a note that only just landed
+// stop being dangling. Returns how many notes it rewrote.
+//
+// This is the other half of the ordering problem Relink solves. Relink fixes a
+// note indexed ahead of its own targets; this fixes notes indexed in some
+// *earlier* run than their target. Those referrers are unchanged on disk, so
+// drift detection skips them forever and nothing would otherwise revisit them.
+//
+// skip holds paths already relinked by the caller (a reconcile batch handles
+// itself), so a rebuild does not rewrite the same edges twice.
+//
+// Referrers are rebuilt from the index rather than re-read from disk: the
+// frontmatter and body are both stored columns, which is all vault.Targets
+// needs. That keeps this off the filesystem and independent of the vault root.
+func (ix *Indexer) RepairReferrers(ctx context.Context, basenames []string, skip map[string]bool) (int, error) {
+	refs, err := ix.Store.ReferrersOf(ctx, basenames)
+	if err != nil {
+		return 0, err
+	}
+	repaired := 0
+	for _, r := range refs {
+		if skip[r.Path] {
+			continue
+		}
+		stage, ok := vault.StageOf(r.Path)
+		if !ok {
+			continue
+		}
+		n := &vault.Note{Path: r.Path, Stage: stage, Frontmatter: r.Frontmatter, Body: r.Body}
+		links, err := ix.resolveLinks(ctx, n)
+		if err != nil {
+			return repaired, err
+		}
+		if err := ix.Store.SetLinks(ctx, r.ID, links); err != nil {
+			return repaired, err
+		}
+		repaired++
+	}
+	return repaired, nil
+}
+
 // resolveLinks maps the note's outbound wikilink/source targets to note ids;
-// dangling targets are dropped. They are NOT self-healing — see Relink.
+// dangling targets are dropped. They are NOT self-healing — see Relink and
+// RepairReferrers.
 func (ix *Indexer) resolveLinks(ctx context.Context, n *vault.Note) ([]store.Link, error) {
 	refs := vault.Targets(n)
 	if len(refs) == 0 {

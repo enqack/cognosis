@@ -16,6 +16,7 @@ import (
 	"github.com/enqack/cognosis/internal/store"
 	"github.com/enqack/cognosis/internal/store/storetest"
 	"github.com/enqack/cognosis/internal/vault"
+	"github.com/enqack/cognosis/internal/write"
 )
 
 func testWatcher(t *testing.T) (*Watcher, *store.Store, string, context.Context) {
@@ -301,5 +302,83 @@ Refers to [[zzz-target]] in the body.
 	}
 	if len(dsts) != 1 || dsts[0] != uuid.MustParse(target) {
 		t.Fatalf("link from aaa-source to zzz-target missing after batch index: got %v", dsts)
+	}
+}
+
+// TestLaterArrivalRepairsDanglingLink covers the half of the ordering problem
+// relinkBatch cannot: the referrer is not in the batch at all.
+//
+// A references B, B does not exist yet, so A's edge is dropped. When B lands
+// in a *later* run, A is unchanged — drift detection confirms by content hash
+// and skips it forever — so without a reverse lookup from B's basename back to
+// whoever mentions it, that edge stays dangling for good.
+func TestLaterArrivalRepairsDanglingLink(t *testing.T) {
+	w, s, root, ctx := testWatcher(t)
+
+	src := uuid.Must(uuid.NewV7()).String()
+	writeEntry(t, root, "entries/source.md", `---
+id: `+src+`
+category: entry
+created: "2026-07-12 09:00:00"
+updated: "2026-07-12 09:00:00"
+---
+Refers to [[late-target]] which does not exist yet.
+`)
+	if err := w.Reconcile(ctx, s); err != nil {
+		t.Fatal(err)
+	}
+	srcID := uuid.MustParse(src)
+	if dsts, err := w.store().LinkDsts(ctx, srcID); err != nil {
+		t.Fatal(err)
+	} else if len(dsts) != 0 {
+		t.Fatalf("precondition: link should be dangling before the target exists, got %v", dsts)
+	}
+
+	// The target arrives in a separate run. source.md is untouched.
+	target := uuid.Must(uuid.NewV7()).String()
+	writeEntry(t, root, "entries/late-target.md", entryContent(target))
+	if err := w.Reconcile(ctx, s); err != nil {
+		t.Fatal(err)
+	}
+
+	dsts, err := w.store().LinkDsts(ctx, srcID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dsts) != 1 || dsts[0] != uuid.MustParse(target) {
+		t.Fatalf("edge to a later-arriving target was never resolved: got %v", dsts)
+	}
+}
+
+// The same repair must happen on a sanctioned write, not only on reconcile —
+// write_note is how most notes actually land.
+func TestLaterArrivalRepairsOnPipelineWrite(t *testing.T) {
+	w, s, root, ctx := testWatcher(t)
+
+	src := uuid.Must(uuid.NewV7()).String()
+	writeEntry(t, root, "entries/source.md", `---
+id: `+src+`
+category: entry
+created: "2026-07-12 09:00:00"
+updated: "2026-07-12 09:00:00"
+---
+Refers to [[written-target]] which does not exist yet.
+`)
+	if err := w.Reconcile(ctx, s); err != nil {
+		t.Fatal(err)
+	}
+
+	target := uuid.Must(uuid.NewV7()).String()
+	pipe := write.NewPipeline(w.indexer(), root, vault.NewHistory(root), nil)
+	if err := pipe.Write(ctx, "entries/written-target.md", entryContent(target), ""); err != nil {
+		t.Fatal(err)
+	}
+
+	dsts, err := w.store().LinkDsts(ctx, uuid.MustParse(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dsts) != 1 || dsts[0] != uuid.MustParse(target) {
+		t.Fatalf("write_note did not repair the dangling edge pointing at it: got %v", dsts)
 	}
 }

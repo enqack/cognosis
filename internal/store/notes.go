@@ -225,6 +225,79 @@ func (s *Store) ListDecaying(ctx context.Context, cutoff time.Time, project stri
 	return out, nil
 }
 
+// Referrer is a note that mentions some basename, with everything needed to
+// recompute its outbound links — no disk read required.
+type Referrer struct {
+	ID          uuid.UUID
+	Path        string
+	Frontmatter map[string]any
+	Body        string
+}
+
+// ReferrersOf returns notes whose body or `sources:` mention any of the given
+// wikilink basenames.
+//
+// This is the reverse lookup link resolution needs and never had. resolveLinks
+// drops a target it cannot resolve, so a note referencing one that does not
+// exist yet loses that edge permanently: the referrer is unchanged, so drift
+// detection skips it forever, and nothing re-resolves it when the target
+// finally lands. Both halves of a reference live in columns already — body
+// wikilinks in `content`, provenance in `frontmatter->'sources'` — so this
+// needs no schema change and no file read.
+//
+// Body matching is a substring test on the literal `[[name]]` form. That can
+// over-match (a name inside a code fence still counts), which is harmless:
+// the caller re-resolves through vault.Targets, and a note that turns out not
+// to reference the target simply rewrites the same edges it already had.
+func (s *Store) ReferrersOf(ctx context.Context, names []string) ([]Referrer, error) {
+	const op = "store.ReferrersOf"
+	if len(names) == 0 {
+		return nil, nil
+	}
+	wiki := make([]string, 0, len(names))
+	srcs := make([]string, 0, len(names))
+	for _, n := range names {
+		if n == "" {
+			continue
+		}
+		wiki = append(wiki, "%[["+n+"]]%")
+		srcs = append(srcs, "[["+n+"]]")
+	}
+	if len(wiki) == 0 {
+		return nil, nil
+	}
+	rows, err := s.pool.Query(ctx, `
+		select id, path, frontmatter, content
+		from notes
+		where content like any($1)
+		   or exists (
+		        select 1 from jsonb_array_elements_text(
+		          case when jsonb_typeof(frontmatter->'sources') = 'array'
+		               then frontmatter->'sources' else '[]'::jsonb end) s
+		        where s = any($2))
+		order by path`, wiki, srcs)
+	if err != nil {
+		return nil, cogerr.E(op, cogerr.Internal, err)
+	}
+	defer rows.Close()
+	var out []Referrer
+	for rows.Next() {
+		var r Referrer
+		var fm []byte
+		if err := rows.Scan(&r.ID, &r.Path, &fm, &r.Body); err != nil {
+			return nil, cogerr.E(op, cogerr.Internal, err)
+		}
+		if err := json.Unmarshal(fm, &r.Frontmatter); err != nil {
+			return nil, cogerr.E(op, cogerr.Internal, err)
+		}
+		out = append(out, r)
+	}
+	if rows.Err() != nil {
+		return nil, cogerr.E(op, cogerr.Internal, rows.Err())
+	}
+	return out, nil
+}
+
 // DeleteNote removes a note (chunks/links cascade). Deleting a missing path
 // is not an error — deletion is idempotent for the watcher's sake.
 func (s *Store) DeleteNote(ctx context.Context, path string) error {
