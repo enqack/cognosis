@@ -210,23 +210,37 @@ func EnsureLocalToken(ctx context.Context, s *store.Store, tokenFile string) err
 	if err != nil {
 		return err
 	}
+	// The file is written before the row on purpose: a crash between the two
+	// then leaves a file whose row never existed, which the next boot detects
+	// as unusable and re-mints over. The other order left a live row with no
+	// file — a state this function refuses to mint past (below), so a crash
+	// mid-provision wedged the daemon until a manual revoke.
+	if err := os.WriteFile(tokenFile, []byte(plaintext+"\n"), 0o600); err != nil {
+		return cogerr.E(op, cogerr.Internal, err)
+	}
 	// Always the plain name. Uniqueness is scoped to live tokens, so a revoked
 	// `local` frees the name and rotation keeps it — which is what makes
 	// `token=local` in a log line always mean exactly the daemon.
 	//
-	// A *live* `local` with no state-dir file means a fresh state dir pointed at
-	// an existing database, or a rotation done out of order. That is operator
-	// error, and this refuses rather than minting under a mangled name: a daemon
-	// whose own token is called something unrecognisable is worse than one that
-	// says what is wrong. Mirrors the revocation refusal in localTokenUsable.
+	// A *live* `local` this state dir has no plaintext for means a fresh state
+	// dir pointed at an existing database, or a rotation done out of order.
+	// That is operator error, and this refuses rather than minting under a
+	// mangled name: a daemon whose own token is called something unrecognisable
+	// is worse than one that says what is wrong. Mirrors the revocation refusal
+	// in localTokenUsable. Any other create failure (connection loss) is
+	// reported as-is — the revoke remedy would be wrong advice for it.
 	if err := s.CreateToken(ctx, id, LocalTokenName, hash); err != nil {
-		return cogerr.Ef(op, cogerr.Validation,
-			"a live token named %q already exists but %s is missing; "+
-				"run `cognosis token revoke %s` and restart to mint a fresh one",
-			LocalTokenName, tokenFile, LocalTokenName)
-	}
-	if err := os.WriteFile(tokenFile, []byte(plaintext+"\n"), 0o600); err != nil {
-		return cogerr.E(op, cogerr.Internal, err)
+		// Refusing to mint must leave no token file: the plaintext written above
+		// was never registered, and a file that cannot authenticate reads as
+		// provisioned to a glance at the state dir.
+		_ = os.Remove(tokenFile)
+		if cogerr.Is(err, cogerr.Conflict) {
+			return cogerr.Ef(op, cogerr.Validation,
+				"a live token named %q already exists but this state dir holds no working plaintext for it; "+
+					"run `cognosis token revoke %s` and restart to mint a fresh one",
+				LocalTokenName, LocalTokenName)
+		}
+		return err
 	}
 	return nil
 }

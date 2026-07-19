@@ -18,9 +18,9 @@ import (
 //
 // The attribute is deliberately Identity.Name rather than TokenID. The UUID is
 // noise in a text stream and is already audit_log's key; the name is what an
-// operator reads. Note that EnsureLocalToken can mint under "local-<8hex>" on a
-// name collision, so the name is not guaranteed to be the pretty one — which is
-// itself a useful signal.
+// operator reads. EnsureLocalToken always mints under exactly "local" (live-name
+// uniqueness frees the name on revocation), so token=local in a log line always
+// means the daemon's own token.
 //
 // # Absence is meaningful, not a failure
 //

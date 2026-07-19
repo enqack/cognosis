@@ -7,7 +7,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/enqack/cognosis/internal/cogerr"
 )
@@ -25,11 +27,20 @@ type Token struct {
 // CreateToken registers a token hash under a unique name. The id comes from
 // the caller — it is embedded in the plaintext token for O(1) verification
 // lookup, so the row must carry exactly that id.
+//
+// Only a unique violation (a live token already holds the name, or the id is
+// taken) is a Conflict; anything else — connection loss, cancellation — is
+// Internal. Callers branch on the distinction: EnsureLocalToken's "revoke and
+// restart" remedy is correct advice only for the former.
 func (s *Store) CreateToken(ctx context.Context, id uuid.UUID, name, hash string) error {
 	const op = "store.CreateToken"
 	if _, err := s.pool.Exec(ctx,
 		`insert into tokens (id, name, token_hash) values ($1, $2, $3)`, id, name, hash); err != nil {
-		return cogerr.E(op, cogerr.Conflict, err)
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
+			return cogerr.E(op, cogerr.Conflict, err)
+		}
+		return cogerr.E(op, cogerr.Internal, err)
 	}
 	return nil
 }

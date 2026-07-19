@@ -65,8 +65,12 @@ create table if not exists embedding_providers (
 -- name carries no table-level UNIQUE: uniqueness is scoped to live tokens by
 -- tokens_live_name_idx below, so a revoked row keeps its name for the audit
 -- join without squatting it.
+-- id carries no default on purpose: every creator passes an explicit UUIDv7
+-- (embedded in the plaintext for O(1) verification lookup), and parseToken
+-- rejects v4 — a gen_random_uuid() default would mint tokens that can never
+-- authenticate.
 create table if not exists tokens (
-  id           uuid primary key default gen_random_uuid(),
+  id           uuid primary key,
   name         text not null,
   token_hash   text not null,
   created_at   timestamptz not null default now(),
