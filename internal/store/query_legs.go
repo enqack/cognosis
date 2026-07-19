@@ -146,9 +146,16 @@ const (
 	// TSQueryWebsearch is production: websearch_to_tsquery, which joins terms
 	// with AND. A chunk must contain every query term.
 	TSQueryWebsearch TSQueryMode = iota
-	// TSQueryOr is measurement-only: the same lexemes joined with OR, so a
-	// chunk matching any term is a candidate. Not reachable from any request
-	// path; it exists so the AND/OR choice can be measured rather than argued.
+	// TSQueryOr is the same lexemes joined with OR, so a chunk matching any
+	// term is a candidate.
+	//
+	// Formerly measurement-only. It is now reachable from the request path, but
+	// only as a fallback when the AND conjunction returns fewer than
+	// query.ftsFallbackBelow candidates — never as the primary connective.
+	// Measured on both a 125-chunk and a 2000-chunk corpus, that threshold
+	// fires on zero healthy queries while lifting target-note recall on queries
+	// whose terms span chunks; using OR unconditionally instead costs roughly
+	// half the fused top-8. See internal/query/retrievaleval/tsqueryfallback_test.go.
 	TSQueryOr
 )
 
@@ -190,12 +197,20 @@ func ftsLegArgs(text string, f Filter, limit int) []any {
 		limit, asOfTS, asOfText, f.IncludeArchived}
 }
 
-// RankFTS is the keyword leg: websearch-style full-text match ranked by
-// ts_rank_cd.
+// RankFTS is the keyword leg at shipped semantics: websearch-style full-text
+// match ranked by ts_rank_cd, terms joined with AND.
 func (s *Store) RankFTS(ctx context.Context, text string,
 	f Filter, limit int) ([]RankedChunk, error) {
-	const op = "store.RankFTS"
-	rows, err := s.pool.Query(ctx, ftsLegSQL(), ftsLegArgs(text, f, limit)...)
+	return s.RankFTSMode(ctx, text, TSQueryWebsearch, f, limit)
+}
+
+// RankFTSMode is the keyword leg with an explicit connective. The request path
+// reaches TSQueryOr through it, as the fallback when the AND conjunction comes
+// back near-empty — see query.Engine and ftsFallbackBelow.
+func (s *Store) RankFTSMode(ctx context.Context, text string, mode TSQueryMode,
+	f Filter, limit int) ([]RankedChunk, error) {
+	const op = "store.RankFTSMode"
+	rows, err := s.pool.Query(ctx, ftsLegSQLMode(mode), ftsLegArgs(text, f, limit)...)
 	if err != nil {
 		return nil, cogerr.E(op, cogerr.Internal, err)
 	}

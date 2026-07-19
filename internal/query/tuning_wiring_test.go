@@ -78,6 +78,79 @@ func TestTuningCandidatePoolApplies(t *testing.T) {
 	}
 }
 
+// TestTuningFTSFallbackReachesRun pins that the OR fallback is wired into Run,
+// and doubles as the record of why the golden ranking changed when it shipped.
+//
+// The fixture query is "where is the index stored". Under AND the conjunction
+// matches only entries/pg.md ("stores the derived index") — one candidate,
+// below the threshold — so the leg re-runs with OR and picks up
+// notes/scoped.md ("Project-scoped capture about the index"), which contains
+// one term but not both.
+//
+// That is the improvement in miniature: scoped.md is about the index and
+// entries/vault.md ("reconciles hand edits") is not, and the fallback moves the
+// relevant note above the irrelevant one. Disabling it restores the old order,
+// which is what makes this a wiring proof rather than an assertion that would
+// pass with the feature removed.
+func TestTuningFTSFallbackReachesRun(t *testing.T) {
+	e, _, ctx := fixture(t)
+
+	withFallback, err := e.Run(ctx, queryText, query.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Negative disables; zero would mean "unset" and silently keep the default.
+	e.Tuning = query.Tuning{FTSFallbackBelow: -1}
+	without, err := e.Run(ctx, queryText, query.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	gotWith, gotWithout := paths(withFallback), paths(without)
+	if idx := indexOf(gotWith, "notes/scoped.md"); idx != 1 {
+		t.Errorf("with fallback: scoped.md at %d, want 1 (got %v)", idx, gotWith)
+	}
+	if idx := indexOf(gotWithout, "notes/scoped.md"); idx != 2 {
+		t.Errorf("fallback disabled: scoped.md at %d, want 2 — the tuning knob did not "+
+			"reach Run, or the fallback is not what moved it (got %v)", idx, gotWithout)
+	}
+}
+
+// TestFTSFallbackReportedInStats pins that the fallback announces itself. A
+// silent one has the same defect LegStats exists to fix: a healthy-looking
+// keyword count that came from a disjunction papering over a failed
+// conjunction.
+func TestFTSFallbackReportedInStats(t *testing.T) {
+	e, _, ctx := fixture(t)
+
+	_, stats, err := e.RunWithStats(ctx, queryText, query.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !stats.FTSFallback {
+		t.Errorf("FTSFallback = false, but the fixture's AND conjunction matches one chunk "+
+			"and the fallback demonstrably fired (fts=%d)", stats.FTS)
+	}
+
+	e.Tuning = query.Tuning{FTSFallbackBelow: -1}
+	_, off, err := e.RunWithStats(ctx, queryText, query.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if off.FTSFallback {
+		t.Error("FTSFallback = true with the fallback disabled")
+	}
+}
+
+func indexOf(xs []string, want string) int {
+	for i, x := range xs {
+		if x == want {
+			return i
+		}
+	}
+	return -1
+}
+
 func contains(xs []string, want string) bool {
 	for _, x := range xs {
 		if x == want {

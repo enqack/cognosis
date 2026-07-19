@@ -28,6 +28,27 @@ const (
 	DefaultTopK = 8
 	// graphWeight scales the graph leg: a booster, not a primary signal.
 	graphWeight = 0.5
+	// ftsFallbackBelow is the keyword leg's OR-fallback threshold: when the AND
+	// conjunction returns fewer than this many candidates, the leg is re-run
+	// with OR semantics.
+	//
+	// websearch_to_tsquery ANDs its terms and chunking is per-heading, so a
+	// query whose terms are spread across a note's sections matches none of its
+	// chunks. The note is then absent, not merely demoted — the keyword leg
+	// contributes membership rather than ordering, so a candidate it never
+	// produces cannot be recovered downstream.
+	//
+	// 2 rather than 1, and this is the whole of the choice: firing only on an
+	// empty result is measurably insufficient. The real-vault query that
+	// motivated this returned exactly one candidate, belonging to the wrong
+	// note, and a fire-on-empty rule is byte-identical to shipped behaviour
+	// there. Measured on a corpus built to hold that regime, fallback@1 left
+	// target-note recall at the shipped 0.500 while fallback@2 reached 0.917.
+	//
+	// The cost of firing too eagerly is real — OR admits chunks matching one
+	// incidental term — which is why this is a small threshold and not a switch
+	// to OR. At 2 it fired on zero healthy queries at both 125 and 2000 chunks.
+	ftsFallbackBelow = 2
 	// archivedLinkPenalty severely discounts a fused chunk whose parent note
 	// links to a soft-deleted note — a .9-similarity stale reflection about an
 	// archived concept is depressed out of the top-K rather than injected into
@@ -101,6 +122,11 @@ type Tuning struct {
 	TopK int
 	// GraphWeight scales the graph leg; 0 keeps the package default.
 	GraphWeight float64
+	// FTSFallbackBelow overrides the keyword leg's OR-fallback threshold. A
+	// negative value disables the fallback entirely, which zero cannot express
+	// — zero means "unset, use the default", and the sweeps need an arm that is
+	// the pre-fallback engine.
+	FTSFallbackBelow int
 	// DisableGraph skips the graph leg entirely, which is NOT the same as
 	// GraphWeight=0 and is the distinction that matters for the "does the
 	// graph leg mask vector-leg truncation" experiment. FuseRRF accumulates
@@ -129,6 +155,15 @@ func (t Tuning) graphWeight() float64 {
 		return t.GraphWeight
 	}
 	return graphWeight
+}
+
+// ftsFallbackBelow returns the threshold; a negative override disables the
+// fallback, which is how a sweep asks for the pre-fallback engine.
+func (t Tuning) ftsFallbackBelow() int {
+	if t.FTSFallbackBelow != 0 {
+		return t.FTSFallbackBelow
+	}
+	return ftsFallbackBelow
 }
 
 func (t Tuning) topK() int {
@@ -193,6 +228,16 @@ type LegStats struct {
 	FTS    int
 	Graph  int
 	Fused  int // distinct candidates after fusion, before the top-K cut
+
+	// FTSFallback records that the keyword leg re-ran with OR semantics because
+	// the AND conjunction came back below ftsFallbackBelow.
+	//
+	// Logged because a silent fallback has the same defect as the silent empty
+	// leg this struct was created to expose: FTS=35 looks like a healthy
+	// keyword leg whether it came from a conjunction that matched or a
+	// disjunction papering over one that did not. The two have very different
+	// precision, and telling them apart from counts alone is impossible.
+	FTSFallback bool
 
 	// FusedSources and Sources count *distinct notes*, before and after the
 	// top-K cut. Fusion is chunk-level with no per-note constraint, so one long
@@ -284,13 +329,34 @@ func (e *Engine) RunWithStats(ctx context.Context, text string, opts Options) ([
 	}
 	ftsIdx := len(providerLegs)
 	g.Go(func() error {
-		kw, err := e.Store.RankFTS(gctx, text, opts.filter(), pool)
+		kw, err := e.Store.RankFTSMode(gctx, text, store.TSQueryWebsearch, opts.filter(), pool)
 		if err != nil {
 			return err
 		}
+
+		// Fall back to OR when the conjunction came back near-empty. The retry
+		// is sequential rather than speculative: firing both connectives on
+		// every query would double the keyword leg's database work to discard
+		// one result almost always, and this path is rare by construction.
+		fellBack := false
+		if below := e.Tuning.ftsFallbackBelow(); below > 0 && len(kw) < below {
+			alt, err := e.Store.RankFTSMode(gctx, text, store.TSQueryOr, opts.filter(), pool)
+			if err != nil {
+				return err
+			}
+			// Only take the disjunction if it actually found more. Equal or
+			// worse means the terms are absent from the corpus rather than
+			// merely scattered across chunks, and swapping in an identical or
+			// emptier leg would report a fallback that bought nothing.
+			if len(alt) > len(kw) {
+				kw, fellBack = alt, true
+			}
+		}
+
 		primary[ftsIdx] = Leg[store.RankedChunk]{Items: kw, Weight: 1}
 		statsMu.Lock()
 		stats.FTS = len(kw)
+		stats.FTSFallback = fellBack
 		statsMu.Unlock()
 		return nil
 	})

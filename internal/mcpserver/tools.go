@@ -161,7 +161,8 @@ func (s *Server) addTools(srv *mcp.Server) {
 		// can `results`, which counts chunks.
 		s.log.Info("query_knowledge", "results", len(results),
 			"vector", stats.Vector, "fts", stats.FTS, "graph", stats.Graph, "fused", stats.Fused,
-			"fused_sources", stats.FusedSources, "sources", stats.Sources)
+			"fused_sources", stats.FusedSources, "sources", stats.Sources,
+			"fts_fallback", stats.FTSFallback)
 
 		// Tell the agent when suppressed history exists. Falsified notes are
 		// retained deliberately, but the exclusion happens in SQL, so without

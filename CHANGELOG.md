@@ -4,6 +4,37 @@ All notable changes to Cognosis are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project aims to follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **The keyword leg falls back to OR when its conjunction comes back near-empty.**
+  `websearch_to_tsquery` ANDs its terms and chunking is per-heading, so a query whose terms are
+  spread across a note's sections matched none of its chunks and the note was absent from results
+  entirely — not merely ranked low. When the AND leg returns fewer than 2 candidates it now re-runs
+  with OR and keeps that result only if it found more. Threshold 2 rather than 1 because firing only
+  on an empty result is measurably insufficient: the query that motivated this returned exactly one
+  candidate, belonging to the wrong note. Measured to fire on zero healthy queries at both 125 and
+  2000 chunks. `LegStats.FTSFallback` reports when it fires and is logged per query, because a
+  silent fallback is indistinguishable from a healthy keyword leg in the counts.
+- `store.RankFTSMode` exposes the tsquery connective; `store.RankFTS` keeps its signature and
+  semantics.
+- `internal/query/retrievaleval` can generate queries that starve the keyword leg — markers unique
+  per chunk within a note, optionally with a decoy chunk elsewhere carrying the whole conjunction so
+  AND returns exactly one wrong candidate. `TestKeywordORFallbackSweep` sweeps the threshold over
+  both regimes plus a healthy control, and is wired into `scripts/checks/retrieval-eval.sh`.
+
+### Changed
+
+- The golden fused ranking moved: `notes/scoped.md` now places above `entries/vault.md` for the
+  fixture query. The fallback fires on that corpus and surfaces a note containing one query term
+  above one containing none, which is the intended effect. `TestTuningFTSFallbackReachesRun` pins
+  both orderings.
+- `evalSpec` scales `Clusters` down when notes are thin (never up, so the default sweeps are
+  unaffected). With 40 clusters over 25 notes most generated queries asked for a cluster no note
+  belonged to, which read as keyword-leg starvation and depressed relevance — a fixture artifact
+  that produced a false collateral-damage reading for the fallback.
+
 ## [0.2.0] - 2026-07-19
 
 A correctness release, and a deliberately breaking one. Cognosis is pre-1.0, so breaking changes

@@ -111,7 +111,7 @@ self-triggers.
 `query_knowledge` fuses three rankers with reciprocal-rank fusion, computed in Go:
 
 - **vector** — pgvector cosine distance, one leg per provisioned embedding provider;
-- **keyword** — Postgres full-text search (`ts_rank_cd`);
+- **keyword** — Postgres full-text search (`ts_rank_cd`), with an OR fallback (see below);
 - **graph** — one hop out along the link graph from the notes behind the other legs' candidates.
 
 The independent legs (vector + keyword) fan out concurrently; the graph leg runs after, since it's
@@ -119,6 +119,32 @@ seeded by their candidates. Leg order is fixed, so fusion is deterministic regar
 order. Optional lenses ride on top without changing the contract: `as_of` (reason over frontmatter
 timestamps — "what did the KB believe at time T"), `persona_filter` (category-bias reweighting),
 project scoping, and cached one-line summaries returned with each hit.
+
+### The keyword leg's OR fallback
+
+`websearch_to_tsquery` joins terms with **AND**, and chunking is per-heading. A query whose terms
+are spread across different sections of one note therefore matches none of its chunks, and the note
+is *absent* rather than demoted — the keyword leg contributes membership rather than ordering, so a
+candidate it never produces cannot be recovered downstream.
+
+When the conjunction returns fewer than `ftsFallbackBelow` (2) candidates, the leg re-runs with OR
+semantics and keeps that result only if it found more. The retry is sequential, not speculative:
+running both connectives on every query would double the leg's database work to discard one result
+almost always.
+
+The threshold is 2 rather than 1, and that is the whole of the choice. Firing only on an empty
+result is measurably insufficient — the real-vault query that motivated this returned exactly one
+candidate belonging to the wrong note, where a fire-on-empty rule is byte-identical to no fallback.
+Measured on a corpus built to hold that regime, `fallback@1` left target-note recall at the shipped
+0.500 while `fallback@2` reached 0.917; at 2 the fallback fired on zero healthy queries at both 125
+and 2000 chunks, while switching to OR unconditionally cost roughly half the fused top-8.
+
+`LegStats.FTSFallback` records when it fires, logged per query. This matters: `fts=35` looks like a
+healthy keyword leg whether it came from a conjunction that matched or a disjunction papering over
+one that did not, and the two have very different precision.
+
+The sweep is `internal/query/retrievaleval/tsqueryfallback_test.go`, run by
+`scripts/checks/retrieval-eval.sh`.
 
 ### Scan settings for the vector leg
 
