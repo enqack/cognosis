@@ -58,8 +58,14 @@ Cognosis on loopback behind a TLS-terminating reverse proxy — see [remote.md](
 
 Tool failures of kind `internal` or `unavailable` normally return a summary rather than the
 underlying cause, because those causes carry DSNs, unix socket paths and database users. Setting
-this to `true` releases the full cause — but only to a caller the daemon judges local, meaning a
-loopback peer with no proxy-forwarding headers.
+this to `true` is one of **three** conditions that must all hold before the full cause is released:
+
+1. `trust_local_errors` is `true` — the operator's assertion.
+2. `bind_address` is loopback. On an exposed bind the key does nothing at all.
+3. *This particular call* carries no proxy-forwarding header.
+
+The third is checked per request, not per daemon, because the first two can both hold on a daemon
+that a proxy on the same host still fronts.
 
 **It is an assertion, not a detection.** The daemon cannot tell a local caller from a remote one by
 network position when a reverse proxy is in front, because the proxy forwards from `127.0.0.1` and
@@ -68,9 +74,12 @@ every remote caller then looks local — and that is the *recommended* remote to
 
 Two safeguards, neither of which substitutes for getting the setting right:
 
-- Any forwarding header (`X-Forwarded-For`, `Forwarded`, `X-Real-Ip`, `X-Forwarded-Host`) withholds
-  the detail regardless. This only ever *removes* trust: a forged header yields less detail, never
-  more, so it cannot be used to escalate.
+- Any forwarding header (`X-Forwarded-For`, `Forwarded`, `X-Real-Ip`, `X-Forwarded-Host`,
+  `X-Client-Ip`, `Cf-Connecting-Ip`, `True-Client-Ip`) withholds the detail regardless. This only
+  ever *removes* trust: a forged header yields less detail, never more, so it cannot be used to
+  escalate.
+- A call whose origin cannot be checked at all — no HTTP header metadata reached the tool —
+  withholds. Absent evidence is not evidence of locality.
 - The default is `false`, so a daemon nobody configured discloses nothing extra.
 
 Leave it unset unless the daemon is reachable only from its own host. The gain is a better error

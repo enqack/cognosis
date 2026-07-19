@@ -59,6 +59,10 @@ type Config struct {
 	// from 127.0.0.1, so every remote caller *looks* loopback — the daemon
 	// cannot tell them apart from the local CLI by network position alone.
 	// Setting this is an operator assertion that nothing proxies this daemon.
+	//
+	// It is one of three conditions, not a switch: mcpserver.mayDiscloseTo also
+	// requires a loopback bind_address and a call carrying no forwarding
+	// markers. Setting this on an exposed bind therefore does nothing.
 	TrustLocalErrors bool `mapstructure:"trust_local_errors"`
 
 	paths Paths

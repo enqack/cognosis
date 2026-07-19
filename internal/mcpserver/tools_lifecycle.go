@@ -59,7 +59,7 @@ func (s *Server) addLifecycleTools(srv *mcp.Server) {
 			fmt.Sprintf("reinforce=%d falsify=%d dispute=%d graduate=%d dry_run=%v",
 				len(args.Reinforce), len(args.Falsify), len(args.Dispute), len(args.Graduate), args.DryRun), err)
 		if err != nil {
-			return nil, nil, s.toolError(ctx, err)
+			return nil, nil, s.toolError(req, err)
 		}
 		s.log.Info("compile_lifecycle", "actions", len(report.Actions), "dry_run", args.DryRun)
 		return textResult(report.String()), nil, nil
@@ -93,7 +93,7 @@ func (s *Server) addLifecycleTools(srv *mcp.Server) {
 		}
 		p, err := s.personas.Get(args.ID)
 		if err != nil {
-			return nil, nil, s.toolError(ctx, err)
+			return nil, nil, s.toolError(req, err)
 		}
 		return textResult(p.Body), nil, nil
 	})
@@ -111,7 +111,7 @@ func (s *Server) addLifecycleTools(srv *mcp.Server) {
 			if cogerr.Is(err, cogerr.NotFound) {
 				return textResult("No migration in progress."), nil, nil
 			}
-			return nil, nil, s.toolError(ctx, err)
+			return nil, nil, s.toolError(req, err)
 		}
 		return textResult(st.String()), nil, nil
 	})
@@ -126,7 +126,7 @@ func (s *Server) addLifecycleTools(srv *mcp.Server) {
 		rel, err := s.personas.WriteReflection(ctx, s.pipeline, args.Persona, args.Description, args.Content, args.Project, args.Summary)
 		s.audit(ctx, "write_reflection", args.Project, "persona="+args.Persona+" path="+rel, err)
 		if err != nil {
-			return nil, nil, s.toolError(ctx, err)
+			return nil, nil, s.toolError(req, err)
 		}
 		s.log.Info("write_reflection", "persona", args.Persona, "path", rel)
 		return textResult("written: " + rel), nil, nil

@@ -44,14 +44,18 @@ type Server struct {
 	lifecycle *lifecycle.Engine
 	personas  *persona.Registry
 	tls       config.TLS
+	// bindLoopback records that this daemon is bound to loopback only. It is a
+	// server property because the transport hands tools headers but never a
+	// peer address, so the bind is the only place the question can be asked.
+	bindLoopback bool
 	// Migrations, when set, backs the get_migration_status tool.
 	Migrations *migrate.Coordinator
 	// Version is the implementation version advertised to MCP clients. Set
 	// post-construction (like Migrations); empty falls back to "dev".
 	Version string
-	// TrustLocalErrors mirrors config.TrustLocalErrors. See toolError: it is one
-	// of two keys required before a withheld cause is released, and it must
-	// stay false for any daemon a reverse proxy fronts.
+	// TrustLocalErrors mirrors config.TrustLocalErrors. See mayDiscloseTo: it is
+	// one of three conditions required before a withheld cause is released, and
+	// it must stay false for any daemon a reverse proxy fronts.
 	TrustLocalErrors bool
 }
 
@@ -78,6 +82,12 @@ func NewTLS(bind, vaultDir string, log *slog.Logger, p *write.Pipeline, e *query
 		lifecycle: lc,
 		personas:  pr,
 		tls:       tls,
+		// SplitHostPort already succeeded inside requireLoopback; a bind that
+		// cannot be parsed never reaches here.
+		bindLoopback: func() bool {
+			host, _, err := net.SplitHostPort(bind)
+			return err == nil && isLoopbackHost(host)
+		}(),
 	}, nil
 }
 
@@ -89,11 +99,7 @@ func requireLoopback(bind string, tls config.TLS) error {
 	if err != nil {
 		return cogerr.Ef(op, cogerr.Validation, "bind_address %q: %v", bind, err)
 	}
-	if host == "localhost" {
-		return nil
-	}
-	ip := net.ParseIP(host)
-	if ip != nil && ip.IsLoopback() {
+	if isLoopbackHost(host) {
 		return nil
 	}
 	if tls.Enabled() {
@@ -103,8 +109,74 @@ func requireLoopback(bind string, tls config.TLS) error {
 		"bind_address %q is not loopback; configure tls.cert_file/tls.key_file for direct TLS, or keep loopback behind a TLS-terminating reverse proxy", bind)
 }
 
-// audit records one tool call under the caller's token identity. summary must
-// already be redacted (identifying args only — never note content).
+// isLoopbackHost reports whether a bind host names only this machine.
+//
+// "localhost" is resolved rather than trusted as a string. /etc/hosts can map it
+// to a routable address, and the consequences are not symmetric: a string
+// exemption would let requireLoopback accept a reachable bind without TLS *and*
+// let mayDiscloseTo hand that reachable bind's callers full internal errors.
+// Every resolved address must be loopback — a name resolving to both is not
+// loopback-only, and treating it as such is the whole failure.
+//
+// Resolution failure reports false. A name that cannot be resolved has not been
+// shown to be local, and both callers fail safe on false.
+func isLoopbackHost(host string) bool {
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	addrs, err := net.LookupHost(host)
+	if err != nil || len(addrs) == 0 {
+		return false
+	}
+	for _, a := range addrs {
+		ip := net.ParseIP(a)
+		if ip == nil || !ip.IsLoopback() {
+			return false
+		}
+	}
+	return true
+}
+
+// forwardedHeaders are the hop markers a proxy adds. Any one of them present
+// means this request did not originate on this machine, whatever the peer
+// address says.
+//
+// A forged header only ever *withholds* detail, so an attacker gains nothing by
+// adding one; the failure mode is a caller seeing a terser error.
+var forwardedHeaders = []string{
+	"X-Forwarded-For",
+	"Forwarded",
+	"X-Real-Ip",
+	"X-Forwarded-Host",
+	"X-Client-Ip",
+	"Cf-Connecting-Ip",
+	"True-Client-Ip",
+}
+
+// mayDiscloseTo reports whether this specific call may be handed a withheld
+// cause. All three conditions must hold; see toolError for why none suffices
+// alone.
+//
+// Per-request rather than per-server on purpose: a daemon can be bound to
+// loopback and still be fronted by a proxy on the same host, so the only thing
+// that distinguishes the local CLI from a forwarded remote is what arrived on
+// *this* request. Absent header metadata withholds — the SDK not surfacing a
+// request is indistinguishable from a request whose origin we cannot check.
+func (s *Server) mayDiscloseTo(req *mcp.CallToolRequest) bool {
+	if !s.TrustLocalErrors || !s.bindLoopback {
+		return false
+	}
+	if req == nil || req.Extra == nil || req.Extra.Header == nil {
+		return false
+	}
+	for _, h := range forwardedHeaders {
+		if req.Extra.Header.Get(h) != "" {
+			return false
+		}
+	}
+	return true
+}
+
 // toolError is what the calling agent sees when a tool fails.
 //
 // cogerr.Error prints as "op: kind: cause", which is the right shape for a log
@@ -129,7 +201,7 @@ func requireLoopback(bind string, tls config.TLS) error {
 // Nothing actionable is lost: Unavailable means a dependency is down, and the
 // remedy is always operator-side. The two kinds get distinct messages so the
 // caller can still tell "retry later" from "report a bug".
-func (s *Server) toolError(ctx context.Context, err error) error {
+func (s *Server) toolError(req *mcp.CallToolRequest, err error) error {
 	if err == nil {
 		return nil
 	}
@@ -140,21 +212,10 @@ func (s *Server) toolError(ctx context.Context, err error) error {
 	// Exhaustive on purpose. This is a redaction boundary, so a newly added
 	// Kind must force an explicit decision about whether its causes are safe to
 	// hand a remote caller, rather than defaulting to exposure.
-	// Two independent keys before releasing a withheld cause, because neither
-	// is sufficient alone:
-	//
-	//   - the operator asserted nothing proxies this daemon (trust_local_errors)
-	//   - this request arrived over loopback with no forwarding markers
-	//
-	// The config key exists because network position cannot answer the
-	// question: docs/remote.md recommends a reverse proxy forwarding from
-	// 127.0.0.1, so a remote caller looks exactly like the local CLI. The
-	// header check exists because an operator can be wrong, and it fails safe —
-	// a forged marker withdraws detail, it never grants it.
-	if s.TrustLocalErrors {
-		if id, ok := auth.FromContext(ctx); ok && id.Local {
-			return fmt.Errorf("%s", cogerr.Message(err))
-		}
+	// Three independent keys before releasing a withheld cause, because none is
+	// sufficient alone. See mayDiscloseTo.
+	if s.mayDiscloseTo(req) {
+		return fmt.Errorf("%s", cogerr.Message(err))
 	}
 	switch e.Kind {
 	case cogerr.Internal:
@@ -168,6 +229,8 @@ func (s *Server) toolError(ctx context.Context, err error) error {
 	return fmt.Errorf("%s", cogerr.Message(err))
 }
 
+// audit records one tool call under the caller's token identity. summary must
+// already be redacted (identifying args only — never note content).
 func (s *Server) audit(ctx context.Context, tool, project, summary string, callErr error) {
 	var tokenID *uuid.UUID
 	if id, ok := auth.FromContext(ctx); ok {

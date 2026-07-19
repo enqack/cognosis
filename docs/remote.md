@@ -46,9 +46,13 @@ Two consequences:
   failures — DSNs, socket paths, database users — to callers the daemon judges local, and behind a
   proxy that judgement is wrong. The setting is an operator assertion that *nothing* proxies this
   daemon.
-- Keep the `X-Forwarded-For` line above. Cognosis treats any forwarding marker as proof of a proxy
-  and withholds detail; the header is a second line of defence for the case where
+- Keep the `X-Forwarded-For` line above. Cognosis checks each call for a forwarding marker and
+  withholds detail when it finds one, so the header is a second line of defence for the case where
   `trust_local_errors` was set by mistake. Caddy's `reverse_proxy` sets it automatically.
+
+The check is per call rather than per daemon precisely because of this topology: the bind really is
+loopback and the operator may really have opted in, so the marker on the individual request is the
+only thing left that distinguishes a forwarded caller from the local CLI.
 
 ## Fallback: built-in TLS (no proxy)
 

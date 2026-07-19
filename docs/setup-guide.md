@@ -169,6 +169,7 @@ dsn: "postgres://user:pass@localhost:5432/cognosis"   # empty = self-locate a de
 bind_address: "127.0.0.1:7433"
 kb_path: "~/.local/share/cognosis/kb"                 # defaults under XDG_DATA_HOME
 reconcile_sweep_interval: "1h"
+trust_local_errors: false                             # see docs/configuration.md before enabling
 embedding:
   provider: "ollama"
   model: "nomic-embed-text:v1.5"

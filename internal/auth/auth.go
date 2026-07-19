@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"io/fs"
 	"math"
-	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -116,43 +115,9 @@ func parseToken(tok string) (uuid.UUID, string, bool) {
 type Identity struct {
 	TokenID uuid.UUID
 	Name    string
-
-	// Local reports a caller that reached the daemon directly over loopback
-	// with no evidence of a proxy in front. It is one input to a disclosure
-	// decision, never sufficient on its own: under the reverse-proxy topology
-	// docs/remote.md recommends, a remote caller also arrives from 127.0.0.1,
-	// so this is combined with an explicit operator assertion
-	// (config trust_local_errors) before any extra detail is released.
-	Local bool
-}
-
-// forwardedHeaders are the hop markers a proxy adds. Their presence is proof of
-// a proxy; their absence is not proof of none, which is why this only ever
-// *withdraws* trust. A direct caller forging one gets less detail, not more.
-var forwardedHeaders = []string{"X-Forwarded-For", "Forwarded", "X-Real-Ip", "X-Forwarded-Host"}
-
-// looksLocal reports a loopback peer with no forwarding markers.
-func looksLocal(r *http.Request) bool {
-	for _, h := range forwardedHeaders {
-		if r.Header.Get(h) != "" {
-			return false
-		}
-	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return false
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
 }
 
 type ctxKey struct{}
-
-// WithIdentity attaches an identity to a context. The counterpart to
-// FromContext, for callers that resolve a caller outside Middleware.
-func WithIdentity(ctx context.Context, id Identity) context.Context {
-	return context.WithValue(ctx, ctxKey{}, id)
-}
 
 // FromContext returns the authenticated identity, if any.
 func FromContext(ctx context.Context) (Identity, bool) {
@@ -189,7 +154,7 @@ func Middleware(s TokenStore, next http.Handler) http.Handler {
 		}
 		s.TouchToken(r.Context(), t.ID)
 		ctx := context.WithValue(r.Context(), ctxKey{},
-			Identity{TokenID: t.ID, Name: t.Name, Local: looksLocal(r)})
+			Identity{TokenID: t.ID, Name: t.Name})
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
