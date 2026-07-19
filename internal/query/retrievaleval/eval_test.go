@@ -43,8 +43,25 @@ func evalSpec(t testing.TB) CorpusSpec {
 	} else {
 		spec.Notes = 1600 // 8k chunks: past the seqscan threshold, ~7s to build
 	}
+
+	// Clusters must not outnumber the notes that fill them. Queries are
+	// generated one per cluster, so with 40 clusters and 25 notes most queries
+	// ask for a cluster no note belongs to: the keyword leg reports EMPTY-Q for
+	// a query with no possible answer, and cluster relevance collapses. Both
+	// read as retrieval defects and are neither.
+	//
+	// Only ever scales down. At the default 1600 notes this is a no-op, so no
+	// existing sweep or recorded artifact moves.
+	if perCluster := spec.Notes / spec.Clusters; perCluster < minNotesPerCluster {
+		spec.Clusters = max(2, spec.Notes/minNotesPerCluster)
+	}
 	return spec
 }
+
+// minNotesPerCluster is the floor below which a cluster is too thin to be a
+// retrieval target: with fewer than this, a query for that cluster can return
+// nothing for reasons that have nothing to do with the leg under test.
+const minNotesPerCluster = 4
 
 // gucSettings are the scan configurations every sweep runs over.
 var gucSettings = []struct {
