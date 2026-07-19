@@ -33,12 +33,13 @@ lifecycle stays top-level.
 | Command | Purpose |
 |---|---|
 | `cognosis vault history <path>` | Show a note's version history (newest first). |
-| `cognosis vault restore <path> --at <ref>` | Restore a note to a prior commit (itself a new commit; the running daemon reindexes it). |
+| `cognosis vault restore <path> --at <ref>` | Restore a note to a prior commit (itself a new commit). Routes through the daemon when one owns the vault, so the restore takes the same per-path lock as every other writer; writes directly when none does. |
+| `cognosis vault restore … --force-local` | Write the vault directly even though a daemon owns it. Bypasses the per-path lock, so a concurrent compile or edit of the same note can be lost. Warns on use. |
 
 ### Notes (hard delete)
 | Command | Purpose |
 |---|---|
-| `cognosis note delete <path> --hard [--yes]` | Genuine erasure — cascades across the file, index, embeddings, `log.md` mentions, and vault history. `--hard` is required (soft delete/archival is an MCP concern); `--yes` skips the interactive confirm. |
+| `cognosis note delete <path> --hard [--yes]` | Genuine erasure — cascades across the file, index, embeddings, `log.md` mentions, and vault history. `--hard` is required (soft delete/archival is an MCP concern); `--yes` skips the interactive confirm. **Refused while a daemon owns the vault** — there is no MCP equivalent to route it through, so stop the daemon first. |
 
 ### Tokens
 | Command | Purpose |

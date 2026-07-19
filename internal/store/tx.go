@@ -66,6 +66,38 @@ func (s *Store) AcquireInstanceLock(ctx context.Context) (release func(), alive 
 	return release, alive, nil
 }
 
+// AdvisoryHeld reports whether an advisory lock is currently held on this
+// database, without taking it.
+//
+// Read-only on purpose. The obvious probe is to try acquiring the lock and
+// release it again, but for LockInstance that means the prober briefly *becomes*
+// the single-daemon arbiter: a daemon booting in that window sees the lock held
+// and exits with "another cognosis daemon already owns this database", pointing
+// at a CLI process that has already gone. Asking pg_locks cannot displace
+// anyone.
+//
+// Advisory keys are split across classid/objid, with the high half in classid;
+// all keys here fit in 32 bits, so classid is zero. objsubid distinguishes the
+// two-int form (2) from the single-bigint form (1), which is what we take.
+func (s *Store) AdvisoryHeld(ctx context.Context, key int64) (bool, error) {
+	const op = "store.AdvisoryHeld"
+	var held bool
+	err := s.pool.QueryRow(ctx, `
+		select exists (
+			select 1 from pg_locks
+			where locktype = 'advisory'
+			  and database = (select oid from pg_database where datname = current_database())
+			  and classid = ($1::bigint >> 32)::bigint
+			  and objid = ($1::bigint & 4294967295)::bigint
+			  and objsubid = 1
+			  and granted
+		)`, key).Scan(&held)
+	if err != nil {
+		return false, cogerr.E(op, cogerr.Unavailable, err)
+	}
+	return held, nil
+}
+
 // AcquireAdvisory takes a whole-KB advisory lock, or fails with Conflict when
 // another session holds it. The returned release func must be called; it also
 // returns the dedicated connection to the pool.

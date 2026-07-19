@@ -35,11 +35,15 @@ const (
 // against a daemon running elsewhere — precisely the race it was branching to
 // avoid.
 //
-// Acquiring the lock is the probe: `pg_try_advisory_lock` fails when it is
-// held. The lock is released immediately when free, so this never blocks a
-// daemon from starting a moment later. That leaves a window between the probe
-// and the caller's write; it is not a mutual-exclusion primitive, it is a
-// "should I be doing this at all" check.
+// The probe reads `pg_locks` rather than acquiring the lock. Acquire-and-release
+// looks equivalent and is not: between the two calls the CLI *is* the
+// single-daemon arbiter, so a daemon booting in that window exits with "another
+// cognosis daemon already owns this database" naming a process that has already
+// finished. A read cannot displace anyone.
+//
+// It is still only a snapshot — a daemon may start between the probe and the
+// caller's write. This is not a mutual-exclusion primitive, it is a "should I be
+// doing this at all" check.
 func probeDaemon(ctx context.Context, cfg *config.Config) daemonOwnership {
 	dsn, err := store.ResolveDSN(cfg.DSN)
 	if err != nil {
@@ -55,15 +59,14 @@ func probeDaemon(ctx context.Context, cfg *config.Config) daemonOwnership {
 
 // daemonOwns is probeDaemon for a caller that already holds a store.
 func daemonOwns(ctx context.Context, s *store.Store) daemonOwnership {
-	release, err := s.AcquireAdvisory(ctx, store.LockInstance)
+	held, err := s.AdvisoryHeld(ctx, store.LockInstance)
 	switch {
-	case err == nil:
-		release()
-		return daemonAbsent
-	case cogerr.Is(err, cogerr.Conflict):
+	case err != nil:
+		return daemonUnknown
+	case held:
 		return daemonPresent
 	default:
-		return daemonUnknown
+		return daemonAbsent
 	}
 }
 

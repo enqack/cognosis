@@ -128,7 +128,8 @@ End-to-end checks live under `scripts/checks/`, organized by feature, and each
 boots a daemon in a sandbox against the dev Postgres + Ollama:
 
 ```sh
-./scripts/checks/daemon.sh              # startup gates, single-instance lock, shutdown, reconciliation
+./scripts/checks/daemon.sh              # startup gates, single-instance lock, shutdown, reconciliation,
+                                        #   vault-restore routing, hard-delete guard
 ./scripts/checks/memory-loop.sh         # write -> hybrid query -> get -> list over MCP
 ./scripts/checks/retrieval.sh           # summaries, as_of, list_decaying, archived exclusion
 ./scripts/checks/knowledge.sh           # compile lifecycle + verify, personas, vault history
