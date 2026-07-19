@@ -192,7 +192,7 @@ func TestChunkProseVariesLengthAndTermFrequency(t *testing.T) {
 	lengths := map[int]bool{}
 	maxRepeat := 0
 	for i := range 200 {
-		text := chunkProse(rng, vocab, i, 0)
+		text := chunkProse(rng, vocab, nil, i, 0)
 		words := strings.Fields(text)
 		lengths[len(words)] = true
 		counts := map[string]int{}

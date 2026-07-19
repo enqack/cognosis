@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -53,6 +54,43 @@ type CorpusSpec struct {
 	// averaged over many queries: HNSW is not monotone per-query, so a
 	// single-query measurement is noise.
 	Queries int
+
+	// StarveQueries is how many cross-chunk queries to generate: each draws one
+	// distinctive term from each of StarveSections distinct chunks of a single
+	// target note, so no one chunk holds all of them and the conjunction
+	// matches nothing. They land in Corpus.StarveQueries, never in
+	// Corpus.Queries, so every existing measurement is untouched.
+	//
+	// This reproduces the real-vault failure. Neither existing query set can:
+	// head-drawn terms are frequent by construction, and tail-drawn terms still
+	// come from a 12-term cluster vocabulary that a 40-160 word chunk very
+	// nearly exhausts, so any conjunction over it is satisfiable. Starvation
+	// needs terms rare *within a note*.
+	StarveQueries int
+	// StarveSections is how many distinct chunks a starving query draws from,
+	// and therefore its term count. 4 matches the real-vault query.
+	StarveSections int
+	// DistinctivePerChunk is how many distinctive markers each chunk carries
+	// that its siblings in the same note do not. Zero disables the whole
+	// mechanism and leaves generated text byte-identical to before it existed.
+	DistinctivePerChunk int
+	// DistinctiveVocab bounds the marker pool, and so sets how many chunks
+	// corpus-wide share a marker. Too large and OR is trivially perfect; too
+	// small and the target drowns in collisions. Non-positive scales it to
+	// Notes, which holds collisions per marker roughly constant as the corpus
+	// grows — a fixed pool silently changes the experiment with corpus size.
+	DistinctiveVocab int
+	// StarvePartialFrac is the share of starving queries given a decoy: a chunk
+	// of some *other* note carrying the query's entire conjunction, so AND
+	// returns exactly one candidate and that candidate is the wrong note.
+	//
+	// Without this the corpus starves totally — AND returns zero for every
+	// starving query, every threshold N>=1 fires on all of them, and the sweep
+	// cannot separate N=1 from N=2. Partial starvation is the regime the real
+	// vault was in (one candidate, belonging to a different note, target absent
+	// from the fused top-6) and the only one in which the threshold is a real
+	// choice rather than a formality.
+	StarvePartialFrac float64
 }
 
 // DefaultSpec is sized from the Phase 0 finding that the planner chooses a
@@ -73,6 +111,11 @@ func DefaultSpec() CorpusSpec {
 		Spread:           DefaultSpread,
 		Seed:             7,
 		Queries:          30,
+
+		StarveQueries:       30,
+		StarveSections:      4,
+		DistinctivePerChunk: 2,
+		StarvePartialFrac:   0.5,
 	}
 }
 
@@ -80,6 +123,25 @@ func DefaultSpec() CorpusSpec {
 type EvalQuery struct {
 	Text    string
 	Cluster int
+}
+
+// StarveQuery is a query whose terms are distributed across different chunks of
+// one note, so no single chunk contains all of them.
+//
+// Ground truth is a NOTE, not a cluster. The cluster label cannot distinguish
+// the target from the ~40 other notes sharing its topic, and "did the right
+// note come back" is the question the real-vault failure actually asked. The
+// cluster is retained so cluster-precision stays comparable with EvalQuery.
+type StarveQuery struct {
+	Text     string
+	NoteID   uuid.UUID
+	NotePath string
+	Cluster  int
+	Sections []int // chunk ordinals the terms were drawn from
+	// HasDecoy marks the partially-starving queries: some other note carries
+	// this whole conjunction in one chunk, so AND returns exactly one candidate
+	// and it is the wrong note. Queries without a decoy starve totally.
+	HasDecoy bool
 }
 
 // Corpus is a seeded synthetic vault plus everything needed to query it.
@@ -91,6 +153,12 @@ type Corpus struct {
 	Engine   *query.Engine
 	Queries  []EvalQuery
 	Spec     CorpusSpec
+
+	// StarveQueries are cross-chunk conjunctions no single chunk satisfies.
+	// Separate from Queries because they are a different experiment with a
+	// different ground truth: Queries measures ranking on a leg that always has
+	// candidates, these measure what happens when it has none.
+	StarveQueries []StarveQuery
 
 	// InScope counts live (non-falsified, non-archived) chunks per project
 	// key, so tests can distinguish "the scan truncated" from "the scope only
@@ -167,13 +235,37 @@ func skewedIndex(rng *rand.Rand, n int) int {
 // chunkProse renders one chunk of prose-like text: variable length, topic
 // terms mixed into background at topicRate, both drawn with skew so term
 // frequency varies within and across chunks.
-func chunkProse(rng *rand.Rand, vocab []string, note, ordinal int) string {
+// distinctive markers are interleaved rather than appended, for the same reason
+// clusterVocab interleaves borrowed terms: a run of markers parked at the tail
+// is a different lexical shape from a term that recurs through a section, and
+// ts_rank_cd's proximity component would see the difference. Passing a nil
+// distinctive slice reproduces the pre-marker text byte for byte.
+func chunkProse(rng *rand.Rand, vocab, distinctive []string, note, ordinal int) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "note %05d section %d. ", note, ordinal)
 	words := chunkMinWords + rng.Intn(chunkMaxWords-chunkMinWords+1)
+
+	// Positions are derived from the word count, not drawn from rng, so adding
+	// markers consumes no extra values from the shared stream.
+	marks := map[int]string{}
+	if len(distinctive) > 0 {
+		slot := 0
+		for _, term := range distinctive {
+			for r := range distinctiveRepeat {
+				pos := (words * (slot + 1)) / (len(distinctive)*distinctiveRepeat + 1)
+				marks[pos+r] = term
+				slot++
+			}
+		}
+	}
+
 	for w := range words {
 		if w > 0 {
 			b.WriteByte(' ')
+		}
+		if term, ok := marks[w]; ok {
+			b.WriteString(term)
+			continue
 		}
 		if rng.Float64() < topicRate {
 			b.WriteString(vocab[skewedIndex(rng, len(vocab))])
@@ -195,6 +287,121 @@ const queryTerms = 3
 // satisfies — and an FTS leg returning nothing cannot rank anything, which is
 // the comparison BM25 work needs to make.
 const queryHeadTerms = 4
+
+// distinctiveSalt keeps marker draws off the shared rng. Drawing them inline
+// would consume a different number of values and shift every subsequent draw,
+// which is exactly how project and status assignment were silently destroyed
+// once before (see the comment above assignProjects).
+const distinctiveSalt = 0x44495354
+
+// distinctiveRepeat is how many times a marker is repeated inside its own
+// chunk. Without repetition every chunk holding a marker has term frequency 1,
+// ts_rank_cd cannot separate the target from an unrelated chunk that collided
+// on the same marker, and the OR arm would be measuring a coin flip. Real notes
+// mention their distinctive terms more than once in the section about them.
+const distinctiveRepeat = 3
+
+// distinctiveVocabSize resolves the marker pool size for a spec.
+func distinctiveVocabSize(spec CorpusSpec) int {
+	n := spec.DistinctiveVocab
+	if n <= 0 {
+		n = spec.Notes
+	}
+	return min(max(n, 1), len(distinctiveWords))
+}
+
+// distinctiveForNote returns one marker slice per chunk of a note. Markers are
+// unique within the note — that is the property that starves a conjunction
+// spanning sections — but drawn from a shared pool, so they stay rare rather
+// than unique corpus-wide and the OR arm has genuine noise to rank against.
+func distinctiveForNote(spec CorpusSpec, note int) [][]string {
+	if spec.DistinctivePerChunk <= 0 {
+		return nil
+	}
+	//nolint:gosec // reproducibility, not secrecy
+	rng := rand.New(rand.NewSource(spec.Seed ^ distinctiveSalt ^ int64(note)))
+	poolSize := distinctiveVocabSize(spec)
+	used := map[string]bool{}
+	out := make([][]string, spec.ChunksPerNote)
+	for o := range out {
+		terms := make([]string, 0, spec.DistinctivePerChunk)
+		for len(terms) < spec.DistinctivePerChunk {
+			w := distinctiveWords[rng.Intn(poolSize)]
+			if used[w] {
+				continue
+			}
+			used[w] = true
+			terms = append(terms, w)
+		}
+		out[o] = terms
+	}
+	return out
+}
+
+// starvePlan is decided before any chunk text is generated, because a decoy has
+// to be written *into* a chunk and pass 1 is the only place that happens.
+// Markers are a pure function of spec and note index (distinctiveForNote), and
+// status is assigned up front, so the whole plan is derivable early.
+type starvePlan struct {
+	targets []int // note indices carrying a starving query, in order
+	// terms is the query's conjunction, one marker per section of the target.
+	terms map[int][]string
+	// decoyFor maps a decoy note index to the conjunction planted in its first
+	// chunk. The decoy is never the target: the point is that AND surfaces one
+	// candidate and it is the wrong note.
+	decoyFor map[int][]string
+	hasDecoy map[int]bool // target index -> was a decoy planted
+}
+
+func planStarve(spec CorpusSpec, statusOf []string) *starvePlan {
+	p := &starvePlan{
+		terms:    map[int][]string{},
+		decoyFor: map[int][]string{},
+		hasDecoy: map[int]bool{},
+	}
+	if spec.StarveQueries <= 0 || spec.DistinctivePerChunk <= 0 {
+		return p
+	}
+	sections := min(spec.StarveSections, spec.ChunksPerNote)
+
+	// Targets are taken from the front, decoys from the back, so the two never
+	// collide and neither depends on a random draw that could shift.
+	decoyCursor := len(statusOf) - 1
+	for i := 0; i < len(statusOf) && len(p.targets) < spec.StarveQueries; i++ {
+		if statusOf[i] != "active" {
+			continue
+		}
+		marks := distinctiveForNote(spec, i)
+		if len(marks) < sections {
+			continue
+		}
+		terms := make([]string, 0, sections)
+		for o := range sections {
+			terms = append(terms, marks[o][0])
+		}
+		p.targets = append(p.targets, i)
+		p.terms[i] = terms
+
+		// Plant a decoy for the first StarvePartialFrac share of targets.
+		// Deliberately a prefix rather than a random draw: the count is then
+		// exact rather than expected, matching how project and status shares
+		// are stratified above.
+		wantDecoys := int(float64(spec.StarveQueries) * spec.StarvePartialFrac)
+		if len(p.targets) > wantDecoys {
+			continue
+		}
+		for decoyCursor > i {
+			if statusOf[decoyCursor] == "active" && len(p.decoyFor[decoyCursor]) == 0 {
+				p.decoyFor[decoyCursor] = terms
+				p.hasDecoy[i] = true
+				decoyCursor--
+				break
+			}
+			decoyCursor--
+		}
+	}
+	return p
+}
 
 // Build seeds the corpus and returns a wired Engine. Skips when
 // COGNOSIS_TEST_DSN is unset.
@@ -219,6 +426,10 @@ func Build(t testing.TB, spec CorpusSpec) *Corpus {
 		path    string
 		project string
 		status  string
+		cluster int
+		// distinct is this note's per-chunk markers, retained so starving
+		// queries can be built from chunks of a note that actually exists.
+		distinct [][]string
 	}
 	notes := make([]noteRec, spec.Notes)
 	var archived []uuid.UUID
@@ -239,6 +450,7 @@ func Build(t testing.TB, spec CorpusSpec) *Corpus {
 	// structural shape of the corpus is then a function of the spec alone.
 	projectOf := assignProjects(spec, projects)
 	statusOf := assignStatuses(spec, projectOf)
+	plan := planStarve(spec, statusOf)
 
 	// Pass 1: notes and chunks.
 	allVecs := make([][]float32, 0, spec.Notes*spec.ChunksPerNote)
@@ -247,19 +459,32 @@ func Build(t testing.TB, spec CorpusSpec) *Corpus {
 		path := fmt.Sprintf("notes/n%05d.md", i)
 		project := projectOf[i]
 		status := statusOf[i]
-		notes[i] = noteRec{id, path, project, status}
+		cluster := rng.Intn(spec.Clusters)
+		distinct := distinctiveForNote(spec, i)
+		notes[i] = noteRec{id, path, project, status, cluster, distinct}
 		if status == "archived" {
 			archived = append(archived, id)
 		}
 
-		cluster := rng.Intn(spec.Clusters)
 		vocab := clusterVocab(cluster, spec.BorrowedTerms)
 
 		chunks := make([]store.Chunk, spec.ChunksPerNote)
 		vecs := map[uuid.UUID][]float32{}
 		texts := make([]string, spec.ChunksPerNote)
 		for o := range chunks {
-			text := chunkProse(rng, vocab, i, o)
+			var marks []string
+			if o < len(distinct) {
+				marks = distinct[o]
+			}
+			// A decoy carries some other note's whole conjunction in one chunk,
+			// which is what turns total starvation into partial: AND then
+			// returns exactly this chunk, and it is the wrong note.
+			if o == 0 {
+				if decoy, ok := plan.decoyFor[i]; ok {
+					marks = append(append([]string{}, marks...), decoy...)
+				}
+			}
+			text := chunkProse(rng, vocab, marks, i, o)
 			texts[o] = text
 			// Pin the label so geometry, label, and vocabulary agree.
 			syn.Labels[text] = cluster
@@ -366,13 +591,56 @@ func Build(t testing.TB, spec CorpusSpec) *Corpus {
 		queries[q] = EvalQuery{Text: text, Cluster: cluster}
 	}
 
+	// Starving queries: one marker from each of StarveSections distinct chunks
+	// of a single target note. No chunk holds all of them, so the conjunction
+	// matches nothing while every individual term is present somewhere in the
+	// target — the real-vault failure exactly.
+	//
+	// Targets are restricted to active notes. A falsified or archived target is
+	// filtered out of every leg, so every arm would report recall 0 and the
+	// table would read "the fallback does not help" when what it measured was
+	// the fixture.
+	starve := make([]StarveQuery, 0, len(plan.targets))
+	for _, i := range plan.targets {
+		n := notes[i]
+		terms := plan.terms[i]
+		ords := make([]int, 0, len(terms))
+		for o := range len(terms) {
+			ords = append(ords, o)
+		}
+
+		// The premise, checked before anything depends on it: no single chunk
+		// of the *target* may carry every term. A decoy elsewhere is the point;
+		// one inside the target would mean the query is not starving at all and
+		// every measurement built on it is void.
+		for o, chunkTerms := range n.distinct {
+			have := 0
+			for _, want := range terms {
+				if slices.Contains(chunkTerms, want) {
+					have++
+				}
+			}
+			if have == len(terms) {
+				t.Fatalf("starving query for %s is satisfiable by chunk %d of the target "+
+					"itself: markers are not unique per chunk", n.path, o)
+			}
+		}
+
+		text := strings.Join(terms, " ")
+		syn.Labels[text] = n.cluster
+		starve = append(starve, StarveQuery{
+			Text: text, NoteID: n.id, NotePath: n.path,
+			Cluster: n.cluster, Sections: ords, HasDecoy: plan.hasDecoy[i],
+		})
+	}
+
 	return &Corpus{
 		Store: s, DSN: dsn, Table: table, Provider: syn,
 		Engine: &query.Engine{
 			Store:     s,
 			Providers: []query.ProviderLeg{{Provider: syn, Table: table}},
 		},
-		Queries: queries, Spec: spec, InScope: inScope,
+		Queries: queries, StarveQueries: starve, Spec: spec, InScope: inScope,
 	}
 }
 

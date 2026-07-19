@@ -23,11 +23,17 @@ export COGNOSIS_EVAL_DSN="$COGNOSIS_TEST_DSN"
 cd "$(dirname "$0")/../.."
 
 echo "running retrieval evaluation sweeps (corpus size: ${COGNOSIS_EVAL_NOTES:-1600} notes)"
+# TestKeywordORFallbackSweep is here and TestKeywordANDvsOR is not, deliberately.
+# The AND/OR artifact is already recorded and its control only checks that the
+# connective takes effect. The fallback sweep's control fails when the corpus
+# stops starving the keyword leg, which a future change to query generation or
+# the vocabulary could do silently — text generation has quietly emptied a
+# fixture property twice before.
 go test ./internal/query/retrievaleval/ -v -timeout 30m \
-  -run 'TestVectorLegCapacity|TestVectorLegRecallVsExact|TestFusedTopKUnderCorrectedScan|TestRecordExactProbePlan' \
+  -run 'TestVectorLegCapacity|TestVectorLegRecallVsExact|TestFusedTopKUnderCorrectedScan|TestRecordExactProbePlan|TestKeywordORFallbackSweep' \
   || fail "retrieval evaluation sweeps failed"
 
-pass "capacity, recall-vs-exact, fused-overlap and ground-truth plan recorded"
+pass "capacity, recall-vs-exact, fused-overlap, ground-truth plan and OR-fallback sweep recorded"
 
 echo
 echo "recorded artifacts:"

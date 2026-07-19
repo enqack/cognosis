@@ -88,3 +88,39 @@ var backgroundWords = []string{
 	"begins", "ends", "holds", "carries", "leaves", "returns", "remains",
 	"appears", "requires", "produces", "reduces", "follows", "depends",
 }
+
+// distinctiveWords are rare markers, one small set per chunk, disjoint from
+// both topicWords and backgroundWords so a distinctive term can never leak in
+// as ordinary prose. They exist to reproduce the real-vault failure this corpus
+// otherwise cannot: terms that identify ONE section of ONE note.
+//
+// The head-drawn and tail-drawn query sets both fail to starve the keyword leg,
+// and for a reason no draw strategy fixes. A chunk is 40-160 words at
+// topicRate 0.30, so it draws 12-48 topic words from a 12-term cluster
+// vocabulary — it contains nearly its entire vocabulary, and any conjunction
+// over that vocabulary is satisfiable. Starvation needs terms that are rare
+// *within a note*, not merely rare within a cluster.
+//
+// Real words, not synthetic tokens, for the reason recorded at the top of this
+// file: synthetic strings bypass the English stemmer and stopword list and stop
+// exercising the text config under test.
+var distinctiveWords = []string{
+	"alcove", "bramble", "cistern", "dovetail", "ember", "fathom", "gantry",
+	"hearth", "inkwell", "jetty", "kiln", "lantern", "mantle", "nutmeg",
+	"obelisk", "parapet", "quarry", "rampart", "sextant", "thicket", "urn",
+	"vellum", "wharf", "yarrow", "zenith", "abacus", "bellows", "cobble",
+	"dredge", "escarp", "fresco", "girder", "hoist", "ingot", "jamb",
+	"kestrel", "lintel", "mortar", "nave", "oxbow", "plinth", "quill",
+	"rafter", "spindle", "trestle", "underpass", "vestibule", "warren",
+	"yoke", "zephyr", "arbor", "bastion", "culvert", "dowel", "eaves",
+	"flume", "gable", "hutch", "islet", "joist", "kerb", "lattice",
+	"millstone", "newel", "orchid", "pylon", "quoin", "reef", "sluice",
+	"tannery", "usher", "vane", "weir", "yardarm", "aqueduct", "bulwark",
+	"cornice", "dormer", "estuary", "ferrule", "grotto", "harrow", "inlet",
+	"keystone", "louver", "mullion", "nook", "outcrop", "pediment", "quadrant",
+	"ridgeline", "spandrel", "transom", "upland", "vault", "windlass",
+	"anvil", "buttress", "cairn", "drawbridge", "escarpment", "furrow",
+	"granary", "headland", "isthmus", "jetsam", "kelp", "lagoon", "marsh",
+	"narrows", "oasis", "peninsula", "quagmire", "rivulet", "shoal",
+	"tributary", "undertow", "vista", "watershed", "yonder", "zigzag",
+}
