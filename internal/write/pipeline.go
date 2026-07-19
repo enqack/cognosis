@@ -72,29 +72,37 @@ func NewPipeline(ix *Indexer, vaultDir string, hist *vault.History, supp Suppres
 //
 // Conflict rather than Validation: the content is well-formed, it just
 // disagrees with the note already at that path.
-func (p *Pipeline) rejectIDChange(ctx context.Context, rel string, n *vault.Note) error {
+func (p *Pipeline) rejectIDChange(rel string, n *vault.Note) error {
 	const op = "write.Pipeline.Write"
-	if p.Indexer == nil || p.Indexer.Store == nil {
-		return nil
-	}
 	supplied := strings.TrimSpace(n.ID())
 	if supplied == "" {
 		return nil // ensureNoteID owns this case
 	}
-	existing, err := p.Indexer.Store.GetNote(ctx, rel)
-	if cogerr.Is(err, cogerr.NotFound) {
-		return nil // new path: any valid id is fine
+	// Ask the vault, not the index. Postgres is derived and droppable, so it
+	// must not arbitrate a vault write: a stale row — a note deleted while the
+	// daemon was down, or an event the watcher missed — would otherwise refuse
+	// a legitimate write creating a fresh note at that path, telling the agent
+	// to omit an id it had supplied correctly.
+	abs := filepath.Join(p.VaultDir, filepath.FromSlash(rel))
+	cur, err := os.ReadFile(abs) //nolint:gosec // path is vetted by checkPath
+	if os.IsNotExist(err) {
+		return nil // no note here: any valid id is fine
 	}
 	if err != nil {
-		return err
+		return cogerr.E(op, cogerr.Internal, err)
 	}
-	if supplied == existing.ID.String() {
+	existing, err := vault.ParseNote(rel, cur)
+	if err != nil || existing.Frontmatter == nil {
+		return nil //nolint:nilerr // unparseable on disk: this write replaces it
+	}
+	prior := strings.TrimSpace(existing.ID())
+	if prior == "" || supplied == prior {
 		return nil
 	}
 	return cogerr.Ef(op, cogerr.Conflict,
 		"%s already has id %s; changing a note's id evicts it and re-points every inbound link. "+
 			"Omit the id to keep the existing one, or write to a different path",
-		rel, existing.ID)
+		rel, prior)
 }
 
 // ensureNoteID fills in a missing frontmatter `id`, returning the content to
@@ -130,8 +138,22 @@ func (p *Pipeline) ensureNoteID(ctx context.Context, rel, content string) (strin
 		return content, nil
 	}
 
+	// The vault first, the index second, minting last.
+	//
+	// Consulting only the index made this contradict rejectIDChange, which
+	// reads the file: a note present on disk but absent from the index — the
+	// daemon was down when it appeared, the watcher missed the event, or the
+	// schema was dropped and reindexing has not reached it — got a freshly
+	// minted id here and was then refused there, with advice ("omit the id")
+	// the caller had already followed. No wording of the call could succeed.
 	id := ""
-	if p.Indexer != nil && p.Indexer.Store != nil {
+	abs := filepath.Join(p.VaultDir, filepath.FromSlash(rel))
+	if cur, rerr := os.ReadFile(abs); rerr == nil { //nolint:gosec // path vetted by checkPath
+		if onDisk, perr := vault.ParseNote(rel, cur); perr == nil {
+			id = strings.TrimSpace(onDisk.ID())
+		}
+	}
+	if id == "" && p.Indexer != nil && p.Indexer.Store != nil {
 		switch existing, err := p.Indexer.Store.GetNote(ctx, rel); {
 		case err == nil:
 			id = existing.ID.String()
@@ -163,8 +185,70 @@ func (p *Pipeline) ensureNoteID(ctx context.Context, rel, content string) (strin
 	// `mapping key "id" already defined at line 1` — an error naming a line the
 	// caller never wrote, on the exact case this feature exists to serve. Drop
 	// the blank key rather than stacking a second one over it.
-	body := dropBlankIDKey(content[len(fence):])
-	return fence + "id: " + id + "\n" + body, nil
+	afterFence := content[len(fence):]
+	switch classifyIDLine(frontmatterOf(afterFence)) {
+	case idLineMalformed:
+		return "", cogerr.Ef(op, cogerr.Validation,
+			"%s: `id` is present but did not parse as a string — quote it, or omit the key "+
+				"entirely to have one assigned", rel)
+	case idLineBlank:
+		afterFence = dropBlankIDKey(afterFence)
+	case idLineAbsent:
+	}
+	return fence + "id: " + id + "\n" + afterFence, nil
+}
+
+// idLineKind classifies the raw text after a top-level `id:` when the parsed
+// value came back empty.
+//
+// A whitelist of null spellings was the wrong shape. Note.ID() returns "" for
+// *any* non-string value — 123, true, [], a bare date — and for a blank
+// carrying a trailing comment, so no list of literals can agree with it. The
+// two must agree: when ID() says absent and the dropper says present, a second
+// `id:` is spliced over one that was never removed and YAML rejects the write
+// with `mapping key "id" already defined at line 1`, which is the error this
+// path exists to avoid.
+//
+// So classify only what the caller could have meant. Blank or null means "mint
+// one for me". Anything else parsed to a non-string, which is a malformed id
+// rather than a request — reported as such rather than silently replaced, since
+// minting over a typo would hand the note a different identity than its author
+// wrote.
+type idLineKind int
+
+const (
+	idLineAbsent idLineKind = iota
+	idLineBlank
+	idLineMalformed
+)
+
+func classifyIDLine(fm string) idLineKind {
+	for l := range strings.SplitSeq(fm, "\n") {
+		after, ok := strings.CutPrefix(l, "id:")
+		if !ok {
+			continue
+		}
+		// Safe to strip a comment: this runs only when the parsed id is empty,
+		// so the value cannot be a quoted string that happens to contain '#'.
+		if k := strings.Index(after, "#"); k >= 0 {
+			after = after[:k]
+		}
+		switch strings.TrimSpace(after) {
+		case "", `""`, "''", "null", "Null", "NULL", "~":
+			return idLineBlank
+		}
+		return idLineMalformed
+	}
+	return idLineAbsent
+}
+
+// frontmatterOf returns the frontmatter region of content already past its
+// opening fence.
+func frontmatterOf(afterFence string) string {
+	if end := strings.Index(afterFence, "\n---"); end >= 0 {
+		return afterFence[:end]
+	}
+	return afterFence
 }
 
 // dropBlankIDKey removes a top-level `id:` line with no value from the
@@ -176,10 +260,9 @@ func dropBlankIDKey(afterFence string) string {
 		return afterFence // unterminated frontmatter; validation reports it
 	}
 	fm, rest := afterFence[:end], afterFence[end:]
-	lines := strings.Split(fm, "\n")
-	out := lines[:0]
-	for _, l := range lines {
-		if after, ok := strings.CutPrefix(l, "id:"); ok && strings.TrimSpace(after) == "" {
+	var out []string
+	for l := range strings.SplitSeq(fm, "\n") {
+		if _, ok := strings.CutPrefix(l, "id:"); ok && classifyIDLine(l) == idLineBlank {
 			continue
 		}
 		out = append(out, l)
@@ -260,6 +343,11 @@ func (p *Pipeline) Edit(ctx context.Context, rel, oldStr, newStr string) error {
 	return p.writeLocked(ctx, rel, strings.Replace(string(current), oldStr, newStr, 1), "")
 }
 
+// CleanPath normalises and vets a vault-relative path: the form every writer
+// must agree on before taking a per-path lock, since PathLocks keys on the
+// raw string and two spellings of one file would take two different mutexes.
+func CleanPath(rel string) (string, error) { return checkPath(rel) }
+
 // checkPath normalises and vets a vault-relative path.
 func checkPath(rel string) (string, error) {
 	const op = "write.Pipeline.Write"
@@ -297,7 +385,7 @@ func (p *Pipeline) writeLocked(ctx context.Context, rel, content, project string
 	if err != nil {
 		return err
 	}
-	if err := p.rejectIDChange(ctx, rel, n); err != nil {
+	if err := p.rejectIDChange(rel, n); err != nil {
 		return err
 	}
 	if probs := vault.Validate(rel, n.Frontmatter, n.Frontmatter != nil); len(probs) > 0 {

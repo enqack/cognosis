@@ -11,6 +11,7 @@ import (
 	"github.com/enqack/cognosis/internal/query"
 	"github.com/enqack/cognosis/internal/store"
 	"github.com/enqack/cognosis/internal/vault"
+	"github.com/enqack/cognosis/internal/write"
 )
 
 // Tool argument structs; json + jsonschema tags drive the generated input
@@ -295,8 +296,29 @@ func (s *Server) addTools(srv *mcp.Server) {
 		if strings.TrimSpace(args.Path) == "" || strings.TrimSpace(args.Ref) == "" {
 			return nil, nil, fmt.Errorf("path and ref are both required")
 		}
-		err := vault.NewHistory(s.vaultDir).Restore(ctx, args.Ref, args.Path)
-		s.audit(ctx, "restore_note", "", "path="+args.Path+" ref="+args.Ref, err)
+		// restore_note writes a vault file and commits, so it is a vault writer
+		// and belongs under the same per-path lock as the pipeline and the
+		// lifecycle engine. Without it, a restore concurrent with a compile
+		// rewrite of the same note interleaves freely and whichever lands
+		// second wins.
+		//
+		// Normalise first. PathLocks keys on the raw string, and every other
+		// writer locks the cleaned path, so locking "./entries/x.md" here would
+		// take a different mutex than the pipeline's "entries/x.md" — a lock
+		// that reads as correct and serialises nothing. CleanPath also applies
+		// the stage and reserved-file rules restore had been skipping.
+		rel, err := write.CleanPath(args.Path)
+		if err != nil {
+			s.audit(ctx, "restore_note", "", "path="+args.Path+" ref="+args.Ref, err)
+			return nil, nil, toolError(err)
+		}
+		// Deferred, not inline: net/http recovers a panic in the handler
+		// goroutine, so an inline unlock skipped by a panic in Restore or its
+		// git plumbing would wedge that path's mutex for the process lifetime.
+		unlock := s.pipeline.Locks.Lock(rel)
+		defer unlock()
+		err = vault.NewHistory(s.vaultDir).Restore(ctx, args.Ref, rel)
+		s.audit(ctx, "restore_note", "", "path="+rel+" ref="+args.Ref, err)
 		if err != nil {
 			return nil, nil, toolError(err)
 		}
