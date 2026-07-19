@@ -78,7 +78,7 @@ func (s *Server) addTools(srv *mcp.Server) {
 		err := s.pipeline.Write(ctx, args.Path, args.Content, args.Project)
 		s.audit(ctx, "write_note", args.Project, "path="+args.Path, err)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, toolError(err)
 		}
 		s.log.Info("write_note", "path", args.Path, "project", args.Project)
 		return textResult("written: " + args.Path), nil, nil
@@ -99,7 +99,7 @@ func (s *Server) addTools(srv *mcp.Server) {
 		err := s.pipeline.Edit(ctx, args.Path, args.OldString, args.NewString)
 		s.audit(ctx, "edit_note", "", "path="+args.Path, err)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, toolError(err)
 		}
 		s.log.Info("edit_note", "path", args.Path)
 		return textResult("edited: " + args.Path), nil, nil
@@ -118,7 +118,7 @@ func (s *Server) addTools(srv *mcp.Server) {
 		if args.PersonaFilter != "" {
 			p, err := s.personas.Get(args.PersonaFilter)
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, toolError(err)
 			}
 			bias = p.Bias
 		}
@@ -142,7 +142,7 @@ func (s *Server) addTools(srv *mcp.Server) {
 			fmt.Sprintf("text_len=%d top_k=%d include_falsified=%v include_archived=%v persona_filter=%s",
 				len(args.Text), args.TopK, args.IncludeFalsified, args.IncludeArchived, args.PersonaFilter), err)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, toolError(err)
 		}
 		// Per-leg counts, not just the fused total. A query returning results
 		// says nothing about whether the keyword leg contributed any of them —
@@ -178,7 +178,7 @@ func (s *Server) addTools(srv *mcp.Server) {
 		metas, err := s.store.ListNotes(ctx, args.Project)
 		s.audit(ctx, "list_notes", args.Project, "", err)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, toolError(err)
 		}
 		if len(metas) == 0 {
 			return textResult("No notes."), nil, nil
@@ -209,7 +209,7 @@ func (s *Server) addTools(srv *mcp.Server) {
 		notes, err := s.store.ListDecaying(ctx, cutoff, args.Project)
 		s.audit(ctx, "list_decaying", args.Project, fmt.Sprintf("threshold_days=%d", args.ThresholdDays), err)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, toolError(err)
 		}
 		if len(notes) == 0 {
 			return textResult("No decaying notes past the threshold."), nil, nil
@@ -243,7 +243,7 @@ func (s *Server) addTools(srv *mcp.Server) {
 		content, err := s.readNoteFile(args.Path)
 		s.audit(ctx, "get_note", "", "path="+args.Path, err)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, toolError(err)
 		}
 		return textResult(content), nil, nil
 	})
@@ -283,7 +283,7 @@ func (s *Server) addTools(srv *mcp.Server) {
 		}
 		s.audit(ctx, "vault_history", "", fmt.Sprintf("path=%s limit=%d", args.Path, limit), err)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, toolError(err)
 		}
 		return textResult(out), nil, nil
 	})
@@ -298,7 +298,7 @@ func (s *Server) addTools(srv *mcp.Server) {
 		err := vault.NewHistory(s.vaultDir).Restore(ctx, args.Ref, args.Path)
 		s.audit(ctx, "restore_note", "", "path="+args.Path+" ref="+args.Ref, err)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, toolError(err)
 		}
 		return textResult(fmt.Sprintf("restored %s to %s (reindexed live by the daemon)", args.Path, args.Ref)), nil, nil
 	})

@@ -8,6 +8,7 @@ package mcpserver
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -100,6 +101,36 @@ func requireLoopback(bind string, tls config.TLS) error {
 
 // audit records one tool call under the caller's token identity. summary must
 // already be redacted (identifying args only — never note content).
+// toolError is what the calling agent sees when a tool fails.
+//
+// cogerr.Error prints as "op: kind: cause", which is the right shape for a log
+// line and the wrong one for a tool result: an agent reading
+// "write.Pipeline.Edit: validation: old_string appears 2 times" has to parse
+// past two internal identifiers to reach the sentence it can act on. The op and
+// kind are not lost — audit and the structured log still record the full error.
+//
+// Internal is deliberately not passed through. Those causes are raw pgx, os and
+// net errors, and they carry DSNs, unix socket paths and schema names; one of
+// this project's own log lines already contains a full socket path from a
+// failed connect. An agent cannot act on any of it, and a tool result is the
+// one place it would travel furthest.
+func toolError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var e *cogerr.Error
+	if !errors.As(err, &e) {
+		return err // not a domain error (argument checks, SDK errors): already plain
+	}
+	if e.Kind == cogerr.Internal {
+		return fmt.Errorf("internal error (see the daemon log for detail)")
+	}
+	if e.Err == nil {
+		return fmt.Errorf("%s", e.Kind)
+	}
+	return e.Err
+}
+
 func (s *Server) audit(ctx context.Context, tool, project, summary string, callErr error) {
 	var tokenID *uuid.UUID
 	if id, ok := auth.FromContext(ctx); ok {

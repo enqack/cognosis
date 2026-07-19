@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 	"strings"
@@ -205,5 +206,68 @@ func TestToolDescriptionsStateWhenToUse(t *testing.T) {
 		if len(desc) < 80 {
 			t.Errorf("%s: description too thin to say when to use it (%d chars): %q", name, len(desc), desc)
 		}
+	}
+}
+
+// TestToolErrorStripsInternalIdentifiers — cogerr.Error prints as
+// "op: kind: cause", which is right for a log line and wrong for a tool result.
+// An agent reading "write.Pipeline.Edit: validation: old_string appears 2 times"
+// has to parse past two internal identifiers to reach the sentence it can act
+// on, and every tool leaked them.
+func TestToolErrorStripsInternalIdentifiers(t *testing.T) {
+	err := cogerr.Ef("write.Pipeline.Edit", cogerr.Validation,
+		"old_string appears %d times in %s; extend it until it identifies one location", 2, "notes/x.md")
+
+	got := toolError(err).Error()
+	want := "old_string appears 2 times in notes/x.md; extend it until it identifies one location"
+	if got != want {
+		t.Errorf("toolError = %q, want %q", got, want)
+	}
+	for _, leaked := range []string{"write.Pipeline.Edit", "validation:"} {
+		if strings.Contains(got, leaked) {
+			t.Errorf("tool result still carries %q: %s", leaked, got)
+		}
+	}
+}
+
+// Internal is deliberately not passed through: those causes are raw pgx, os and
+// net errors carrying DSNs, unix socket paths and schema names. An agent cannot
+// act on any of it, and a tool result is where it would travel furthest.
+func TestToolErrorWithholdsInternalDetail(t *testing.T) {
+	secret := "failed to connect to `user=sysop database=cognosis`: /Users/sysop/.pg-data/.s.PGSQL.5434"
+	err := cogerr.E("store.GetNote", cogerr.Internal, errors.New(secret))
+
+	got := toolError(err).Error()
+	if strings.Contains(got, "sysop") || strings.Contains(got, ".s.PGSQL") {
+		t.Errorf("internal detail reached the tool result: %s", got)
+	}
+	if !strings.Contains(got, "daemon log") {
+		t.Errorf("message does not say where the detail went: %s", got)
+	}
+}
+
+// Errors that are not domain errors — argument checks, SDK failures — are
+// already plain and must pass through untouched rather than being flattened
+// into a generic internal error.
+func TestToolErrorPassesThroughPlainErrors(t *testing.T) {
+	err := errors.New("path and old_string are required")
+	if got := toolError(err); got.Error() != err.Error() {
+		t.Errorf("toolError rewrote a plain error: %q", got)
+	}
+	if toolError(nil) != nil {
+		t.Error("toolError(nil) should be nil")
+	}
+}
+
+// A Kind carrying no cause must still say something. cogerr.E(op, kind, nil) is
+// documented as valid, and the naive unwrap returns nil for it.
+func TestToolErrorHandlesKindWithoutCause(t *testing.T) {
+	err := cogerr.E("store.GetNote", cogerr.NotFound, nil)
+	got := toolError(err)
+	if got == nil {
+		t.Fatal("toolError returned nil for a non-nil error")
+	}
+	if got.Error() != "not_found" {
+		t.Errorf("toolError = %q, want the kind name", got)
 	}
 }
