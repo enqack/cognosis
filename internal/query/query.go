@@ -8,6 +8,7 @@ package query
 import (
 	"context"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -174,11 +175,40 @@ func (e *Engine) legs(ctx context.Context) ([]ProviderLeg, error) {
 	return out, nil
 }
 
+// LegStats reports how many candidates each leg contributed to one query,
+// before fusion and before the top-K cut.
+//
+// It exists because the fused result count cannot answer the question it looks
+// like it answers. A query returning results says nothing about whether the
+// keyword leg found anything: measured on the evaluation corpus, the keyword
+// leg returned 0-2 candidates of a requested 50 while fused output looked
+// healthy throughout. Deciding anything about the keyword leg — AND versus OR
+// tsquery semantics, or whether a different ranker is worth an extension —
+// needs per-leg counts from real traffic, and nothing was recording them.
+//
+// Counts only, never query text. The audit log deliberately records text_len
+// rather than the text, and this keeps to that line.
+type LegStats struct {
+	Vector int // summed across provider legs (one per provisioned provider)
+	FTS    int
+	Graph  int
+	Fused  int // distinct candidates after fusion, before the top-K cut
+}
+
 // Run embeds the query per provider, ranks all legs, and fuses.
 func (e *Engine) Run(ctx context.Context, text string, opts Options) ([]Result, error) {
+	out, _, err := e.RunWithStats(ctx, text, opts)
+	return out, err
+}
+
+// RunWithStats is Run, additionally reporting per-leg candidate counts. Run
+// delegates to it, so there is one implementation and the counts describe the
+// query that actually ran.
+func (e *Engine) RunWithStats(ctx context.Context, text string, opts Options) ([]Result, LegStats, error) {
 	const op = "query.Run"
+	var stats LegStats
 	if text == "" {
-		return nil, cogerr.Ef(op, cogerr.Validation, "query text is required")
+		return nil, stats, cogerr.Ef(op, cogerr.Validation, "query text is required")
 	}
 	topK := opts.TopK
 	if topK <= 0 {
@@ -187,10 +217,13 @@ func (e *Engine) Run(ctx context.Context, text string, opts Options) ([]Result, 
 	pool := e.Tuning.candidatePool()
 
 	var legs []Leg[store.RankedChunk]
+	// The vector and keyword legs run concurrently, so their counters need a
+	// mutex. The graph and fused counts are written after g.Wait() and do not.
+	var statsMu sync.Mutex
 
 	providerLegs, err := e.legs(ctx)
 	if err != nil {
-		return nil, err
+		return nil, stats, err
 	}
 
 	// The primary legs are independent — one vector leg per provisioned provider
@@ -212,6 +245,9 @@ func (e *Engine) Run(ctx context.Context, text string, opts Options) ([]Result, 
 				return err
 			}
 			primary[i] = Leg[store.RankedChunk]{Items: items, Weight: 1}
+			statsMu.Lock()
+			stats.Vector += len(items)
+			statsMu.Unlock()
 			return nil
 		})
 	}
@@ -222,10 +258,13 @@ func (e *Engine) Run(ctx context.Context, text string, opts Options) ([]Result, 
 			return err
 		}
 		primary[ftsIdx] = Leg[store.RankedChunk]{Items: kw, Weight: 1}
+		statsMu.Lock()
+		stats.FTS = len(kw)
+		statsMu.Unlock()
 		return nil
 	})
 	if err := g.Wait(); err != nil {
-		return nil, err
+		return nil, stats, err
 	}
 	legs = append(legs, primary...)
 
@@ -243,12 +282,14 @@ func (e *Engine) Run(ctx context.Context, text string, opts Options) ([]Result, 
 	if !e.Tuning.DisableGraph {
 		graph, err := e.Store.RankGraph(ctx, seeds, opts.filter(), pool)
 		if err != nil {
-			return nil, err
+			return nil, stats, err
 		}
+		stats.Graph = len(graph)
 		legs = append(legs, Leg[store.RankedChunk]{Items: graph, Weight: e.Tuning.graphWeight()})
 	}
 
 	fused := FuseRRF(e.Tuning.rrfK(), func(c store.RankedChunk) uuid.UUID { return c.ChunkID }, legs)
+	stats.Fused = len(fused)
 
 	// Archived-link penalty: a chunk whose parent note still references a
 	// soft-deleted note is depressed so a dense stale description of a shelved
@@ -264,7 +305,7 @@ func (e *Engine) Run(ctx context.Context, text string, opts Options) ([]Result, 
 		}
 		penalized, err := e.Store.ArchivedLinkers(ctx, noteIDs)
 		if err != nil {
-			return nil, err
+			return nil, stats, err
 		}
 		if len(penalized) > 0 {
 			for i := range fused {
@@ -305,5 +346,5 @@ func (e *Engine) Run(ctx context.Context, text string, opts Options) ([]Result, 
 	if e.Lazy != nil && len(hitIDs) > 0 {
 		e.Lazy(hitIDs)
 	}
-	return out, nil
+	return out, stats, nil
 }

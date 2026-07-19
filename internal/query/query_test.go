@@ -365,3 +365,71 @@ func TestCountSuppressedFalsified(t *testing.T) {
 		t.Errorf("count = %d for a query no falsified note matches, want 0", n)
 	}
 }
+
+// TestRunWithStatsCountsEachLeg — the counts exist to drive a decision about
+// the keyword leg, so a plausible-but-wrong number is worse than none. This
+// pins them against the legs the engine actually ran rather than against each
+// other.
+//
+// The specific failure it guards: FTS is written from inside the errgroup
+// alongside the vector legs, so a count assigned to the wrong slot, or lost to
+// the race between them, would still produce a believable log line.
+func TestRunWithStatsCountsEachLeg(t *testing.T) {
+	e, _, ctx := fixture(t)
+
+	results, stats, err := e.RunWithStats(ctx, queryText, query.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Fused < len(results) {
+		t.Errorf("fused=%d is below the %d results returned; the fused count is taken before "+
+			"the top-K cut and cannot be smaller", stats.Fused, len(results))
+	}
+	if stats.Vector == 0 && stats.FTS == 0 && stats.Graph == 0 {
+		t.Fatal("every leg reported zero candidates yet the query returned results")
+	}
+	if stats.Fused == 0 {
+		t.Error("fused count is zero for a query that returned results")
+	}
+
+	// Each leg is counted independently: disabling the graph leg must zero
+	// that count and leave the others intact. Asserting only on totals would
+	// pass if two legs' counts were swapped.
+	graphOn := stats
+	e.Tuning = query.Tuning{DisableGraph: true}
+	if _, off, err := e.RunWithStats(ctx, queryText, query.Options{}); err != nil {
+		t.Fatal(err)
+	} else {
+		if off.Graph != 0 {
+			t.Errorf("graph=%d with DisableGraph set", off.Graph)
+		}
+		if off.Vector != graphOn.Vector || off.FTS != graphOn.FTS {
+			t.Errorf("disabling the graph leg changed the other counts: vector %d->%d, fts %d->%d",
+				graphOn.Vector, off.Vector, graphOn.FTS, off.FTS)
+		}
+	}
+}
+
+// Run must stay a thin delegation to RunWithStats — one implementation, so the
+// counts describe the query that actually ran rather than a parallel copy of
+// the logic that could drift from it.
+func TestRunMatchesRunWithStats(t *testing.T) {
+	e, _, ctx := fixture(t)
+
+	plain, err := e.Run(ctx, queryText, query.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	withStats, _, err := e.RunWithStats(ctx, queryText, query.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plain) != len(withStats) {
+		t.Fatalf("Run returned %d results, RunWithStats %d", len(plain), len(withStats))
+	}
+	for i := range plain {
+		if plain[i].Path != withStats[i].Path {
+			t.Errorf("rank %d: Run=%s RunWithStats=%s", i, plain[i].Path, withStats[i].Path)
+		}
+	}
+}

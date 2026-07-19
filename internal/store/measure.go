@@ -148,6 +148,16 @@ func (s *Store) ProbeFTS(ctx context.Context, text string, f Filter, limit int,
 	return s.runProbe(ctx, op, ftsLegSQL(), ftsLegArgs(text, f, limit), limit, set, explain)
 }
 
+// ProbeFTSMode is ProbeFTS with the tsquery connective under test. Only the
+// keyword leg's candidate *set* changes between modes; filters, ranking
+// expression and limit are byte-identical, so a difference in results is
+// attributable to AND-versus-OR and nothing else.
+func (s *Store) ProbeFTSMode(ctx context.Context, text string, mode TSQueryMode, f Filter,
+	limit int, set SessionSettings, explain bool) (Probe, error) {
+	const op = "store.ProbeFTSMode"
+	return s.runProbe(ctx, op, ftsLegSQLMode(mode), ftsLegArgs(text, f, limit), limit, set, explain)
+}
+
 // ProbeGraph runs the production graph leg under the given session settings.
 func (s *Store) ProbeGraph(ctx context.Context, seeds []uuid.UUID, f Filter, limit int,
 	set SessionSettings, explain bool) (Probe, error) {

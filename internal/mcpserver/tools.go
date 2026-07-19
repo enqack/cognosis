@@ -103,7 +103,7 @@ func (s *Server) addTools(srv *mcp.Server) {
 			}
 			asOf = &t
 		}
-		results, err := s.engine.Run(ctx, args.Text, query.Options{
+		results, stats, err := s.engine.RunWithStats(ctx, args.Text, query.Options{
 			Project:          args.Project,
 			TopK:             args.TopK,
 			IncludeFalsified: args.IncludeFalsified,
@@ -117,7 +117,15 @@ func (s *Server) addTools(srv *mcp.Server) {
 		if err != nil {
 			return nil, nil, err
 		}
-		s.log.Info("query_knowledge", "results", len(results))
+		// Per-leg counts, not just the fused total. A query returning results
+		// says nothing about whether the keyword leg contributed any of them —
+		// on the evaluation corpus that leg returned 0-2 of a requested 50
+		// while fused output looked healthy — so the fused count alone cannot
+		// tell whether the keyword leg's AND semantics are starving it in
+		// practice. Counts only: the audit summary records text_len rather
+		// than text, and this holds that line.
+		s.log.Info("query_knowledge", "results", len(results),
+			"vector", stats.Vector, "fts", stats.FTS, "graph", stats.Graph, "fused", stats.Fused)
 
 		// Tell the agent when suppressed history exists. Falsified notes are
 		// retained deliberately, but the exclusion happens in SQL, so without

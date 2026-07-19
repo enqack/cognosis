@@ -137,12 +137,44 @@ func (s *Store) RankVector(ctx context.Context, table string, vec []float32,
 }
 
 // ftsLegSQL renders the keyword leg.
-func ftsLegSQL() string {
+// TSQueryMode selects how a query string becomes a tsquery. The keyword leg's
+// candidate set — not its ordering — is what dominates fused output (measured:
+// deleting the leg changes every query, perfectly reordering it changes ~2 in
+// 30), and this is the knob that sets it.
+type TSQueryMode int
+
+const (
+	// TSQueryWebsearch is production: websearch_to_tsquery, which joins terms
+	// with AND. A chunk must contain every query term.
+	TSQueryWebsearch TSQueryMode = iota
+	// TSQueryOr is measurement-only: the same lexemes joined with OR, so a
+	// chunk matching any term is a candidate. Not reachable from any request
+	// path; it exists so the AND/OR choice can be measured rather than argued.
+	TSQueryOr
+)
+
+// tsqueryExpr renders the tsquery construction for a mode. The OR form
+// tokenizes through to_tsvector first so it inherits the same stemming and
+// stopword handling as the production path — differing on the connective
+// alone, which is what makes the comparison isolate that one choice. nullif
+// guards an all-stopword query: to_tsquery(”) raises a syntax error, whereas
+// a NULL tsquery matches nothing, which is the correct answer.
+func tsqueryExpr(mode TSQueryMode) string {
+	if mode == TSQueryOr {
+		return `to_tsquery('english', nullif(array_to_string(
+			tsvector_to_array(to_tsvector('english', $1)), ' | '), ''))`
+	}
+	return `websearch_to_tsquery('english', $1)`
+}
+
+func ftsLegSQL() string { return ftsLegSQLMode(TSQueryWebsearch) }
+
+func ftsLegSQLMode(mode TSQueryMode) string {
 	return `
 		select ` + rankedCols + `
 		from chunks c
 		join notes n on n.path = c.note_path,
-		websearch_to_tsquery('english', $1) q
+		` + tsqueryExpr(mode) + ` q
 		where c.fts @@ q
 		  and ($2 = '' or n.project = $2)
 		  and ` + timeFilterSQL("$3", "$7", "$5", "$6") + `
