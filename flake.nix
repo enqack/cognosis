@@ -124,7 +124,14 @@
           ];
           shellHook = ''
             ${pgEnv}
-            echo "cognosis dev shell — pg-start / pg-stop; DSN in \$COGNOSIS_DSN"
+            # `mage build` writes bin/cognosis, so put it on PATH ahead of any
+            # installed copy: in this shell `cognosis` must mean the tree you
+            # are editing, never a system build that silently predates it.
+            # Anchored on the git root rather than $PWD so entering the shell
+            # from a subdirectory still resolves.
+            cognosisRoot="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
+            export PATH="$cognosisRoot/bin:$PATH"
+            echo "cognosis dev shell — pg-start / pg-stop; DSN in \$COGNOSIS_DSN; ./bin on PATH"
           '';
         };
       }))
