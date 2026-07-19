@@ -110,4 +110,66 @@ func BenchmarkRunEndToEnd(b *testing.B) {
 			})
 		}
 	}
+
+	// What the OR fallback costs when it actually fires.
+	//
+	// The arms above cannot show this. Every query in c.Queries returns a full
+	// pool of 50 keyword candidates on this corpus, so the fallback never
+	// triggers and its cost is a single length comparison — which is why the
+	// recorded baseline says nothing about it. Only the starving set puts the
+	// leg in the regime where the OR retry executes.
+	//
+	// Both arms are the shipped engine over the same queries; they differ only
+	// in whether the retry is permitted, so the delta is the second keyword
+	// query against Postgres and nothing else.
+	if len(c.StarveQueries) == 0 {
+		b.Fatal("corpus generated no starving queries; spec.StarveQueries/DistinctivePerChunk are zero")
+	}
+	noFallback := *c.Engine
+	noFallback.Tuning = query.Tuning{FTSFallbackBelow: -1} // negative disables; 0 would mean "unset"
+
+	assertFallbackFires(ctx, b, c)
+
+	for _, tc := range []struct {
+		name string
+		eng  *query.Engine
+	}{
+		{"starving/fallback", c.Engine},
+		{"starving/no-fallback", &noFallback},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			b.ReportAllocs()
+			i := 0
+			for b.Loop() {
+				q := c.StarveQueries[i%len(c.StarveQueries)]
+				i++
+				if _, err := tc.eng.Run(ctx, q.Text, query.Options{}); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+// assertFallbackFires is the starving arms' counterpart to assertPoolsDiffer:
+// two arms that differ only in a branch neither takes are one arm measured
+// twice, and would report the fallback as free rather than unmeasured.
+func assertFallbackFires(ctx context.Context, b *testing.B, c *Corpus) {
+	b.Helper()
+	fired := 0
+	for _, q := range c.StarveQueries {
+		_, stats, err := c.Engine.RunWithStats(ctx, q.Text, query.Options{})
+		if err != nil {
+			b.Fatal(err)
+		}
+		if stats.FTSFallback {
+			fired++
+		}
+	}
+	if fired == 0 {
+		b.Fatalf("the OR fallback fired on none of %d starving queries: the corpus is not "+
+			"starving the keyword leg, so both starving arms below run identical code",
+			len(c.StarveQueries))
+	}
+	b.Logf("fallback fires on %d/%d starving queries", fired, len(c.StarveQueries))
 }
