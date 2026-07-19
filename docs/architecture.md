@@ -135,9 +135,26 @@ almost always.
 The threshold is 2 rather than 1, and that is the whole of the choice. Firing only on an empty
 result is measurably insufficient — the real-vault query that motivated this returned exactly one
 candidate belonging to the wrong note, where a fire-on-empty rule is byte-identical to no fallback.
-Measured on a corpus built to hold that regime, `fallback@1` left target-note recall at the shipped
-0.500 while `fallback@2` reached 0.917; at 2 the fallback fired on zero healthy queries at both 125
-and 2000 chunks, while switching to OR unconditionally cost roughly half the fused top-8.
+
+Measured on the 8000-chunk corpus `scripts/checks/retrieval-eval.sh` builds, over the 15 queries
+whose conjunction returns exactly one (wrong) candidate:
+
+| arm | target note in candidates | target in fused top-8 |
+|---|---|---|
+| AND (shipped) | 0.000 | 0.067 |
+| `fallback@1` | 0.000 | 0.067 |
+| `fallback@2` and above | 0.667 | 0.400 |
+
+`fallback@1` is identical to shipped, which is the point: one candidate is not fewer than one. On
+that same run the fallback fired on **zero** of the 30 healthy queries at every threshold up to 32
+(fused top-8 Jaccard 1.000 against the shipped arm), while switching to OR unconditionally moved
+every healthy query and cost roughly two thirds of the fused top-8 (Jaccard 0.365).
+
+Absolute recall is corpus-dependent and the direction is not: on a 125-chunk corpus the same
+comparison runs 0.500 to 0.917, because a specific note competes with far less for eight slots.
+The recorded artifact is `internal/query/retrievaleval/testdata/tsquery_or_fallback_sweep.txt`,
+which states its corpus size in the header — read the numbers there rather than these, which are a
+snapshot.
 
 `LegStats.FTSFallback` records when it fires, logged per query. This matters: `fts=35` looks like a
 healthy keyword leg whether it came from a conjunction that matched or a disjunction papering over

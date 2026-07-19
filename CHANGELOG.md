@@ -14,9 +14,11 @@ All notable changes to Cognosis are documented here. The format follows
   entirely — not merely ranked low. When the AND leg returns fewer than 2 candidates it now re-runs
   with OR and keeps that result only if it found more. Threshold 2 rather than 1 because firing only
   on an empty result is measurably insufficient: the query that motivated this returned exactly one
-  candidate, belonging to the wrong note. Measured to fire on zero healthy queries at both 125 and
-  2000 chunks. `LegStats.FTSFallback` reports when it fires and is logged per query, because a
-  silent fallback is indistinguishable from a healthy keyword leg in the counts.
+  candidate, belonging to the wrong note, and `fallback@1` is identical to shipped behaviour there.
+  On the 8000-chunk evaluation corpus it lifts target-note recall on those queries from 0.067 to
+  0.400 while firing on zero of 30 healthy queries. `LegStats.FTSFallback` reports when it fires and
+  is logged per query, because a silent fallback is indistinguishable from a healthy keyword leg in
+  the counts.
 - `store.RankFTSMode` exposes the tsquery connective; `store.RankFTS` keeps its signature and
   semantics.
 - `internal/query/retrievaleval` can generate queries that starve the keyword leg — markers unique

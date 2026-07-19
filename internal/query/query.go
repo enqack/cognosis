@@ -42,12 +42,19 @@ const (
 	// empty result is measurably insufficient. The real-vault query that
 	// motivated this returned exactly one candidate, belonging to the wrong
 	// note, and a fire-on-empty rule is byte-identical to shipped behaviour
-	// there. Measured on a corpus built to hold that regime, fallback@1 left
-	// target-note recall at the shipped 0.500 while fallback@2 reached 0.917.
+	// there. On the 8000-chunk evaluation corpus, over the queries in exactly
+	// that regime, fallback@1 left target-note recall at the shipped 0.067
+	// while fallback@2 reached 0.400.
 	//
 	// The cost of firing too eagerly is real — OR admits chunks matching one
 	// incidental term — which is why this is a small threshold and not a switch
-	// to OR. At 2 it fired on zero healthy queries at both 125 and 2000 chunks.
+	// to OR. At 2 it fired on zero of 30 healthy queries on that corpus, while
+	// unconditional OR moved every one of them.
+	//
+	// Absolute recall is corpus-dependent (the same comparison runs 0.500 to
+	// 0.917 at 125 chunks); the current numbers live in
+	// internal/query/retrievaleval/testdata/tsquery_or_fallback_sweep.txt,
+	// which states its corpus size in the header.
 	ftsFallbackBelow = 2
 	// archivedLinkPenalty severely discounts a fused chunk whose parent note
 	// links to a soft-deleted note — a .9-similarity stale reflection about an
