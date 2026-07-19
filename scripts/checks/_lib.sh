@@ -34,10 +34,36 @@ require_env() {
   fi
 }
 
-# setup_sandbox — isolated XDG dirs under mktemp, cleaned up on exit.
+# setup_sandbox — isolated XDG dirs under mktemp AND an isolated Postgres
+# schema, both cleaned up on exit.
+#
+# The schema isolation is not tidiness. A check boots a daemon over a *sandbox*
+# vault; boot reconciliation reads every indexed path from the database, finds
+# them absent from that empty vault, and deletes them as "file gone". Pointed at
+# a shared database, running the suite therefore wipes the index of whatever
+# real vault last used it — recoverable only by a full reindex, and silent until
+# something asks a question and gets nothing back.
+#
+# Mirrors internal/store/storetest.NewTB: a per-run schema on the search_path,
+# so the daemon's migrations create its tables there and the real index in
+# public is untouched. `,public` stays on the path because the flake creates the
+# pgvector extension there.
 setup_sandbox() {
   SANDBOX="$(mktemp -d)"
-  trap 'stop_daemon; rm -rf "$SANDBOX"' EXIT
+  BASE_DSN="$COGNOSIS_DSN"
+  CHECK_SCHEMA="cog_check_$$_$(date +%s)"
+  if ! psql "$BASE_DSN" -q -c "create schema \"$CHECK_SCHEMA\"" 2>/dev/null; then
+    echo "could not create isolation schema $CHECK_SCHEMA (is psql on PATH and COGNOSIS_DSN reachable?)" >&2
+    exit 2
+  fi
+  # Drop the schema before removing the sandbox: the daemon must be stopped
+  # first or its open connections block the drop.
+  trap 'stop_daemon; psql "$BASE_DSN" -q -c "drop schema if exists \"$CHECK_SCHEMA\" cascade" >/dev/null 2>&1; rm -rf "$SANDBOX"' EXIT
+
+  local sep='?'
+  case "$BASE_DSN" in *\?*) sep='&' ;; esac
+  export COGNOSIS_DSN="${BASE_DSN}${sep}options=-csearch_path%3D${CHECK_SCHEMA}%2Cpublic"
+
   export XDG_CONFIG_HOME="$SANDBOX/config"
   export XDG_DATA_HOME="$SANDBOX/data"
   export XDG_STATE_HOME="$SANDBOX/state"
