@@ -80,6 +80,11 @@ under the resolved token identity with redacted argument summaries — never not
 log lines also carry `token=<name>`, so per-leg retrieval counters can be attributed per client; a
 missing `token=` marks daemon-internal work rather than a gap.
 
+Keep each token out of the client's config file — see
+[contrib/cognosis-mcp-headers](../contrib/cognosis-mcp-headers) and
+[setup-guide.md](setup-guide.md#keeping-the-token-out-of-client-config). Interpolating it with
+`$(cat …)` leaves a copy nothing rotates, which is the usual cause of a `401` after re-minting.
+
 **Mint one token per client even locally.** A shared token makes every caller indistinguishable in both
 the audit table and the log, which silently ruins any telemetry drawn from them — an agent debugging
 retrieval writes traffic that looks exactly like ordinary use. Leave the auto-minted `local` token

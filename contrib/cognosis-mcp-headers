@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# MCP auth-header helper for Cognosis. Install:
+#   cp contrib/cognosis-mcp-headers ~/.local/bin/
+#   chmod 755 ~/.local/bin/cognosis-mcp-headers
+#
+# Then set headersHelper (not headers) on the server entry in ~/.claude.json:
+#   {
+#     "type": "http",
+#     "url": "http://127.0.0.1:7433",
+#     "headersHelper": "/Users/you/.local/bin/cognosis-mcp-headers"
+#   }
+#
+# `claude mcp add` has no flag for headersHelper — edit the entry directly. Use
+# an absolute path: the helper runs with the client's environment, not a shell
+# that has expanded ~.
+#
+# Why bother: `claude mcp add --header "Authorization: Bearer $(cat …)"`
+# interpolates the token into the config, which then holds a copy nothing
+# rotates. This keeps the secret in its 0600 file. The client re-runs the helper
+# on every connection and again after a 401, so rotating the token is just
+# rewriting that file — no client reconfiguration, no restart.
+#
+# Per-client tokens (`cognosis token create code`) are worth minting: a shared
+# token makes every caller indistinguishable in audit_log and in the token=
+# attribute on MCP log lines. Point COGNOSIS_TOKEN_FILE at the one this client
+# should use.
+set -euo pipefail
+
+state="${XDG_STATE_HOME:-$HOME/.local/state}/cognosis"
+tf="${COGNOSIS_TOKEN_FILE:-$state/local-token}"
+
+# Diagnostics go to stderr: stdout is parsed as JSON by the client, so anything
+# printed there on failure surfaces as a confusing parse error rather than a
+# readable cause.
+if [ ! -r "$tf" ]; then
+	echo "cognosis-mcp-headers: cannot read $tf" >&2
+	echo "  set COGNOSIS_TOKEN_FILE, or start the daemon to mint the local token" >&2
+	exit 1
+fi
+
+tok="$(tr -d '\r\n' < "$tf")"
+if [ -z "$tok" ]; then
+	echo "cognosis-mcp-headers: $tf is empty" >&2
+	exit 1
+fi
+
+# A cognosis token is cog_<uuid>_<base64url>, so it carries no JSON
+# metacharacters. Guard anyway rather than emitting malformed JSON that would
+# surface as an opaque client-side parse failure.
+case "$tok" in
+*[\"\\]* | *' '*)
+	echo "cognosis-mcp-headers: $tf does not look like a bearer token" >&2
+	exit 1
+	;;
+esac
+
+printf '{"Authorization":"Bearer %s"}\n' "$tok"
