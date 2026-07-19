@@ -21,7 +21,7 @@ const archQuery = "the migration architecture decision"
 //   - live.md        an active entry about the topic
 //   - shelved.md     an archived (faded) note about the same topic, archived
 //     2026-05-01, with a dense on-topic body
-//   - reflection.md  a dense reflection that links to shelved.md — the vector
+//   - reflection.md  a dense reflection that links to shelved.md -- the vector
 //     that leaks a shelved concept back into context
 //
 // stale.md's body embeds nearest the query so, unpenalized, it would rank #1.
@@ -38,7 +38,7 @@ func archivedFixture(t *testing.T) (*query.Engine, context.Context) {
 		archQuery:      {1, 0, 0, 0, 0, 0, 0, 0},
 		liveBody:       {0.9, 0.436, 0, 0, 0, 0, 0, 0},
 		shelvedBody:    {0.95, 0.312, 0, 0, 0, 0, 0, 0},
-		reflectionBody: {1, 0, 0, 0, 0, 0, 0, 0}, // best vector match — would win unpenalized
+		reflectionBody: {1, 0, 0, 0, 0, 0, 0, 0}, // best vector match -- would win unpenalized
 	}
 	table := embed.TableSlug(stub.Name(), stub.Model())
 	if err := s.EnsureProvider(ctx, stub.Name(), stub.Model(), table, stub.Dim, true); err != nil {
@@ -65,7 +65,7 @@ func archivedFixture(t *testing.T) (*query.Engine, context.Context) {
 		"created: \"2026-01-01 09:00:00\"\nupdated: \"2026-01-01 09:00:00\"\n"+
 		"status: faded\narchived_at: \"2026-05-01 00:00:00\"\n---\n"+shelvedBody+"\n")
 
-	// A reflection that references the shelved note by wikilink — its dense body
+	// A reflection that references the shelved note by wikilink -- its dense body
 	// is the leak vector the RRF penalty must catch.
 	putRaw("reflections/reflection.md", "---\nid: "+uuid.NewString()+"\ncategory: reflection\n"+
 		"persona: deep-thoughts\n"+
@@ -75,7 +75,7 @@ func archivedFixture(t *testing.T) (*query.Engine, context.Context) {
 	return &query.Engine{Store: s, Providers: []query.ProviderLeg{{Provider: stub, Table: table}}}, ctx
 }
 
-// TestArchivedNoteExcludedByDefault — takeaway #3a: an archived note's own
+// TestArchivedNoteExcludedByDefault -- takeaway #3a: an archived note's own
 // chunks are out of ordinary retrieval, but include_archived surfaces them.
 func TestArchivedNoteExcludedByDefault(t *testing.T) {
 	e, ctx := archivedFixture(t)
@@ -97,7 +97,7 @@ func TestArchivedNoteExcludedByDefault(t *testing.T) {
 	}
 }
 
-// TestArchivedAsOfHonest — takeaway #3a temporal honesty: before it was
+// TestArchivedAsOfHonest -- takeaway #3a temporal honesty: before it was
 // archived, the note was live and must appear in an as_of view at that instant.
 func TestArchivedAsOfHonest(t *testing.T) {
 	e, ctx := archivedFixture(t)
@@ -110,7 +110,7 @@ func TestArchivedAsOfHonest(t *testing.T) {
 	}
 }
 
-// TestArchivedLinkPenaltyDepressesReflection — takeaway #3b: the reflection has
+// TestArchivedLinkPenaltyDepressesReflection -- takeaway #3b: the reflection has
 // the strongest vector match, so without the penalty it ranks #1. Because it
 // links to an archived note, the fusion penalty must push the live note above
 // it.

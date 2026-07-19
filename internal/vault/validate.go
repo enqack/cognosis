@@ -41,7 +41,7 @@ const TimeLayout = "2006-01-02 15:04:05"
 
 // NewNoteID mints a note id: UUIDv7, time-ordered, so ids sort lexically by
 // creation time and index inserts stay sequential rather than scattering a
-// b-tree. Every code path that creates a note must use this — Validate rejects
+// b-tree. Every code path that creates a note must use this -- Validate rejects
 // any other UUID version, and an id is permanent once written.
 //
 // Callers that cannot handle an error (fixtures, table-driven tests) should use
@@ -65,7 +65,7 @@ func ParseTime(s string) (time.Time, error) {
 }
 
 // TimeOf normalizes a frontmatter timestamp: yaml.v3 decodes unquoted
-// timestamps into time.Time, quoted ones stay strings — accept both.
+// timestamps into time.Time, quoted ones stay strings -- accept both.
 func TimeOf(v any) (time.Time, error) {
 	switch x := v.(type) {
 	case time.Time:
@@ -119,18 +119,18 @@ func Validate(relPath string, fm map[string]any, hasFM bool) []Problem {
 
 	var probs []Problem
 
-	// Note ids are UUIDv7 — see NewNoteID. v4 is rejected rather than merely
+	// Note ids are UUIDv7 -- see NewNoteID. v4 is rejected rather than merely
 	// discouraged: an id is written once and never rewritten, so anything
 	// accepted here is permanent.
 	id, _ := fm["id"].(string)
 	switch parsed, err := uuid.Parse(id); {
 	case id == "":
-		probs = append(probs, p("id", "required; generate a UUIDv7 and retry — never reuse another note's id"))
+		probs = append(probs, p("id", "required; generate a UUIDv7 and retry -- never reuse another note's id"))
 	case err != nil:
 		probs = append(probs, p("id", fmt.Sprintf("not a valid UUID: %q", id)))
 	case parsed.Version() != 7:
 		probs = append(probs, p("id", fmt.Sprintf(
-			"must be a UUIDv7 (time-ordered), got v%d — ids sort lexically by creation time",
+			"must be a UUIDv7 (time-ordered), got v%d -- ids sort lexically by creation time",
 			parsed.Version())))
 	}
 
@@ -141,7 +141,7 @@ func Validate(relPath string, fm map[string]any, hasFM bool) []Problem {
 		probs = append(probs, p("category", fmt.Sprintf("unknown category %q", cat)))
 	}
 
-	// Explicit timestamps are the staleness source — required everywhere.
+	// Explicit timestamps are the staleness source -- required everywhere.
 	for _, f := range []string{"created", "updated"} {
 		if v, present := fm[f]; !present {
 			probs = append(probs, p(f, "required (YYYY-MM-DD HH:MM:SS)"))
@@ -182,7 +182,7 @@ func Validate(relPath string, fm map[string]any, hasFM bool) []Problem {
 			probs = append(probs, p("description", "required: a dry, literal one-sentence summary of the event (this is what gets embedded; the styled body is not indexed)"))
 		}
 	case StageArchive:
-		// Archived notes keep whatever fields they faded with — no stage rules.
+		// Archived notes keep whatever fields they faded with -- no stage rules.
 	}
 
 	// persona is reflection-only.
@@ -201,9 +201,9 @@ func validateDecaying(relPath string, fm map[string]any) []Problem {
 
 	conf, ok := toFloat(fm["confidence"])
 	if !ok {
-		probs = append(probs, p("confidence", "notes/* require numeric `confidence` (0.0–1.0)"))
+		probs = append(probs, p("confidence", "notes/* require numeric `confidence` (0.0-1.0)"))
 	} else if conf < 0 || conf > 1 {
-		probs = append(probs, p("confidence", fmt.Sprintf("must be within 0.0–1.0, got %v", conf)))
+		probs = append(probs, p("confidence", fmt.Sprintf("must be within 0.0-1.0, got %v", conf)))
 	}
 
 	if m, _ := fm["maturity"].(string); !maturities[m] {
@@ -235,7 +235,7 @@ func validateDecaying(relPath string, fm map[string]any) []Problem {
 
 	// last_explicit_reinforce anchors the passive-refresh budget: citation can
 	// only extend a note's life so far past the last time an agent actually
-	// asserted it. Optional, and it must stay optional — every note written
+	// asserted it. Optional, and it must stay optional -- every note written
 	// before this field existed lacks it, there is no frontmatter backfill,
 	// and reconciliation refuses to index a note that fails validation, so
 	// requiring it would strand every existing vault.
@@ -272,7 +272,7 @@ func validateDecaying(relPath string, fm map[string]any) []Problem {
 			// Legal terminal states; compile moves faded notes to archive/ but
 			// the status may exist transiently in place. archived_at (stamped by
 			// the compile pass) is optional but, when present, must be a
-			// timestamp — it drives the as_of temporal view of archived notes.
+			// timestamp -- it drives the as_of temporal view of archived notes.
 			if aa, present := fm["archived_at"]; present {
 				if _, err := TimeOf(aa); err != nil {
 					probs = append(probs, p("archived_at", err.Error()))

@@ -8,10 +8,10 @@ package retrievaleval
 //
 //   - `websearch_to_tsquery` ANDs its terms, so a 5-term query needed all five
 //     of ~6 distinct tokens present in a chunk. Measured result: the FTS leg
-//     returned 0–2 candidates out of a requested 50, across every scope.
+//     returned 0-2 candidates out of a requested 50, across every scope.
 //   - Every chunk was the same length with term frequency ~1, so BM25's two
-//     actual advantages over ts_rank_cd — saturating term frequency and
-//     normalizing by document length — had nothing to act on. A comparison on
+//     actual advantages over ts_rank_cd -- saturating term frequency and
+//     normalizing by document length -- had nothing to act on. A comparison on
 //     that corpus would have reported "no difference" for reasons that are an
 //     artifact of the fixture, not a property of the rankers.
 //   - Synthetic tokens also bypass the English stemmer and stopword list, so
@@ -21,7 +21,7 @@ package retrievaleval
 
 // topicWords holds one small vocabulary per cluster, kept disjoint so that
 // cluster membership remains simultaneously the vector ground truth and a
-// keyword ground truth — the property that lets the FTS leg be scored at all.
+// keyword ground truth -- the property that lets the FTS leg be scored at all.
 // Overlapping vocabularies would be more realistic and would destroy that,
 // so the realism is spent on the background pool instead.
 //
@@ -72,7 +72,7 @@ var topicWords = [][]string{
 
 // backgroundWords are the connective tissue: words that appear across every
 // cluster, at much higher frequency than any topic term. They are what give
-// the corpus an IDF spread — without them every term is equally rare and
+// the corpus an IDF spread -- without them every term is equally rare and
 // nothing distinguishes one ranking function from another. Some are stopwords
 // on purpose, so the text-search configuration is actually exercised rather
 // than bypassed.
@@ -97,7 +97,7 @@ var backgroundWords = []string{
 // The head-drawn and tail-drawn query sets both fail to starve the keyword leg,
 // and for a reason no draw strategy fixes. A chunk is 40-160 words at
 // topicRate 0.30, so it draws 12-48 topic words from a 12-term cluster
-// vocabulary — it contains nearly its entire vocabulary, and any conjunction
+// vocabulary -- it contains nearly its entire vocabulary, and any conjunction
 // over that vocabulary is satisfiable. Starvation needs terms that are rare
 // *within a note*, not merely rare within a cluster.
 //

@@ -10,7 +10,7 @@ import (
 // operator creation. EnsureLocalToken mints under exactly this name; letting an
 // operator take it first made the daemon mint under a mangled one, after which
 // `cognosis token revoke local` revoked the operator's token rather than the
-// daemon's — the documented remedy operating on the wrong row.
+// daemon's -- the documented remedy operating on the wrong row.
 const LocalTokenName = "local"
 
 // tokenNamePattern bounds what a token may be called.

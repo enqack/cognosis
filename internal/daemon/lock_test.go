@@ -53,7 +53,7 @@ func TestCorruptLockNotReclaimedSilently(t *testing.T) {
 	if err := os.WriteFile(path, []byte("not-a-pid\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	// Unreadable PID → treated as stale (holder unverifiable) and reclaimed;
+	// Unreadable PID -> treated as stale (holder unverifiable) and reclaimed;
 	// what matters is we don't crash and the lock ends up held by us.
 	l, err := AcquireLock(path)
 	if err != nil {

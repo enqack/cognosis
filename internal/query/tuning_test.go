@@ -24,7 +24,7 @@ func TestTuningZeroValueMatchesConstants(t *testing.T) {
 }
 
 // Explicitly setting Tuning to the constants must be indistinguishable from
-// leaving it zero — the two spellings of "production defaults" must agree.
+// leaving it zero -- the two spellings of "production defaults" must agree.
 func TestTuningExplicitConstantsMatchZero(t *testing.T) {
 	explicit := Tuning{
 		RRFK:          rrfK,

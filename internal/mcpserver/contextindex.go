@@ -16,21 +16,21 @@ import (
 // as the MCP surface.
 
 // contextPreamble frames the index that follows it. Without it the injection is
-// a list of paths with no stated purpose — an agent can read it and still not
+// a list of paths with no stated purpose -- an agent can read it and still not
 // know the vault is its own memory rather than project files to browse.
 const contextPreamble = `# Cognosis
 
-This project has a Cognosis vault — persistent memory across sessions, reachable through the
+This project has a Cognosis vault -- persistent memory across sessions, reachable through the
 ` + "`cognosis`" + ` MCP tools. It is not a file store to browse; it is where your own past findings live.
 
-- Before deciding anything non-obvious, ` + "`query_knowledge`" + ` first — a past session may have already
+- Before deciding anything non-obvious, ` + "`query_knowledge`" + ` first -- a past session may have already
   settled it, or already been wrong about it.
 - When something durable surfaces (a decision, a gotcha, a dead end worth not re-walking),
   ` + "`write_note`" + ` it to ` + "`entries/`" + `. Capture in-session, not at the end.
 - ` + "`compile_lifecycle`" + ` is the deliberate pass that reinforces, falsifies, and graduates. Nothing is
   inferred from mention alone.
 
-The index below is what is already in the vault — paths only. Use ` + "`query_knowledge`" + ` to search it,
+The index below is what is already in the vault -- paths only. Use ` + "`query_knowledge`" + ` to search it,
 or ` + "`get_note`" + ` to read one in full.
 
 `
@@ -66,18 +66,18 @@ func renderContext(metas []store.NoteMeta, project string, budget int) string {
 	var b strings.Builder
 	// The preamble is the only place an agent is told what the vault is for.
 	// A session starts cold, so this ships every session rather than once per
-	// repo — no hook event offers once-per-repo semantics, and none could.
+	// repo -- no hook event offers once-per-repo semantics, and none could.
 	//
 	// It is exempt from the budget: fixed overhead that must reach every session,
 	// not index content the caller is sizing. Budgeting it would mean a small
-	// budget spends the whole allowance on framing and lists nothing — and
+	// budget spends the whole allowance on framing and lists nothing -- and
 	// `context inject --budget 10` is asserted to stay small (see the platform
 	// check). Measuring from base leaves the budget governing the index alone,
 	// exactly as it did before the preamble existed.
 	b.WriteString(contextPreamble)
 	base := b.Len()
 	if project != "" {
-		fmt.Fprintf(&b, "# Cognosis knowledge index — project %s\n\n", project)
+		fmt.Fprintf(&b, "# Cognosis knowledge index -- project %s\n\n", project)
 	} else {
 		b.WriteString("# Cognosis knowledge index\n\n")
 	}
@@ -89,7 +89,7 @@ func renderContext(metas []store.NoteMeta, project string, budget int) string {
 		line += ", updated " + m.Updated.Format("2006-01-02") + ")\n"
 		// Budget is tokens; ~4 chars per token is the standard approximation.
 		if (b.Len()-base+len(line))/4 > budget {
-			b.WriteString("- … (truncated to budget)\n")
+			b.WriteString("- ... (truncated to budget)\n")
 			break
 		}
 		b.WriteString(line)

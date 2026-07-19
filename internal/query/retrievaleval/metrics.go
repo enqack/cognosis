@@ -17,10 +17,11 @@ import (
 // is by definition the defect being measured.
 type Agreement struct {
 	K int
-	// Recall is |approx ∩ exact| / |exact| over the top K. The headline number.
+	// Recall is |intersection(approx, exact)| / |exact| over the top K. The
+	// headline number.
 	Recall float64
 	// NDCG grades by the item's rank in the exact list, so retrieving the true
-	// #1 at position 40 scores worse than retrieving it at position 2 — a
+	// #1 at position 40 scores worse than retrieving it at position 2 -- a
 	// distinction Recall alone cannot see.
 	NDCG float64
 	// Kendall is rank correlation over the items present in both lists. It
@@ -103,13 +104,13 @@ func kendallTau(approx []uuid.UUID, exactRank map[uuid.UUID]int) float64 {
 	return float64(concordant-discordant) / float64(total)
 }
 
-// Overlap compares two fused result sets against each other — the Q3 question,
+// Overlap compares two fused result sets against each other -- the Q3 question,
 // "does correcting the scan settings change what the agent actually sees".
 //
 // rbo is rank-biased overlap (p=0.9), which weights the head of the list far
 // more than the tail: for a top-8 context injection, a change at position 1
 // matters and a change at position 8 barely does. jaccard is plain set
-// overlap, reported alongside because the two answer different questions —
+// overlap, reported alongside because the two answer different questions --
 // identical membership in a different order gives jaccard 1.0 and rbo < 1.0.
 func Overlap(a, b []query.Result, k int) (rbo, jaccard float64) {
 	x := truncPaths(a, k)
@@ -170,7 +171,7 @@ func Overlap(a, b []query.Result, k int) (rbo, jaccard float64) {
 //
 // Unlike Agree, this is a *pseudo*-label, and the difference matters. It
 // exists to score rankers for which brute-force KNN cannot serve as ground
-// truth — principally the keyword leg, where there is no free notion of "the
+// truth -- principally the keyword leg, where there is no free notion of "the
 // correct answer". It will separate a broken ranker from a working one. It
 // will not credibly rank two decent rankers against each other, because the
 // corpus's topics were generated to be lexically separable in the first place.

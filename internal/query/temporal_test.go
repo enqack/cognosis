@@ -83,7 +83,7 @@ func has(rs []query.Result, path string) bool {
 	return false
 }
 
-// TestAsOfEarly — at T before the falsification and before newer's creation:
+// TestAsOfEarly -- at T before the falsification and before newer's creation:
 // the KB believed old AND flipped; newer didn't exist yet.
 func TestAsOfEarly(t *testing.T) {
 	e, ctx := temporalFixture(t)
@@ -98,7 +98,7 @@ func TestAsOfEarly(t *testing.T) {
 	}
 }
 
-// TestAsOfLate — at T after both events: newer exists, flipped is no longer
+// TestAsOfLate -- at T after both events: newer exists, flipped is no longer
 // believed.
 func TestAsOfLate(t *testing.T) {
 	e, ctx := temporalFixture(t)
@@ -113,7 +113,7 @@ func TestAsOfLate(t *testing.T) {
 	}
 }
 
-// TestAsOfOmittedUnchanged — no as_of keeps current behavior: falsified
+// TestAsOfOmittedUnchanged -- no as_of keeps current behavior: falsified
 // excluded, everything current included.
 func TestAsOfOmittedUnchanged(t *testing.T) {
 	e, ctx := temporalFixture(t)
@@ -129,7 +129,7 @@ func TestAsOfOmittedUnchanged(t *testing.T) {
 	}
 }
 
-// TestAsOfWithIncludeFalsified — include_falsified still overrides at T.
+// TestAsOfWithIncludeFalsified -- include_falsified still overrides at T.
 func TestAsOfWithIncludeFalsified(t *testing.T) {
 	e, ctx := temporalFixture(t)
 	rs, err := e.Run(ctx, temporalQuery, query.Options{
@@ -143,7 +143,7 @@ func TestAsOfWithIncludeFalsified(t *testing.T) {
 	}
 }
 
-// TestListDecaying — synthetic last_reinforced spread; shielded notes
+// TestListDecaying -- synthetic last_reinforced spread; shielded notes
 // (paused, graduated, falsified) never listed.
 func TestListDecaying(t *testing.T) {
 	s, _ := storetest.New(t)

@@ -12,12 +12,12 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 pass() { echo "PASS: $1"; }
 fail() { echo "FAIL: $1" >&2; [ -n "${LOG:-}" ] && [ -f "$LOG" ] && tail -25 "$LOG" >&2; exit 1; }
 
-# require_env [ollama] — COGNOSIS_DSN must be set; pass "ollama" to also require
+# require_env [ollama] -- COGNOSIS_DSN must be set; pass "ollama" to also require
 # a reachable embedding server. Exit 2 (skip) when a prerequisite is missing;
 # check-all.sh reports the skip and carries on to the next check.
 #
 # The ollama probe deliberately mirrors ollamaAvailable in
-# internal/embed/embed_test.go — same COGNOSIS_TEST_OLLAMA override, same
+# internal/embed/embed_test.go -- same COGNOSIS_TEST_OLLAMA override, same
 # http://localhost:11434 default, same /api/version endpoint. The duplication is
 # a language boundary (bash here, Go there), not an oversight: change one and the
 # other needs the same change.
@@ -34,14 +34,14 @@ require_env() {
   fi
 }
 
-# setup_sandbox — isolated XDG dirs under mktemp AND an isolated Postgres
+# setup_sandbox -- isolated XDG dirs under mktemp AND an isolated Postgres
 # schema, both cleaned up on exit.
 #
 # The schema isolation is not tidiness. A check boots a daemon over a *sandbox*
 # vault; boot reconciliation reads every indexed path from the database, finds
 # them absent from that empty vault, and deletes them as "file gone". Pointed at
 # a shared database, running the suite therefore wipes the index of whatever
-# real vault last used it — recoverable only by a full reindex, and silent until
+# real vault last used it -- recoverable only by a full reindex, and silent until
 # something asks a question and gets nothing back.
 #
 # Mirrors internal/store/storetest.NewTB: a per-run schema on the search_path,
@@ -73,17 +73,17 @@ setup_sandbox() {
   TOKEN_FILE="$XDG_STATE_HOME/cognosis/local-token"
 }
 
-# build_bin — compile the daemon once into bin/cognosis; sets BIN.
+# build_bin -- compile the daemon once into bin/cognosis; sets BIN.
 build_bin() {
   BIN="$ROOT/bin/cognosis"
   ( cd "$ROOT" && go build -o bin/cognosis ./cmd/cognosis )
 }
 
-# boot_daemon [bind] — start the daemon and wait for the lock + local token.
+# boot_daemon [bind] -- start the daemon and wait for the lock + local token.
 # Default bind is a random loopback port; sets PORT/URL. An explicit bind sets
 # PORT from it, so callers that need to reach the daemon on a different host than
 # it binds (tls.sh binds 0.0.0.0 and connects over loopback) can still find it.
-# The bind argument really is optional — most callers pass none.
+# The bind argument really is optional -- most callers pass none.
 # shellcheck disable=SC2120
 boot_daemon() {
   : "${BIN:?call build_bin first}"
@@ -104,7 +104,7 @@ boot_daemon() {
 
 stop_daemon() { [ -n "${BIN:-}" ] && "$BIN" stop >/dev/null 2>&1 || true; }
 
-# harness <slice> — run one slice of the shared Go MCP harness against the
+# harness <slice> -- run one slice of the shared Go MCP harness against the
 # running daemon (COGNOSIS_MCP_URL/TOKEN_FILE/DSN threaded through).
 #
 # The harness returns 0 or 1 and never 2: 2 is spoken for here (require_env's

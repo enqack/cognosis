@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Feature: built-in TLS — the only door to a non-loopback bind. daemon.sh proves
+# Feature: built-in TLS -- the only door to a non-loopback bind. daemon.sh proves
 # the refusal (no cert => no non-loopback bind); this proves the other half: with
 # tls.cert_file/tls.key_file set the daemon really binds off loopback, really
 # completes a TLS handshake, still refuses plaintext on that port, and still
@@ -21,8 +21,8 @@ CERTS="$SANDBOX/certs"
 export COGNOSIS_TLS_CERT_FILE="$CERTS/server.pem"
 export COGNOSIS_TLS_KEY_FILE="$CERTS/server-key.pem"
 
-# Bind every interface — "non-loopback binds work when TLS is configured" is the
-# claim under test — but connect over loopback, which the leaf's SAN covers.
+# Bind every interface -- "non-loopback binds work when TLS is configured" is the
+# claim under test -- but connect over loopback, which the leaf's SAN covers.
 PORT=$(( (RANDOM % 2000) + 22000 ))
 BASE="https://127.0.0.1:$PORT"
 
@@ -44,7 +44,7 @@ set -e
 pass "TLS handshake completes against the CA and an authenticated request returns 200"
 
 # --- 3. the cert is actually verified ----------------------------------------
-# Without the CA, curl must reject it — proves assertion 2 verified a chain
+# Without the CA, curl must reject it -- proves assertion 2 verified a chain
 # rather than trusting anything the daemon presented.
 set +e
 OUT="$(curl -sS "$BASE/context" -H "Authorization: Bearer $TOKEN" 2>&1)"; RC=$?
@@ -56,8 +56,8 @@ pass "an untrusted client rejects the self-signed chain"
 # --- 4. plaintext is refused on the TLS port ---------------------------------
 # Go's TLS listener answers a plaintext request with a plain 400 explaining the
 # mistake rather than dropping the connection, so curl exits 0 here. The
-# invariant is that /context is never *served* over plaintext — not that the
-# socket dies — so assert on what came back, not on curl's exit code.
+# invariant is that /context is never *served* over plaintext -- not that the
+# socket dies -- so assert on what came back, not on curl's exit code.
 set +e
 OUT="$(curl -sS --max-time 5 -w '\n%{http_code}' "http://127.0.0.1:$PORT/context" \
          -H "Authorization: Bearer $TOKEN" 2>&1)"; RC=$?

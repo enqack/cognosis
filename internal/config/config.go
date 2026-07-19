@@ -1,6 +1,6 @@
 // Package config owns XDG path resolution and Viper-backed configuration.
 // Nothing else in the codebase resolves a filesystem path or reads an env var
-// for settings — it all flows through here.
+// for settings -- it all flows through here.
 package config
 
 import (
@@ -14,7 +14,7 @@ import (
 )
 
 // Persona is one entry in the enabled-persona registry: lightweight
-// metadata kept alongside — not instead of — the persona files themselves.
+// metadata kept alongside -- not instead of -- the persona files themselves.
 type Persona struct {
 	ID          string `mapstructure:"id"`
 	Name        string `mapstructure:"name"`
@@ -29,7 +29,7 @@ type Embedding struct {
 	URL      string `mapstructure:"url"`
 }
 
-// TLS enables built-in TLS termination — the fallback for setups without a
+// TLS enables built-in TLS termination -- the fallback for setups without a
 // reverse proxy. Both files set = non-loopback binds become legal; the
 // documented default remote path keeps Cognosis on loopback behind a
 // TLS-terminating proxy instead.
@@ -56,7 +56,7 @@ type Config struct {
 	//
 	// Default false, and it must stay false for any daemon a reverse proxy
 	// fronts. Under the topology docs/remote.md recommends, the proxy forwards
-	// from 127.0.0.1, so every remote caller *looks* loopback — the daemon
+	// from 127.0.0.1, so every remote caller *looks* loopback -- the daemon
 	// cannot tell them apart from the local CLI by network position alone.
 	// Setting this is an operator assertion that nothing proxies this daemon.
 	//

@@ -29,7 +29,7 @@ func TestKindStringNamesEveryKind(t *testing.T) {
 	}
 }
 
-// TestUnknownKindReadsAsInternal covers String's default arm — the one branch
+// TestUnknownKindReadsAsInternal covers String's default arm -- the one branch
 // the exhaustive linter cannot police, since it fires on a value outside the
 // declared set rather than a missing case.
 func TestUnknownKindReadsAsInternal(t *testing.T) {
@@ -50,7 +50,7 @@ func TestKindAloneNeedsNoCause(t *testing.T) {
 	}
 }
 
-// TestErrorCarriesOpKindAndCause — the message names the failing operation, its
+// TestErrorCarriesOpKindAndCause -- the message names the failing operation, its
 // classification, and the cause, in that order.
 func TestErrorCarriesOpKindAndCause(t *testing.T) {
 	err := cogerr.E("store.UpsertNote", cogerr.Conflict, errors.New("duplicate id"))
@@ -59,7 +59,7 @@ func TestErrorCarriesOpKindAndCause(t *testing.T) {
 	}
 }
 
-// TestEfFormatsItsCause — Ef is E with a formatted cause.
+// TestEfFormatsItsCause -- Ef is E with a formatted cause.
 func TestEfFormatsItsCause(t *testing.T) {
 	err := cogerr.Ef("mcpserver.requireLoopback", cogerr.Validation, "bind_address %q is not loopback", "0.0.0.0:7433")
 	want := `mcpserver.requireLoopback: validation: bind_address "0.0.0.0:7433" is not loopback`
@@ -68,7 +68,7 @@ func TestEfFormatsItsCause(t *testing.T) {
 	}
 }
 
-// TestKindOfDefaultsToInternal — an error from outside the domain carries no
+// TestKindOfDefaultsToInternal -- an error from outside the domain carries no
 // Kind, so it classifies as Internal rather than guessing.
 func TestKindOfDefaultsToInternal(t *testing.T) {
 	if got := cogerr.KindOf(errors.New("raw pgx failure")); got != cogerr.Internal {
@@ -96,11 +96,11 @@ func TestKindSurvivesWrapping(t *testing.T) {
 // true and turn "no error" into an internal error.
 func TestIsRejectsNil(t *testing.T) {
 	if cogerr.Is(nil, cogerr.Internal) {
-		t.Error("Is(nil, Internal) = true, want false — a nil error is not an error")
+		t.Error("Is(nil, Internal) = true, want false -- a nil error is not an error")
 	}
 }
 
-// TestIsMatchesOnlyItsKind — Is is a Kind equality check, not a catch-all.
+// TestIsMatchesOnlyItsKind -- Is is a Kind equality check, not a catch-all.
 func TestIsMatchesOnlyItsKind(t *testing.T) {
 	err := cogerr.E("config.Load", cogerr.Validation, errors.New("bad yaml"))
 	if !cogerr.Is(err, cogerr.Validation) {
@@ -111,7 +111,7 @@ func TestIsMatchesOnlyItsKind(t *testing.T) {
 	}
 }
 
-// TestUnwrapChainReachesSentinel — Unwrap is chained, so errors.Is still finds
+// TestUnwrapChainReachesSentinel -- Unwrap is chained, so errors.Is still finds
 // a sentinel cause after it has been wrapped into the domain type.
 func TestUnwrapChainReachesSentinel(t *testing.T) {
 	sentinel := errors.New("connection refused")

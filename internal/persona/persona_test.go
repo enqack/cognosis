@@ -48,7 +48,7 @@ func TestSeedIsIdempotentAndShipsDeepThoughts(t *testing.T) {
 	}
 }
 
-// TestListIsMetadataOnly — the tier-1 payload stays O(personas), never
+// TestListIsMetadataOnly -- the tier-1 payload stays O(personas), never
 // O(file content): no voice-guide text leaks into discovery.
 func TestListIsMetadataOnly(t *testing.T) {
 	r := seededRegistry(t, "deep-thoughts")
@@ -63,7 +63,7 @@ func TestListIsMetadataOnly(t *testing.T) {
 	// The full file is ~2KB of voice guide; metadata must be a fraction.
 	size := len(m.ID) + len(m.Name) + len(m.Description) + len(strings.Join(m.RespondsTo, ","))
 	if size > 300 {
-		t.Fatalf("tier-1 metadata is %d bytes — content is leaking into discovery", size)
+		t.Fatalf("tier-1 metadata is %d bytes -- content is leaking into discovery", size)
 	}
 	if strings.Contains(m.Description, "Gentle Setup") {
 		t.Fatal("voice-guide body leaked into metadata")
@@ -84,7 +84,7 @@ func TestGetReturnsFullBody(t *testing.T) {
 	}
 }
 
-// TestDisabledPersonaUnavailable — disabled means gone from discovery and
+// TestDisabledPersonaUnavailable -- disabled means gone from discovery and
 // invocation, while its file stays in place for reactivation.
 func TestDisabledPersonaUnavailable(t *testing.T) {
 	r := seededRegistry(t) // nothing enabled

@@ -31,7 +31,7 @@ func putNote(t *testing.T, ctx context.Context, ix *Indexer, rel, project, extra
 	return id
 }
 
-// TestCrossProjectLinkQualifier — two projects share the basename "shared"
+// TestCrossProjectLinkQualifier -- two projects share the basename "shared"
 // (same file basename in different directories). A qualified
 // [[project:basename]] link picks that project's note even when it is NOT the
 // unqualified first-wins winner; an unqualified link keeps first-wins.
@@ -74,7 +74,7 @@ func TestCrossProjectLinkQualifier(t *testing.T) {
 	}
 }
 
-// TestSummaryRoundTrip — a frontmatter summary lands on the note row and is
+// TestSummaryRoundTrip -- a frontmatter summary lands on the note row and is
 // carried through listing.
 func TestSummaryRoundTrip(t *testing.T) {
 	s, _ := storetest.New(t)

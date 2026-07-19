@@ -1,7 +1,7 @@
-# Cognosis — Remote Access
+# Cognosis -- Remote Access
 
 Cognosis defaults to local-only: the daemon binds loopback and mints a local bearer token on first
-start. Remote, multi-client access is opt-in, and there are exactly two supported shapes — bearer
+start. Remote, multi-client access is opt-in, and there are exactly two supported shapes -- bearer
 tokens travel only over TLS, never plaintext on a network. See [setup-guide.md](setup-guide.md) for the
 rest of a working install and [configuration.md](configuration.md) for the `bind_address`/`tls` keys.
 
@@ -39,11 +39,11 @@ server {
 ```
 
 Both snippets forward from loopback, so **every remote caller reaches the daemon with
-`RemoteAddr` of `127.0.0.1`** — indistinguishable from the local CLI by network position alone.
+`RemoteAddr` of `127.0.0.1`** -- indistinguishable from the local CLI by network position alone.
 Two consequences:
 
 - Leave `trust_local_errors` at its default (`false`). It releases the full cause of internal
-  failures — DSNs, socket paths, database users — to callers the daemon judges local, and behind a
+  failures -- DSNs, socket paths, database users -- to callers the daemon judges local, and behind a
   proxy that judgement is wrong. The setting is an operator assertion that *nothing* proxies this
   daemon.
 - Keep the `X-Forwarded-For` line above. Cognosis checks each call for a forwarding marker and
@@ -67,7 +67,7 @@ tls:
 
 ## Tokens for remote clients
 
-Mint one token per client — never share the local auto-token (full command detail in [cli.md](cli.md)):
+Mint one token per client -- never share the local auto-token (full command detail in [cli.md](cli.md)):
 
 ```sh
 cognosis token create laptop-alice     # printed once; store it client-side
@@ -76,26 +76,26 @@ cognosis token list
 ```
 
 Each client sends `Authorization: Bearer <token>`. Every tool call is audit-logged (`audit_log` table)
-under the resolved token identity with redacted argument summaries — never note content. MCP-originated
+under the resolved token identity with redacted argument summaries -- never note content. MCP-originated
 log lines also carry `token=<name>`, so per-leg retrieval counters can be attributed per client; a
 missing `token=` marks daemon-internal work rather than a gap.
 
-Keep each token out of the client's config file — see
+Keep each token out of the client's config file -- see
 [contrib/cognosis-mcp-headers](../contrib/cognosis-mcp-headers) and
 [setup-guide.md](setup-guide.md#keeping-the-token-out-of-client-config). Interpolating it with
-`$(cat …)` leaves a copy nothing rotates, which is the usual cause of a `401` after re-minting.
+`$(cat ...)` leaves a copy nothing rotates, which is the usual cause of a `401` after re-minting.
 
 **Mint one token per client even locally.** A shared token makes every caller indistinguishable in both
-the audit table and the log, which silently ruins any telemetry drawn from them — an agent debugging
+the audit table and the log, which silently ruins any telemetry drawn from them -- an agent debugging
 retrieval writes traffic that looks exactly like ordinary use.
 
-Leave the auto-minted `local` token to the daemon. `cognosis token create local` is rejected —
+Leave the auto-minted `local` token to the daemon. `cognosis token create local` is rejected --
 `local` is reserved, so an operator cannot take the name the daemon mints under. Rotating it is a
 three-step sequence documented in [setup-guide.md](setup-guide.md#rotating-the-local-token); revoking
 it without removing the state-dir file stops the daemon booting.
 
 Rotating any other token is just `revoke <name>` then `create <name>`: names are unique among live
-tokens only, so the name comes back. Revoked rows accumulate for the audit trail —
+tokens only, so the name comes back. Revoked rows accumulate for the audit trail --
 `cognosis token prune` clears the ones nothing references and keeps the rest by design.
 
 ## Threat notes
@@ -107,5 +107,5 @@ tokens only, so the name comes back. Revoked rows accumulate for the audit trail
 - The `/context` endpoint and all MCP tools sit behind the same middleware; there is no unauthenticated
   surface.
 - Remote access means many clients, one daemon. A second daemon pointed at the same Postgres is refused
-  by the single-instance lock (a session advisory lock is the cross-machine arbiter) — see
+  by the single-instance lock (a session advisory lock is the cross-machine arbiter) -- see
   [architecture.md](architecture.md).

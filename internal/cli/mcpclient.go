@@ -87,7 +87,7 @@ func dialDaemon(ctx context.Context, cfg *config.Config) (*mcp.ClientSession, fu
 //
 // A tool that reports failure comes back as IsError with the message in the
 // content rather than as a transport error, so both are folded into one Go
-// error here — a caller deciding whether to fall back must not have to
+// error here -- a caller deciding whether to fall back must not have to
 // distinguish "the daemon refused" from "the daemon answered with a refusal".
 func callDaemonTool(ctx context.Context, cfg *config.Config, name string, args map[string]any) (string, error) {
 	sess, closeSess, err := dialDaemon(ctx, cfg)

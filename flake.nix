@@ -1,7 +1,7 @@
 {
   description = ''
     Cognosis: dev shell (Go toolchain + Postgres/pgvector + Ollama), the cognosis
-    package/app, and NixOS/nix-darwin/home-manager service modules — the modules
+    package/app, and NixOS/nix-darwin/home-manager service modules -- the modules
     run the daemon but never provision Postgres/pgvector or Ollama themselves
   '';
 
@@ -73,7 +73,7 @@
 
         # Kept in lockstep with go.mod's `go` line (the enforced minimum) and
         # magefile.go's ldflags() (version stamping). pkgs.go here may trail
-        # go.mod's `toolchain` pin by a patch release — buildGoModule runs with
+        # go.mod's `toolchain` pin by a patch release -- buildGoModule runs with
         # GOTOOLCHAIN=local, which only enforces the `go` line minimum, so that
         # lag doesn't break the build; it just means this binary misses
         # whatever stdlib fix the toolchain patch carries.
@@ -132,7 +132,7 @@
             # from a subdirectory still resolves.
             cognosisRoot="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
             export PATH="$cognosisRoot/bin:$PATH"
-            echo "cognosis dev shell — pg-start / pg-stop; DSN in \$COGNOSIS_DSN; ./bin on PATH"
+            echo "cognosis dev shell -- pg-start / pg-stop; DSN in \$COGNOSIS_DSN; ./bin on PATH"
           '';
         };
       }))

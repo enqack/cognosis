@@ -3,7 +3,7 @@
 // to "ensure this chunk exists in the new table" (upsert on the chunk_id
 // primary key), so they are idempotent and never duplicate work. Retrieval
 // stays fully available throughout because the query engine already fans out
-// across every provisioned provider table — a chunk not yet migrated is
+// across every provisioned provider table -- a chunk not yet migrated is
 // found via the old table.
 //
 // The migration_state row is the coordination medium: the CLI writes it, the
@@ -56,7 +56,7 @@ type Plan struct {
 }
 
 // Start validates both providers, provisions the target table (inactive), and
-// inserts the in_progress row — all under the whole-KB migration lock. A dry
+// inserts the in_progress row -- all under the whole-KB migration lock. A dry
 // run returns the plan and writes nothing.
 func (c *Coordinator) Start(ctx context.Context, fromRef, toRef string, dryRun bool) (*Plan, error) {
 	const op = "migrate.Start"
@@ -131,7 +131,7 @@ func (c *Coordinator) Start(ctx context.Context, fromRef, toRef string, dryRun b
 }
 
 // Pause parks the back-fill worker (persisted; survives restarts). The lazy
-// path and dual-embedding keep running — they're write-path side effects.
+// path and dual-embedding keep running -- they're write-path side effects.
 func (c *Coordinator) Pause(ctx context.Context) error {
 	m, err := c.Store.ActiveMigration(ctx)
 	if err != nil {
@@ -151,7 +151,7 @@ func (c *Coordinator) Resume(ctx context.Context) error {
 
 // Rollback is immediate. Mid-migration the active provider never moved, so
 // marking the row rolled_back stops the worker, the lazy path, and
-// dual-embedding — behavior is old-provider-only at once. After completion it
+// dual-embedding -- behavior is old-provider-only at once. After completion it
 // also flips active back. The half-migrated table stays in place so a later
 // attempt resumes rather than restarts.
 func (c *Coordinator) Rollback(ctx context.Context) error {
@@ -247,7 +247,7 @@ func (c *Coordinator) LazyEnsure(ids []uuid.UUID) {
 }
 
 // embedBatch embeds one batch via the to-provider and inserts what isn't
-// there yet, bumping the named counter by the rows that actually landed —
+// there yet, bumping the named counter by the rows that actually landed --
 // so a chunk racing between the back-fill and the lazy path is counted
 // exactly once toward the backfill+lazy == total invariant.
 func (c *Coordinator) embedBatch(ctx context.Context, m store.Migration, batch []store.ChunkRef, counter string) error {
@@ -268,7 +268,7 @@ func (c *Coordinator) embedBatch(ctx context.Context, m store.Migration, batch [
 		byID[ch.ID] = vecs[i]
 	}
 	// One call, one transaction: the rows and the credit for them commit
-	// together. Splitting these was the bug — a cancel between the write and
+	// together. Splitting these was the bug -- a cancel between the write and
 	// the counter bump left the embeddings committed and permanently
 	// uncounted, because nothing revisits a chunk that already has a row.
 	_, err = c.Store.RecordMigratedBatch(ctx, m.ToTable, byID, m.ID, counter)
@@ -276,7 +276,7 @@ func (c *Coordinator) embedBatch(ctx context.Context, m store.Migration, batch [
 }
 
 // EmbedTargets reports where writes must embed right now: the active provider
-// plus, during a migration, the in-progress target — new writes are born
+// plus, during a migration, the in-progress target -- new writes are born
 // fully covered and never depend on either migration path. Wired as the
 // indexer's TargetsFn.
 func (c *Coordinator) EmbedTargets(ctx context.Context) ([]write.EmbedTarget, error) {

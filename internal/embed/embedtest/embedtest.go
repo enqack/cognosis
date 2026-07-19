@@ -12,13 +12,13 @@ import (
 	"github.com/zeebo/blake3"
 )
 
-// Stub is a deterministic embed.Provider. Dim defaults to 8 — small keeps
+// Stub is a deterministic embed.Provider. Dim defaults to 8 -- small keeps
 // fixtures readable; the schema takes any width.
 type Stub struct {
 	Dim       int
 	ModelName string
 	// Vectors, when set, pins exact vectors per input text (after prefix
-	// stripping is NOT applied — the stub sees raw text).
+	// stripping is NOT applied -- the stub sees raw text).
 	Vectors map[string][]float32
 }
 
@@ -57,7 +57,7 @@ func (s *Stub) vec(text string) []float32 {
 	}
 	// BLAKE3, for one hashing primitive across the project. This is a seed for
 	// deterministic vectors rather than a content hash, so nothing about
-	// correctness turns on it — but changing it changes every stub vector, and
+	// correctness turns on it -- but changing it changes every stub vector, and
 	// therefore the fused rankings the goldens pin. Those were regenerated with
 	// this change; a golden diff here is expected, not a retrieval regression.
 	sum := blake3.Sum256([]byte(text))

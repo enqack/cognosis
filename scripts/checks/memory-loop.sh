@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Feature: the core memory loop — MCP listening on loopback, then
+# Feature: the core memory loop -- MCP listening on loopback, then
 # write_note -> query_knowledge (hybrid-ranked) -> get_note round trip ->
 # list_notes, plus contract enforcement, tokenless-401, and edit_note (the
 # surgical write path: unique-match replacement reaching the index, both
-# refusals, stable note id) — all in the harness slice.
+# refusals, stable note id) -- all in the harness slice.
 set -euo pipefail
 source "$(dirname "$0")/_lib.sh"
 

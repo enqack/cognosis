@@ -1,6 +1,6 @@
 // Package write owns the sanctioned write path (write_note/write_reflection)
 // and the shared note-indexing core that both the pipeline and the watcher's
-// reconciliation use — one implementation, so a hand-edit and an MCP write
+// reconciliation use -- one implementation, so a hand-edit and an MCP write
 // index identically.
 package write
 
@@ -31,7 +31,7 @@ type Indexer struct {
 	Provider embed.Provider // nil = index without embeddings
 	Table    string         // active provider table; "" with nil Provider
 	// TargetsFn, when set, overrides Provider/Table with the current embed
-	// targets per write — during a provider migration it returns the active
+	// targets per write -- during a provider migration it returns the active
 	// provider plus the in-progress one, so new writes are born fully covered
 	// in both tables and never depend on the migration paths.
 	TargetsFn func(ctx context.Context) ([]EmbedTarget, error)
@@ -48,7 +48,7 @@ func (ix *Indexer) targets(ctx context.Context) ([]EmbedTarget, error) {
 	return []EmbedTarget{{Provider: ix.Provider, Table: ix.Table}}, nil
 }
 
-// Index validates nothing — callers pass a note that already satisfies the
+// Index validates nothing -- callers pass a note that already satisfies the
 // contract. FileMeta carries the on-disk identity for reconciliation.
 type FileMeta struct {
 	Mtime  time.Time
@@ -104,7 +104,7 @@ func (ix *Indexer) Index(ctx context.Context, n *vault.Note, meta FileMeta) erro
 }
 
 // Relink re-resolves a note's outbound links against the current index and
-// rewrites its edges. Chunks and embeddings are untouched — this is only the
+// rewrites its edges. Chunks and embeddings are untouched -- this is only the
 // graph.
 //
 // It exists because link resolution is order-dependent: resolveLinks matches
@@ -170,7 +170,7 @@ func (ix *Indexer) RepairReferrers(ctx context.Context, basenames []string, skip
 }
 
 // resolveLinks maps the note's outbound wikilink/source targets to note ids;
-// dangling targets are dropped. They are NOT self-healing — see Relink and
+// dangling targets are dropped. They are NOT self-healing -- see Relink and
 // RepairReferrers.
 func (ix *Indexer) resolveLinks(ctx context.Context, n *vault.Note) ([]store.Link, error) {
 	refs := vault.Targets(n)
@@ -200,7 +200,7 @@ func linkKey(r vault.Ref) string {
 // basename map. Split out of resolveLinks so the graph audit can resolve every
 // note against one map instead of issuing a lookup per note: ResolveBasenames
 // scans the whole notes table on each call, so per-note resolution made the
-// audit O(N) full scans and blew its own deadline on any sizeable vault —
+// audit O(N) full scans and blew its own deadline on any sizeable vault --
 // reporting FAIL on a healthy daemon, from the check whose point is to be
 // trusted.
 func linksFrom(n *vault.Note, resolved map[string]uuid.UUID) []store.Link {

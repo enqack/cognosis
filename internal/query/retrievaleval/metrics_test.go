@@ -67,7 +67,7 @@ func TestAgreeTruncatedLeg(t *testing.T) {
 	}
 }
 
-// nDCG must punish position, not just membership — the property Recall can't see.
+// nDCG must punish position, not just membership -- the property Recall can't see.
 func TestNDCGIsPositionSensitive(t *testing.T) {
 	ids := make([]uuid.UUID, 10)
 	for i := range ids {

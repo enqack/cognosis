@@ -132,7 +132,7 @@ func TestCorpusEngineAndProbesAgree(t *testing.T) {
 	t.Logf("approx used hnsw=%v", strings.Contains(approx.Plan, "hnsw_idx"))
 
 	// ClusterPrecision must be well above chance for a query drawn from a
-	// cluster's own vocabulary — otherwise the label/geometry/vocabulary
+	// cluster's own vocabulary -- otherwise the label/geometry/vocabulary
 	// three-way agreement is broken and every later measurement is void.
 	cp := ClusterPrecision(c, q, got, len(got))
 	chance := 1.0 / float64(smallSpec().Clusters)
@@ -145,14 +145,14 @@ func TestCorpusEngineAndProbesAgree(t *testing.T) {
 // TestKeywordLegHasSomethingToRank is the guard the first corpus lacked.
 //
 // That corpus drew 8 tokens with replacement from a 12-token bag and queried
-// with a 5-term conjunction, so the FTS leg returned 0–2 candidates of a
-// requested 50 — measured, not estimated, and only noticed after a per-leg
+// with a 5-term conjunction, so the FTS leg returned 0-2 candidates of a
+// requested 50 -- measured, not estimated, and only noticed after a per-leg
 // capacity sweep was added for an unrelated reason. Every keyword number
 // recorded before that point was computed over a near-empty candidate set,
 // and a BM25-vs-ts_rank_cd comparison on it would have been ranking two items.
 //
 // The floor is deliberately low. This asserts the leg is *exercised*, not that
-// it is good — quality is what the sweeps measure, and pinning a high number
+// it is good -- quality is what the sweeps measure, and pinning a high number
 // here would make an ordinary corpus change look like a regression.
 func TestKeywordLegHasSomethingToRank(t *testing.T) {
 	requireEval(t)
@@ -182,7 +182,7 @@ func TestKeywordLegHasSomethingToRank(t *testing.T) {
 }
 
 // Term frequency and document length must actually vary, or BM25's two
-// advantages over ts_rank_cd — saturating TF, normalizing by length — are
+// advantages over ts_rank_cd -- saturating TF, normalizing by length -- are
 // unmeasurable on this corpus and any comparison reports a tie by
 // construction. Asserts on the generator, so it needs no database.
 func TestChunkProseVariesLengthAndTermFrequency(t *testing.T) {

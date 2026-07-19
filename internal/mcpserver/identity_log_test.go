@@ -18,7 +18,7 @@ import (
 	"github.com/enqack/cognosis/internal/store"
 )
 
-// TestIdentityReachesTheLogOverRealMCPSession — the token attribute is written
+// TestIdentityReachesTheLogOverRealMCPSession -- the token attribute is written
 // by auth.NewIdentityHandler from an Identity that only auth.Middleware ever
 // puts in a context, and the context has to survive the HTTP transport, the MCP
 // session, and the .With("component") decoration applied at construction.
@@ -26,7 +26,7 @@ import (
 // A hand-built request proves none of that, for the same reason recorded on
 // TestDisclosureGateOverRealMCPSession: the value under test is populated by a
 // layer such a test skips. The in-memory transport used by registeredTools
-// never passes through Middleware either, so it can never see an identity — a
+// never passes through Middleware either, so it can never see an identity -- a
 // future author reaching for that harness to test attribution will find it
 // missing and should come here instead.
 //
@@ -37,7 +37,7 @@ import (
 func TestIdentityReachesTheLogOverRealMCPSession(t *testing.T) {
 	buf := &syncBuffer{}
 	log := slog.New(auth.NewIdentityHandler(slog.NewTextHandler(buf, nil)))
-	// .With reproduces mcpserver.NewTLS:78 — the decoration that a broken
+	// .With reproduces mcpserver.NewTLS:78 -- the decoration that a broken
 	// WithAttrs would silently strip identity from.
 	srv := &Server{log: log.With("component", "mcpserver")}
 
@@ -95,12 +95,12 @@ func TestIdentityReachesTheLogOverRealMCPSession(t *testing.T) {
 	buf.Reset()
 	call(t, "unattributed")
 	if got := buf.String(); strings.Contains(got, "token=") {
-		t.Fatalf("plain Info() unexpectedly carried identity — the static guard may be "+
+		t.Fatalf("plain Info() unexpectedly carried identity -- the static guard may be "+
 			"unnecessary, or this test is not measuring what it claims: %q", got)
 	}
 }
 
-// TestIdentityHandlerAddsNothingWithoutAnIdentity — daemon-internal work (the
+// TestIdentityHandlerAddsNothingWithoutAnIdentity -- daemon-internal work (the
 // watcher, migrations, CLI-driven lifecycle compiles) logs with no caller, and
 // must not grow a misleading empty attribute.
 func TestIdentityHandlerAddsNothingWithoutAnIdentity(t *testing.T) {

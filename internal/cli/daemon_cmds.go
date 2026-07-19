@@ -55,7 +55,7 @@ func newStartCmd() *cobra.Command {
 			table := embed.TableSlug(prov.Name(), prov.Model())
 			hist := vault.NewHistory(cfg.KBPath)
 
-			// The factory builds provider clients from registry identities —
+			// The factory builds provider clients from registry identities --
 			// the query fan-out and the migration worker both construct
 			// providers through it, so a migration to a new model needs no
 			// restart.

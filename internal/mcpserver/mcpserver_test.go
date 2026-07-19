@@ -69,7 +69,7 @@ func TestFormat(t *testing.T) {
 	out := Format([]query.Result{
 		{Path: "entries/a.md", Category: "entry", HeadingPath: "Title > Sec", Content: "body", Score: 0.0328},
 	})
-	for _, want := range []string{"### 1. entries/a.md", "› Title > Sec", "(entry, score 0.0328)", "body"} {
+	for _, want := range []string{"### 1. entries/a.md", "> Title > Sec", "(entry, score 0.0328)", "body"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("formatted output missing %q:\n%s", want, out)
 		}
@@ -86,7 +86,7 @@ func TestSnippet(t *testing.T) {
 	if len(got) > 710 {
 		t.Fatalf("snippet too long: %d", len(got))
 	}
-	if !strings.HasSuffix(got, "…") {
+	if !strings.HasSuffix(got, "...") {
 		t.Fatal("truncated snippet must end with ellipsis")
 	}
 }
@@ -99,7 +99,7 @@ func TestRenderContextPreamble(t *testing.T) {
 
 	out := renderContext(metas, "", 2000)
 	if !strings.HasPrefix(out, contextPreamble) {
-		t.Fatal("preamble must lead the payload — an index the agent reads before the framing is a list of paths with no stated purpose")
+		t.Fatal("preamble must lead the payload -- an index the agent reads before the framing is a list of paths with no stated purpose")
 	}
 	if i, j := strings.Index(out, contextPreamble), strings.Index(out, "# Cognosis knowledge index"); i > j {
 		t.Errorf("preamble must precede the index header (got %d > %d)", i, j)
@@ -126,13 +126,13 @@ func TestRenderContextPreamble(t *testing.T) {
 	exempt := renderContext(metas, "", 50)
 	for _, want := range []string{"entries/a.md", "notes/b.md"} {
 		if !strings.Contains(exempt, want) {
-			t.Errorf("preamble must not consume the index budget — %q missing:\n%s", want, exempt)
+			t.Errorf("preamble must not consume the index budget -- %q missing:\n%s", want, exempt)
 		}
 	}
 
 	// The budget still governs the index: too small for even one line collapses
 	// it while the preamble survives. This is the only place truncation is
-	// proven — scripts/checks/platform.sh injects against an empty vault, so it
+	// proven -- scripts/checks/platform.sh injects against an empty vault, so it
 	// can only bound the output, not watch an index collapse.
 	tiny := renderContext(metas, "", 10)
 	if !strings.HasPrefix(tiny, contextPreamble) {
@@ -191,7 +191,7 @@ func registeredTools(t *testing.T) map[string]string {
 // slices, and a real client (Claude Code, 2026-07-19) that cannot represent
 // union types degraded such a field to untyped, serialized the array argument
 // as a string, and was rejected by this server's own validation. Any tool whose
-// args struct gains a slice or map must register with schemaFor[args]() —
+// args struct gains a slice or map must register with schemaFor[args]() --
 // this test is what notices when one doesn't.
 func TestToolSchemasCarryNoTypeUnions(t *testing.T) {
 	tools := listedTools(t)
@@ -251,7 +251,7 @@ func TestPreambleToolNamesExist(t *testing.T) {
 
 // TestToolDescriptionsStateWhenToUse checks the property the descriptions exist
 // for: a tool the agent can see but never learns to reach for is dead surface.
-// Deliberately shallow — it catches a description reverted to a bare mechanism
+// Deliberately shallow -- it catches a description reverted to a bare mechanism
 // blurb or emptied out, not prose quality.
 func TestToolDescriptionsStateWhenToUse(t *testing.T) {
 	for name, desc := range registeredTools(t) {
@@ -261,7 +261,7 @@ func TestToolDescriptionsStateWhenToUse(t *testing.T) {
 	}
 }
 
-// TestToolErrorStripsInternalIdentifiers — cogerr.Error prints as
+// TestToolErrorStripsInternalIdentifiers -- cogerr.Error prints as
 // "op: kind: cause", which is right for a log line and wrong for a tool result.
 // An agent reading "write.Pipeline.Edit: validation: old_string appears 2 times"
 // has to parse past two internal identifiers to reach the sentence it can act
@@ -298,7 +298,7 @@ func TestToolErrorWithholdsInternalDetail(t *testing.T) {
 	}
 }
 
-// Errors that are not domain errors — argument checks, SDK failures — are
+// Errors that are not domain errors -- argument checks, SDK failures -- are
 // already plain and must pass through untouched rather than being flattened
 // into a generic internal error.
 func TestToolErrorPassesThroughPlainErrors(t *testing.T) {
@@ -324,7 +324,7 @@ func TestToolErrorHandlesKindWithoutCause(t *testing.T) {
 	}
 }
 
-// TestToolErrorWithholdsUnavailableDetail — the redaction originally gated on
+// TestToolErrorWithholdsUnavailableDetail -- the redaction originally gated on
 // Internal alone, but the errors that actually carry connection detail are
 // classified Unavailable: pool.Begin failures and the embedding provider both
 // wrap raw pgx/net errors, and even the author-written ones interpolate the
@@ -360,21 +360,21 @@ func TestToolErrorDistinguishesUnavailableFromInternal(t *testing.T) {
 	}
 }
 
-// withheldSrv is a Server that discloses nothing extra, bound to loopback — so
+// withheldSrv is a Server that discloses nothing extra, bound to loopback -- so
 // these tests exercise the Kind switch rather than the gate.
 func withheldSrv() *Server {
 	return &Server{TrustLocalErrors: false, bindLoopback: true}
 }
 
 // localReq is a call that arrived with no forwarding markers: the shape that
-// satisfies mayDiscloseTo's third condition. Header must be non-nil — absent
+// satisfies mayDiscloseTo's third condition. Header must be non-nil -- absent
 // metadata withholds, which would make every case below pass for the wrong
 // reason.
 func localReq() *mcp.CallToolRequest {
 	return &mcp.CallToolRequest{Extra: &mcp.RequestExtra{Header: http.Header{}}}
 }
 
-// TestDisclosureNeedsAllThreeKeys — releasing a withheld cause requires the
+// TestDisclosureNeedsAllThreeKeys -- releasing a withheld cause requires the
 // operator's assertion, a loopback bind, *and* a call carrying no forwarding
 // markers. Any two without the third must withhold.
 //

@@ -17,7 +17,7 @@ in
       default = null;
       description = ''
         User to run the daemon as. Leave null for a DynamicUser (the
-        default) — set this only if the daemon needs to run as a
+        default) -- set this only if the daemon needs to run as a
         specific existing user, e.g. to reach a Postgres unix socket
         restricted to that user.
       '';

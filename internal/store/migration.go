@@ -151,7 +151,7 @@ func bumpMigrationCounterTx(ctx context.Context, tx pgxTx, id uuid.UUID, counter
 }
 
 // RecordMigratedBatch writes a batch's embeddings and credits the progress
-// counter for exactly what landed — in one transaction.
+// counter for exactly what landed -- in one transaction.
 //
 // The atomicity is the point, not an optimisation. These were previously two
 // separate transactions, and a context cancellation arriving between them left
@@ -159,7 +159,7 @@ func bumpMigrationCounterTx(ctx context.Context, tx pgxTx, id uuid.UUID, counter
 // recovers that: MissingChunkBatch and MissingCount both key on "no row in the
 // destination table", so a resumed worker never revisits those chunks, and no
 // code re-derives the counters from table state. The migration then completed
-// with chunks_backfill + chunks_lazy permanently short of chunks_total — the
+// with chunks_backfill + chunks_lazy permanently short of chunks_total -- the
 // completion invariant the schema documents, silently violated, and reported
 // to users as a self-contradictory "800/800 done (768 backfill, 32 lazy)".
 //
@@ -211,7 +211,7 @@ type ChunkRef struct {
 }
 
 // MissingChunkBatch returns up to limit chunks that have no embedding in the
-// given table yet — the anti-join means lazy-migrated chunks are naturally
+// given table yet -- the anti-join means lazy-migrated chunks are naturally
 // excluded, so the two paths never duplicate work.
 func (s *Store) MissingChunkBatch(ctx context.Context, table string, limit int) ([]ChunkRef, error) {
 	const op = "store.MissingChunkBatch"
@@ -234,7 +234,7 @@ func (s *Store) MissingChunkBatch(ctx context.Context, table string, limit int) 
 }
 
 // scanChunkRefs drains a chunk-id/content result set into ChunkRefs, closing
-// rows on every path — the shared tail of every ChunkRef query below.
+// rows on every path -- the shared tail of every ChunkRef query below.
 func scanChunkRefs(rows pgx.Rows) ([]ChunkRef, error) {
 	defer rows.Close()
 	var out []ChunkRef
@@ -263,7 +263,7 @@ func (s *Store) MissingCount(ctx context.Context, table string) (int, error) {
 	return n, nil
 }
 
-// ChunkRefsForNote returns a note's chunks in ordinal order — used to embed
+// ChunkRefsForNote returns a note's chunks in ordinal order -- used to embed
 // an already-indexed note's chunks into a specific table (test fixtures, and
 // any future re-embed tooling).
 func (s *Store) ChunkRefsForNote(ctx context.Context, path string) ([]ChunkRef, error) {
@@ -290,7 +290,7 @@ func (s *Store) CountAllChunks(ctx context.Context) (int, error) {
 }
 
 // MissingAmong filters the given chunk ids down to those absent from the
-// table — the lazy path's pre-check.
+// table -- the lazy path's pre-check.
 func (s *Store) MissingAmong(ctx context.Context, table string, ids []uuid.UUID) ([]ChunkRef, error) {
 	const op = "store.MissingAmong"
 	if !tableNameRe.MatchString(table) {
@@ -328,7 +328,7 @@ func (s *Store) SetActiveProvider(ctx context.Context, name, model string) error
 	return nil
 }
 
-// DropProvider removes a retired provider's table and registry row — the
+// DropProvider removes a retired provider's table and registry row -- the
 // deliberate, explicit prune. Safety (not active, not mid-migration) is the
 // caller's check; this just executes.
 func (s *Store) DropProvider(ctx context.Context, name, model string) error {

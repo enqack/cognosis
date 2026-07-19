@@ -1,6 +1,6 @@
--- Cognosis derived index — the complete v1 schema in one pass. notes.content
+-- Cognosis derived index -- the complete v1 schema in one pass. notes.content
 -- is a rebuildable mirror of the markdown vault; chunks/links stay fully
--- derived and droppable. Embedding tables are NOT here — they're provisioned
+-- derived and droppable. Embedding tables are NOT here -- they're provisioned
 -- dynamically per provider (probe dimension -> CREATE TABLE at runtime).
 create extension if not exists vector;
 
@@ -67,7 +67,7 @@ create table if not exists embedding_providers (
 -- join without squatting it.
 -- id carries no default on purpose: every creator passes an explicit UUIDv7
 -- (embedded in the plaintext for O(1) verification lookup), and parseToken
--- rejects v4 — a gen_random_uuid() default would mint tokens that can never
+-- rejects v4 -- a gen_random_uuid() default would mint tokens that can never
 -- authenticate.
 create table if not exists tokens (
   id           uuid primary key,
@@ -79,7 +79,7 @@ create table if not exists tokens (
 );
 
 -- Every tool call is audit-logged. args_summary is a redacted form (tool name
--- plus key identifying args like path or project) — never note content.
+-- plus key identifying args like path or project) -- never note content.
 create table if not exists audit_log (
   id           bigint generated always as identity primary key,
   token_id     uuid references tokens(id),

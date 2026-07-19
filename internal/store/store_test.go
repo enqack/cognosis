@@ -15,7 +15,7 @@ import (
 )
 
 // testStore migrates and connects inside a per-run isolated schema, dropped on
-// cleanup — tests are parallel-safe and leave nothing behind. Needs a real
+// cleanup -- tests are parallel-safe and leave nothing behind. Needs a real
 // Postgres via COGNOSIS_TEST_DSN (the dev shell provides one); skips otherwise.
 func testStore(t *testing.T) (*Store, context.Context) {
 	t.Helper()

@@ -2,7 +2,7 @@
 // path calls anything in this file: the daemon never probes, never sets a
 // session GUC per query, and never runs the exact-KNN variant. It lives in
 // package store only because s.pool is unexported and the harness must execute
-// the *production* leg SQL — a harness that writes its own vector query
+// the *production* leg SQL -- a harness that writes its own vector query
 // measures something that is not the vector leg.
 package store
 
@@ -22,7 +22,7 @@ import (
 type SessionSettings map[string]string
 
 // probeGUCs is the allowlist for SessionSettings keys. SET LOCAL takes an
-// identifier, not a bind parameter, so the name is interpolated — the
+// identifier, not a bind parameter, so the name is interpolated -- the
 // allowlist is what makes that safe.
 var probeGUCs = map[string]bool{
 	"hnsw.ef_search":           true,
@@ -53,7 +53,7 @@ type Probe struct {
 func (p Probe) Truncated() bool { return len(p.Rows) < p.Requested }
 
 // probeTx runs fn in a transaction with set applied via SET LOCAL, and always
-// rolls back — a probe must never leave state behind, and SET LOCAL dies with
+// rolls back -- a probe must never leave state behind, and SET LOCAL dies with
 // the transaction so no pooled connection carries a tuning override home.
 func (s *Store) probeTx(ctx context.Context, op string, set SessionSettings,
 	fn func(context.Context, pgxTx) error) error {
@@ -121,7 +121,7 @@ func (s *Store) ProbeVector(ctx context.Context, table string, vec []float32,
 
 // ProbeVectorExact runs the same leg with index matching defeated: the
 // brute-force nearest neighbours over a byte-identical filter scope. This is
-// the ground truth recall is measured against — the vector leg's contract is
+// the ground truth recall is measured against -- the vector leg's contract is
 // "the k nearest by cosine", so divergence from brute force is by definition
 // the defect being hunted, not a proxy for it.
 //
@@ -129,7 +129,7 @@ func (s *Store) ProbeVector(ctx context.Context, table string, vec []float32,
 // own and is planner-independent, whereas enable_indexscan=off would also
 // disable the pkey and join index scans and measure a different plan shape.
 // explain is always on so the caller can *verify* the scan was exact rather
-// than assume it — "brute force is ground truth" only holds if brute force
+// than assume it -- "brute force is ground truth" only holds if brute force
 // actually bypassed the index.
 func (s *Store) ProbeVectorExact(ctx context.Context, table string, vec []float32,
 	f Filter, limit int) (Probe, error) {
@@ -169,7 +169,7 @@ func (s *Store) ProbeGraph(ctx context.Context, seeds []uuid.UUID, f Filter, lim
 }
 
 // CurrentSetting reads a session GUC from a pooled connection. Used to assert
-// that Connect's scan settings actually reached the database — the constants
+// that Connect's scan settings actually reached the database -- the constants
 // agreeing with each other is necessary but not sufficient.
 func (s *Store) CurrentSetting(ctx context.Context, name string) (string, error) {
 	const op = "store.CurrentSetting"

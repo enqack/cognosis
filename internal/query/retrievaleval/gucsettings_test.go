@@ -9,7 +9,7 @@ import "testing"
 
 // The sweeps look up results by name (`recall[scope][baselineSetting]`). A
 // missing key reads as the zero value rather than failing, so a rename in
-// gucSettings turns every comparison into "0.000 < baseline" — a confident,
+// gucSettings turns every comparison into "0.000 < baseline" -- a confident,
 // plausible, wrong failure. This is the check that makes the pairing real.
 func TestBaselineSettingExists(t *testing.T) {
 	for _, gs := range gucSettings {
@@ -21,7 +21,7 @@ func TestBaselineSettingExists(t *testing.T) {
 	for _, gs := range gucSettings {
 		names = append(names, gs.Name)
 	}
-	t.Fatalf("baselineSetting %q is not in gucSettings %v — every sweep comparison would read a "+
+	t.Fatalf("baselineSetting %q is not in gucSettings %v -- every sweep comparison would read a "+
 		"missing map key as 0 and report a false regression", baselineSetting, names)
 }
 
@@ -31,7 +31,7 @@ func TestGUCSettingNamesAreUnique(t *testing.T) {
 	seen := map[string]bool{}
 	for _, gs := range gucSettings {
 		if seen[gs.Name] {
-			t.Errorf("duplicate gucSettings name %q — results are keyed by name, so one "+
+			t.Errorf("duplicate gucSettings name %q -- results are keyed by name, so one "+
 				"configuration would silently overwrite the other", gs.Name)
 		}
 		seen[gs.Name] = true
@@ -40,7 +40,7 @@ func TestGUCSettingNamesAreUnique(t *testing.T) {
 
 // Every row must pin BOTH scan knobs. A partial SET LOCAL inherits the other
 // from the session, so once store.Connect started setting them, a row named
-// "ef_search=200" was really measuring ef_search=200 + relaxed_order — 0.985
+// "ef_search=200" was really measuring ef_search=200 + relaxed_order -- 0.985
 // where the isolated setting measures 0.881. The baseline row is the one that
 // must be pinned hardest; the "inherits Connect" row is the deliberate
 // exception that documents what the session default actually is.
@@ -49,7 +49,7 @@ func TestGUCSettingsPinBothKnobs(t *testing.T) {
 	for _, gs := range gucSettings {
 		if gs.Name == inheritsRow {
 			if gs.Set != nil {
-				t.Errorf("%q must pass nil settings — it exists to show what the session default is",
+				t.Errorf("%q must pass nil settings -- it exists to show what the session default is",
 					gs.Name)
 			}
 			continue

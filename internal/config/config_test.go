@@ -46,7 +46,7 @@ func TestConfigSetGetRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// A fresh Load must see the persisted value — proves it hit config.yaml,
+	// A fresh Load must see the persisted value -- proves it hit config.yaml,
 	// not just in-memory viper state.
 	cfg2, err := Load()
 	if err != nil {

@@ -17,7 +17,7 @@ import (
 )
 
 // resolveProjectMarker walks up from cwd looking for a .cognosis-project
-// marker file (one line: the project tag). Found → tag; not found → "".
+// marker file (one line: the project tag). Found -> tag; not found -> "".
 // The marker travels with the repo, so cloning to a new machine or path
 // needs no config update.
 func resolveProjectMarker() (string, bool) {
@@ -45,9 +45,9 @@ func newContextCmd() *cobra.Command {
 		Use:   "inject",
 		Short: "Print a truncated, project-scoped index for a SessionStart hook",
 		Long: "The marker gates the hook entirely: without a .cognosis-project marker (and no\n" +
-			"explicit --project) this exits 0 silently, never contacting the daemon — a stopped\n" +
+			"explicit --project) this exits 0 silently, never contacting the daemon -- a stopped\n" +
 			"daemon must not block sessions in repos that have nothing to do with Cognosis.\n" +
-			"In marked repos the failure mode is loud: daemon unreachable within 2s → nonzero exit.",
+			"In marked repos the failure mode is loud: daemon unreachable within 2s -> nonzero exit.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			project, _ := cmd.Flags().GetString("project")
 			budget, _ := cmd.Flags().GetInt("budget")

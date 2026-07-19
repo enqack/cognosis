@@ -6,10 +6,10 @@ version: "2"
 # CI). Two documented carve-outs to that rule, both explained where they're
 # configured below:
 #   - gosec.excludes scopes off five rule IDs (G107/G204/G304/G703/G704) that
-#     are heuristics gosec can't resolve for a local, single-operator daemon —
+#     are heuristics gosec can't resolve for a local, single-operator daemon --
 #     not per-instance suppressions, a rule-level decision with rationale.
 #   - contextcheck is deliberately not enabled at all (see the comment by
-#     itself below) — both of its findings in this codebase flag idiomatic
+#     itself below) -- both of its findings in this codebase flag idiomatic
 #     Go (graceful shutdown, a struct-held long-lived context in a stress
 #     test), not bugs.
 linters:
@@ -41,7 +41,7 @@ linters:
     - wastedassign
     - gosec
   # contextcheck is intentionally NOT enabled: both findings it produced
-  # during evaluation were false positives against idiomatic Go —
+  # during evaluation were false positives against idiomatic Go --
   # mcpserver.Run's shutdown context.WithTimeout(context.Background(), ...)
   # (the standard net/http graceful-shutdown idiom, required because the
   # incoming ctx is already Done()), and a stress test that intentionally
@@ -57,16 +57,16 @@ linters:
       # are scoped off project-wide, not per-line, because they fire on
       # inherently safe, internally-constructed inputs with no attacker in
       # the threat model:
-      #   G304 (file inclusion via variable) — every hit is a filepath.Join
+      #   G304 (file inclusion via variable) -- every hit is a filepath.Join
       #     under a config-controlled root (vault dir, state dir, log
       #     paths) or a test fixture, never external input.
-      #   G204 (subprocess launched with variable) — git-subcommand
+      #   G204 (subprocess launched with variable) -- git-subcommand
       #     wrappers and the daemon's own self-exec via os.Executable(),
       #     all internally-constructed argv.
-      #   G107/G704 (HTTP request with variable URL) — locally configured
+      #   G107/G704 (HTTP request with variable URL) -- locally configured
       #     service endpoints (COGNOSIS_MCP_URL, the ollama URL), not
       #     external/attacker input.
-      #   G703 (path traversal via taint analysis) — the one hit
+      #   G703 (path traversal via taint analysis) -- the one hit
       #     (scripts/checks/harness reading COGNOSIS_TOKEN_FILE) is an
       #     operator-supplied path with no fixed root to scope an os.Root
       #     read to, same category as G304 above.

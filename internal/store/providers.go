@@ -137,7 +137,7 @@ func (s *Store) UpsertEmbeddings(ctx context.Context, table string, vecs map[uui
 }
 
 // insertEmbeddingsIfAbsentTx inserts vectors without overwriting existing rows
-// and reports how many actually landed — the migration paths' primitive, so
+// and reports how many actually landed -- the migration paths' primitive, so
 // a chunk racing between back-fill and lazy migration is counted exactly once
 // (whoever gets there first wins; the loser's insert is a no-op).
 //
@@ -161,7 +161,7 @@ func insertEmbeddingsIfAbsentTx(ctx context.Context, tx pgxTx, table string,
 	return inserted, nil
 }
 
-// CountEmbeddings reports the row count of one provider table — cheap
+// CountEmbeddings reports the row count of one provider table -- cheap
 // introspection backing tests and migration progress reporting.
 func (s *Store) CountEmbeddings(ctx context.Context, table string) (int, error) {
 	const op = "store.CountEmbeddings"

@@ -10,7 +10,7 @@ import (
 // Q1: how many candidates does the vector leg actually return, as a function
 // of scope selectivity and scan settings?
 //
-// Assertions are bounds and relations only — never an absolute row count.
+// Assertions are bounds and relations only -- never an absolute row count.
 // The recorded artifact carries the numbers.
 func TestVectorLegCapacity(t *testing.T) {
 	requireEval(t)
@@ -19,7 +19,7 @@ func TestVectorLegCapacity(t *testing.T) {
 	c := Build(t, spec)
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "vector leg capacity — %d notes x %d chunks = %d chunks, pool=%d\n\n",
+	fmt.Fprintf(&b, "vector leg capacity -- %d notes x %d chunks = %d chunks, pool=%d\n\n",
 		spec.Notes, spec.ChunksPerNote, spec.Notes*spec.ChunksPerNote, 50)
 	fmt.Fprintf(&b, "%-14s %-24s %9s %9s %10s  %s\n",
 		"SCOPE", "SETTING", "REQUESTED", "RETURNED", "SHORT", "EMBEDDINGS ACCESS")

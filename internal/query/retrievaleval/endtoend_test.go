@@ -11,7 +11,7 @@ import (
 )
 
 // Q3: the question Phase 6 turns on. The vector leg under-retrieves at default
-// settings (Q1, Q2) — but does that reach the agent? The fused top-8 is what
+// settings (Q1, Q2) -- but does that reach the agent? The fused top-8 is what
 // actually enters context, and the FTS and graph legs might mask the loss
 // entirely. "Overlap is 1.0, no fix needed" is a legitimate and valuable
 // outcome, and this test is written so that outcome is reportable rather than
@@ -30,7 +30,7 @@ func TestFusedTopKUnderCorrectedScan(t *testing.T) {
 	//
 	// It must go through ConnectWithScanSettings, not the DSN options route:
 	// AfterConnect runs after the startup packet, so Connect's settings would
-	// overwrite anything the DSN asked for — which is exactly what happened
+	// overwrite anything the DSN asked for -- which is exactly what happened
 	// first time round, and the test dutifully reported 0/30 changed.
 	baseStore, err := store.ConnectWithScanSettings(ctx, c.DSN, []string{
 		"set hnsw.ef_search = 40",
@@ -41,7 +41,7 @@ func TestFusedTopKUnderCorrectedScan(t *testing.T) {
 	}
 	defer baseStore.Close()
 
-	// Same provider, same table, same tuning — only the scan settings differ.
+	// Same provider, same table, same tuning -- only the scan settings differ.
 	baseEngine := &query.Engine{
 		Store:     baseStore,
 		Providers: []query.ProviderLeg{{Provider: c.Provider, Table: c.Table}},
@@ -49,7 +49,7 @@ func TestFusedTopKUnderCorrectedScan(t *testing.T) {
 	assertPoolsDiffer(ctx, t, baseStore, c.Store)
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "fused top-8 overlap, pre-fix vs shipped scan settings — %d chunks, %d queries\n",
+	fmt.Fprintf(&b, "fused top-8 overlap, pre-fix vs shipped scan settings -- %d chunks, %d queries\n",
 		spec.Notes*spec.ChunksPerNote, len(c.Queries))
 	fmt.Fprintf(&b, "pre-fix = hnsw.ef_search=40 + hnsw.iterative_scan=off (pgvector defaults)\n")
 	fmt.Fprintf(&b, "shipped = store.Connect's settings (ef_search=%d + iterative_scan=%s)\n\n",
@@ -91,7 +91,7 @@ func TestFusedTopKUnderCorrectedScan(t *testing.T) {
 			}
 		}
 		n := float64(len(c.Queries))
-		note := "identical — the fix changes nothing the agent sees here"
+		note := "identical -- the fix changes nothing the agent sees here"
 		if changed > 0 {
 			note = fmt.Sprintf("%d/%d queries returned different top-8", changed, len(c.Queries))
 		}
@@ -128,7 +128,7 @@ func TestRecordExactProbePlan(t *testing.T) {
 	}
 	body := "EXPLAIN of the exact-KNN ground-truth probe (vectorLegSQL with exact=true).\n" +
 		"The `+ 0.0` on the order-by defeats pgvector's index matching. A Seq Scan on the\n" +
-		"embeddings relation below is the proof that brute force really is brute force —\n" +
+		"embeddings relation below is the proof that brute force really is brute force --\n" +
 		"without it, \"exact ground truth\" would be an assumption rather than a measurement.\n\n" +
 		elideVectors(exact.Plan)
 	writeArtifact(t, "explain_vector_exact.txt", body)

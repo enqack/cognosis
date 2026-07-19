@@ -35,8 +35,8 @@ func (e *Engine) rewrite(ctx context.Context, n *vault.Note, rel string) error {
 // It is a skip, not a failure. Compile walks the vault once and rewrites much
 // later, so its read-to-write window spans the whole run; the shared path lock
 // serializes the writes but cannot make a stale in-memory note fresh. Writing
-// anyway would silently revert whatever landed in between — an agent's
-// edit_note, most likely — and the file and index would then agree on the
+// anyway would silently revert whatever landed in between -- an agent's
+// edit_note, most likely -- and the file and index would then agree on the
 // wrong content, which is exactly what reconciliation cannot detect.
 //
 // Skipping is safe because the lifecycle is idempotent and runs repeatedly:
@@ -112,7 +112,7 @@ func (e *Engine) rewriteLocked(ctx context.Context, n *vault.Note, rel string) e
 	sum := blake3.Sum256(out)
 	// Adopt the bytes just written, so a second mutation of the same note in
 	// one run does not read as a conflict with itself. Same digest the index
-	// gets — computed once.
+	// gets -- computed once.
 	n.SrcBlake3 = hex.EncodeToString(sum[:])
 	return e.Indexer.Index(ctx, reparsed, write.FileMeta{
 		Mtime: info.ModTime(), Size: info.Size(), Blake3: hex.EncodeToString(sum[:]),
@@ -120,7 +120,7 @@ func (e *Engine) rewriteLocked(ctx context.Context, n *vault.Note, rel string) e
 }
 
 // move rewrites the (already mutated) note at a new stage path and removes
-// the old file. The note id is stable, so the index treats it as a move —
+// the old file. The note id is stable, so the index treats it as a move --
 // inbound links survive.
 func (e *Engine) move(ctx context.Context, n *vault.Note, dest string) error {
 	const op = "lifecycle.move"
@@ -145,7 +145,7 @@ func (e *Engine) move(ctx context.Context, n *vault.Note, dest string) error {
 	// destination cannot serve: move has just refused if it exists, so
 	// rewriteLocked's own check always hits the not-exist arm and is skipped by
 	// construction. Without this, move is the one rewrite path with no stale
-	// protection — and it is the worst one to lose, because it also deletes the
+	// protection -- and it is the worst one to lose, because it also deletes the
 	// source and archives the note, so a concurrent edit is reverted *and*
 	// removed from retrieval while both calls report success.
 	if err := e.assertUnchanged(src, n.SrcBlake3); err != nil {
@@ -225,7 +225,7 @@ func wikiname(path string) string {
 	return strings.TrimSuffix(filepath.Base(path), ".md")
 }
 
-// roundDays renders a duration in whole days for report lines — "43d" reads
+// roundDays renders a duration in whole days for report lines -- "43d" reads
 // better than "1032h0m0s" in a log an agent has to skim.
 func roundDays(d time.Duration) string {
 	days := int(d.Round(24*time.Hour) / (24 * time.Hour))

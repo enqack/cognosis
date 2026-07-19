@@ -29,7 +29,7 @@ type Ollama struct {
 }
 
 // NewOllama returns a provider for the given base URL and pinned model tag.
-// The long timeout absorbs cold model loads (10–30s on first request).
+// The long timeout absorbs cold model loads (10-30s on first request).
 func NewOllama(baseURL, model string) *Ollama {
 	return &Ollama{
 		baseURL: baseURL,
@@ -66,7 +66,7 @@ func (o *Ollama) EmbedQuery(ctx context.Context, text string) ([]float32, error)
 	return vecs[0], nil
 }
 
-// Health hits the version endpoint — cheap reachability, not an embed round
+// Health hits the version endpoint -- cheap reachability, not an embed round
 // trip; a listening server that later fails to embed still fails loudly at
 // first use.
 func (o *Ollama) Health(ctx context.Context) error {

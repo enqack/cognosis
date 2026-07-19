@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Feature: platform surfaces — auth (synchronous revocation) + audit-trail
+# Feature: platform surfaces -- auth (synchronous revocation) + audit-trail
 # redaction, session context injection (marker-gated), git commit capture, and
 # the shipped hook/service artifacts.
 set -euo pipefail
@@ -60,7 +60,7 @@ echo "$OUT" | grep -q "platform-project" || fail "inject not scoped to the marke
 SMALL="$(cd "$MARKED" && "$BIN" context inject --budget 10)"
 # Bounds the output; does not prove truncation, since this vault is empty and has
 # no index lines to drop. The ceiling clears the guidance preamble (~800 chars),
-# which is fixed overhead exempt from the budget — the budget governs the index
+# which is fixed overhead exempt from the budget -- the budget governs the index
 # alone. Truncation itself is asserted in TestRenderContextPreamble, which can
 # stage notes; keep the two in step.
 [ "${#SMALL}" -le 1200 ] || fail "budget not respected (${#SMALL} chars for budget 10)"

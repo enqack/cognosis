@@ -56,7 +56,7 @@ func TestSynthIsNonDegenerate(t *testing.T) {
 }
 
 // TestSpreadCalibration records how discriminating each candidate Spread is.
-// Not a pass/fail on the numbers — it asserts only that DefaultSpread lands in
+// Not a pass/fail on the numbers -- it asserts only that DefaultSpread lands in
 // the usable band, and logs the table so the choice is auditable rather than
 // asserted.
 func TestSpreadCalibration(t *testing.T) {

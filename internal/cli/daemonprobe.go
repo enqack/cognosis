@@ -13,14 +13,14 @@ import (
 type daemonOwnership int
 
 const (
-	// daemonUnknown — the question could not be answered: no DSN configured, or
+	// daemonUnknown -- the question could not be answered: no DSN configured, or
 	// Postgres unreachable. Not the same as "no daemon", and callers must not
 	// treat it as one.
 	daemonUnknown daemonOwnership = iota
-	// daemonAbsent — nothing holds the instance lock, so no daemon owns this
+	// daemonAbsent -- nothing holds the instance lock, so no daemon owns this
 	// database anywhere. A direct write is safe by construction.
 	daemonAbsent
-	// daemonPresent — some daemon holds the instance lock. It may be on another
+	// daemonPresent -- some daemon holds the instance lock. It may be on another
 	// host.
 	daemonPresent
 )
@@ -32,7 +32,7 @@ const (
 // hosts; the lock file only ever describes this machine, and store/tx.go calls
 // the advisory lock "the cross-machine arbiter the local PID lockfile can never
 // be". A CLI that branched on the lock file would take the direct-write path
-// against a daemon running elsewhere — precisely the race it was branching to
+// against a daemon running elsewhere -- precisely the race it was branching to
 // avoid.
 //
 // The probe reads `pg_locks` rather than acquiring the lock. Acquire-and-release
@@ -41,7 +41,7 @@ const (
 // cognosis daemon already owns this database" naming a process that has already
 // finished. A read cannot displace anyone.
 //
-// It is still only a snapshot — a daemon may start between the probe and the
+// It is still only a snapshot -- a daemon may start between the probe and the
 // caller's write. This is not a mutual-exclusion primitive, it is a "should I be
 // doing this at all" check.
 func probeDaemon(ctx context.Context, cfg *config.Config) daemonOwnership {
@@ -74,8 +74,8 @@ func daemonOwns(ctx context.Context, s *store.Store) daemonOwnership {
 //
 // These commands write Postgres rows, vault files, and in one case rewrite git
 // history, all without the per-path lock the daemon's own writers share. There
-// is no MCP equivalent to route them through — hard deletion and migration
-// control are deliberately not on the agent-facing surface — so refusing is
+// is no MCP equivalent to route them through -- hard deletion and migration
+// control are deliberately not on the agent-facing surface -- so refusing is
 // the available correctness, and it is better than the alternative of mutating
 // underneath a live daemon and letting the watcher discover it afterwards.
 //

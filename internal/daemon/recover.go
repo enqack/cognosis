@@ -7,7 +7,7 @@ import (
 )
 
 // RecoverPanic recovers a panic in the calling goroutine, logs it with a
-// stack trace, and — if onPanic is non-nil — hands it the resulting error so
+// stack trace, and -- if onPanic is non-nil -- hands it the resulting error so
 // the caller can fail that one component instead of the panic taking down
 // the whole daemon process.
 //

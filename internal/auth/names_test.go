@@ -55,7 +55,7 @@ func TestValidateTokenName(t *testing.T) {
 	}
 }
 
-// TestGenerateMintsUUIDv7 — token ids carry the same contract as note ids
+// TestGenerateMintsUUIDv7 -- token ids carry the same contract as note ids
 // (vault.NewNoteID): time-ordered, so ids sort lexically by creation.
 func TestGenerateMintsUUIDv7(t *testing.T) {
 	_, id, _, err := Generate()

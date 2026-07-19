@@ -1,7 +1,7 @@
 // Package mcpserver exposes the MCP tool surface over Streamable HTTP. The
 // tools/call surface is the lowest common denominator across MCP clients, so
 // nothing here uses resources or prompts. Until bearer-token auth lands, the
-// server refuses to bind anywhere but loopback — the local-only posture is a
+// server refuses to bind anywhere but loopback -- the local-only posture is a
 // startup invariant, not a convention.
 package mcpserver
 
@@ -64,7 +64,7 @@ func New(bind, vaultDir string, log *slog.Logger, p *write.Pipeline, e *query.En
 	return NewTLS(bind, vaultDir, log, p, e, s, lc, pr, config.TLS{})
 }
 
-// NewTLS is New with built-in TLS termination configured — the only door to a
+// NewTLS is New with built-in TLS termination configured -- the only door to a
 // non-loopback bind. The documented default remote path keeps Cognosis on
 // loopback behind a TLS-terminating reverse proxy instead (see docs/remote.md).
 func NewTLS(bind, vaultDir string, log *slog.Logger, p *write.Pipeline, e *query.Engine, s *store.Store,
@@ -92,7 +92,7 @@ func NewTLS(bind, vaultDir string, log *slog.Logger, p *write.Pipeline, e *query
 }
 
 // requireLoopback rejects any bind address that isn't loopback unless
-// built-in TLS is configured — never plaintext bearer tokens on a network.
+// built-in TLS is configured -- never plaintext bearer tokens on a network.
 func requireLoopback(bind string, tls config.TLS) error {
 	const op = "mcpserver.requireLoopback"
 	host, _, err := net.SplitHostPort(bind)
@@ -115,7 +115,7 @@ func requireLoopback(bind string, tls config.TLS) error {
 // to a routable address, and the consequences are not symmetric: a string
 // exemption would let requireLoopback accept a reachable bind without TLS *and*
 // let mayDiscloseTo hand that reachable bind's callers full internal errors.
-// Every resolved address must be loopback — a name resolving to both is not
+// Every resolved address must be loopback -- a name resolving to both is not
 // loopback-only, and treating it as such is the whole failure.
 //
 // Resolution failure reports false. A name that cannot be resolved has not been
@@ -164,7 +164,7 @@ var forwardedHeaders = []string{
 // Per-request rather than per-server on purpose: a daemon can be bound to
 // loopback and still be fronted by a proxy on the same host, so the only thing
 // that distinguishes the local CLI from a forwarded remote is what arrived on
-// *this* request. Absent header metadata withholds — the SDK not surfacing a
+// *this* request. Absent header metadata withholds -- the SDK not surfacing a
 // request is indistinguishable from a request whose origin we cannot check.
 func (s *Server) mayDiscloseTo(req *mcp.CallToolRequest) bool {
 	if !s.TrustLocalErrors || !s.bindLoopback {
@@ -187,12 +187,12 @@ func (s *Server) mayDiscloseTo(req *mcp.CallToolRequest) bool {
 // line and the wrong one for a tool result: an agent reading
 // "write.Pipeline.Edit: validation: old_string appears 2 times" has to parse
 // past two internal identifiers to reach the sentence it can act on. The op and
-// kind are not lost — audit and the structured log still record the full error.
+// kind are not lost -- audit and the structured log still record the full error.
 //
 // Internal and Unavailable are deliberately not passed through. Both wrap raw
 // pgx, os and net errors that carry DSNs, unix socket paths, database users and
-// embedding endpoints — one of this project's own log lines contains
-// "failed to connect to `user=sysop database=cognosis`: /Users/…/.s.PGSQL.5434"
+// embedding endpoints -- one of this project's own log lines contains
+// "failed to connect to `user=sysop database=cognosis`: /Users/.../.s.PGSQL.5434"
 // verbatim. An agent cannot act on any of it, and a tool result is the one
 // place it would travel furthest.
 //
@@ -234,12 +234,12 @@ func (s *Server) toolError(req *mcp.CallToolRequest, err error) error {
 }
 
 // audit records one tool call under the caller's token identity. summary must
-// already be redacted (identifying args only — never note content).
+// already be redacted (identifying args only -- never note content).
 //
 // Stores TokenID rather than the name, which is the opposite of what the
 // structured log does (see auth.NewIdentityHandler). Deliberate: audit_log is
 // queryable and can join to tokens.name at read time, and internal/store/tokens.go
-// has no delete — revocation only sets revoked_at — so that join never dangles.
+// has no delete -- revocation only sets revoked_at -- so that join never dangles.
 // The log is an append-only text stream with no join available to whoever reads
 // it, so it carries the human-readable name. Different media, different
 // normalization; a denormalized copy here would be a second source of truth.
@@ -294,7 +294,7 @@ func (s *Server) Run(ctx context.Context) error {
 	}()
 	// Deliberately not InfoContext: this is startup, before any request, so
 	// there is no authenticated caller to attribute it to. logcontext_test.go
-	// allowlists this message — see auth.NewIdentityHandler on why a missing
+	// allowlists this message -- see auth.NewIdentityHandler on why a missing
 	// token= means daemon-internal work rather than broken attribution.
 	//nolint:sloglint // startup, before any request: no caller to attribute to
 	s.log.Info("mcp server listening", "addr", s.bind, "tls", s.tls.Enabled())

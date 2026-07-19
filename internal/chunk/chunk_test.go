@@ -68,14 +68,14 @@ func headings(cs []Chunk) []string {
 	return out
 }
 
-// TestCodeFenceHeadingIgnored — '#' inside a fenced code block must not split.
+// TestCodeFenceHeadingIgnored -- '#' inside a fenced code block must not split.
 func TestCodeFenceHeadingIgnored(t *testing.T) {
 	pad := strings.Repeat("word ", 60)
 	body := "## Real\n\n" + pad + "\n\n```\n## not a heading\n```\n\n" + pad + "\n"
 	n := note(t, "entries/e.md", "---\nid: x\n---\n"+body)
 	chunks := Split(n)
 	if len(chunks) != 1 {
-		t.Fatalf("chunks = %d, want 1 — the fenced pseudo-heading split the note: %v", len(chunks), headings(chunks))
+		t.Fatalf("chunks = %d, want 1 -- the fenced pseudo-heading split the note: %v", len(chunks), headings(chunks))
 	}
 }
 

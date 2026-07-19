@@ -178,7 +178,7 @@ func TestReflectionsStage(t *testing.T) {
 	assertField(t, Validate("notes/a.md", stray, true), "persona")
 }
 
-// TestArchiveExempt — archived notes keep whatever fields they faded with;
+// TestArchiveExempt -- archived notes keep whatever fields they faded with;
 // only the universal core applies.
 func TestArchiveExempt(t *testing.T) {
 	fm := map[string]any{
@@ -186,7 +186,7 @@ func TestArchiveExempt(t *testing.T) {
 		"category": "concept",
 		"created":  "2026-01-01 00:00:00",
 		"updated":  "2026-06-01 00:00:00",
-		// no decay fields at all — legal in archive/
+		// no decay fields at all -- legal in archive/
 	}
 	if probs := Validate("archive/old.md", fm, true); len(probs) != 0 {
 		t.Fatalf("archived note rejected: %v", probs)
@@ -208,7 +208,7 @@ func TestReservedFiles(t *testing.T) {
 	}
 }
 
-// TestProblemsNameField — a rejection names the offending field in a form the
+// TestProblemsNameField -- a rejection names the offending field in a form the
 // write path can surface.
 func TestProblemsNameField(t *testing.T) {
 	fm := validDecayingFM()
@@ -251,7 +251,7 @@ func TestLinks(t *testing.T) {
 }
 
 // TestNoteIDMustBeV7 pins the id contract. Ids are written once and never
-// rewritten, so an accepted version is permanent — this is the gate that makes
+// rewritten, so an accepted version is permanent -- this is the gate that makes
 // "ids sort lexically by creation time" true rather than aspirational.
 func TestNoteIDMustBeV7(t *testing.T) {
 	cases := []struct {

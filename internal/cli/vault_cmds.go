@@ -76,7 +76,7 @@ func newVaultCmd() *cobra.Command {
 // pass over the same note and whichever lands second wins.
 //
 // Which door is safe is decided by asking Postgres who holds the instance
-// lock, not by looking for a local PID file — a daemon on another host owns
+// lock, not by looking for a local PID file -- a daemon on another host owns
 // this vault's database and is invisible to the file. See probeDaemon.
 func runRestore(cmd *cobra.Command, cfg *config.Config, path, at string, forceLocal bool) error {
 	out := cmd.OutOrStdout()
@@ -99,7 +99,7 @@ func runRestore(cmd *cobra.Command, cfg *config.Config, path, at string, forceLo
 		})
 		if err != nil {
 			// Deliberately not falling back. A daemon owns this vault, so a
-			// direct write here is the race — and the moment to be most careful
+			// direct write here is the race -- and the moment to be most careful
 			// is when the thing that owns your data is already misbehaving.
 			return fmt.Errorf("a daemon owns this vault and the restore could not be routed through it: %w\n"+
 				"  stop the daemon, or re-run with --force-local to write directly anyway", err)
@@ -144,11 +144,11 @@ func newNoteCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "note", Short: "Note administration"}
 	del := &cobra.Command{
 		Use:   "delete <path>",
-		Short: "Hard-delete a note everywhere — irreversible",
+		Short: "Hard-delete a note everywhere -- irreversible",
 		Long: "Genuine erasure: removes the file, purges the derived index (chunks, links, every\n" +
 			"embedding table via cascade), rewrites log.md mentions to tombstones, and erases the\n" +
 			"path from vault history. For cases where 'excluded from retrieval' isn't sufficient.\n" +
-			"Postgres WAL segments and any operator-taken backups are outside Cognosis's reach —\n" +
+			"Postgres WAL segments and any operator-taken backups are outside Cognosis's reach --\n" +
 			"purging those is on you.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -158,7 +158,7 @@ func newNoteCmd() *cobra.Command {
 				return fmt.Errorf("soft-delete (archival) happens through compile_lifecycle; pass --hard to acknowledge genuine erasure")
 			}
 			if !yes {
-				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Hard-delete %s everywhere? This cannot be undone — not by re-index, not by history. [y/N] ", args[0])
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Hard-delete %s everywhere? This cannot be undone -- not by re-index, not by history. [y/N] ", args[0])
 				reader := bufio.NewReader(cmd.InOrStdin())
 				line, _ := reader.ReadString('\n')
 				if strings.TrimSpace(strings.ToLower(line)) != "y" {
@@ -185,7 +185,7 @@ func hardDelete(cmd *cobra.Command, rel string) error {
 	}
 	return withStore(cmd, func(ctx context.Context, s *store.Store) error {
 		// Hard deletion writes Postgres rows, removes the file, rewrites log.md
-		// and purges the path from git history — none of it under the per-path
+		// and purges the path from git history -- none of it under the per-path
 		// lock the daemon's own writers share, and with no MCP equivalent to
 		// route it through.
 		//
@@ -199,8 +199,8 @@ func hardDelete(cmd *cobra.Command, rel string) error {
 		hist := vault.NewHistory(cfg.KBPath)
 
 		// Order matters, and it used to be wrong. The history rewrite is the
-		// step that fails for environmental reasons — git refuses to rewrite a
-		// dirty tree — and it ran last, after the row, the file and log.md were
+		// step that fails for environmental reasons -- git refuses to rewrite a
+		// dirty tree -- and it ran last, after the row, the file and log.md were
 		// already gone. A failure left the note erased from the vault but still
 		// present in history: the opposite of what was asked for, and a state no
 		// retry could reach.
@@ -222,7 +222,7 @@ func hardDelete(cmd *cobra.Command, rel string) error {
 		if err := os.Remove(abs); err != nil && !os.IsNotExist(err) {
 			return err
 		}
-		// 4. log.md tombstones: the append-only log yields to erasure here —
+		// 4. log.md tombstones: the append-only log yields to erasure here --
 		// the one operation allowed to rewrite it.
 		base := strings.TrimSuffix(filepath.Base(rel), ".md")
 		if err := tombstoneLog(cfg.KBPath, base); err != nil {
@@ -230,7 +230,7 @@ func hardDelete(cmd *cobra.Command, rel string) error {
 		}
 		// 5. Commit the removal and the tombstoned log. Without this the vault
 		// repo is left dirty and the erasure only lands whenever something else
-		// happens to commit — which, with the daemon stopped, may be never.
+		// happens to commit -- which, with the daemon stopped, may be never.
 		// The purged content is already gone from history, so this commit
 		// records the deletion and nothing more.
 		if err := hist.CommitAll(ctx, "hard-delete: "+rel); err != nil {
@@ -239,7 +239,7 @@ func hardDelete(cmd *cobra.Command, rel string) error {
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(),
 			"hard-deleted %s: file, index, embeddings, log.md mentions, history.\n"+
 				"Outside Cognosis's reach: Postgres WAL segments and any backups (pg_dump,\n"+
-				"filesystem snapshots) may still hold this content — purge those yourself.\n", rel)
+				"filesystem snapshots) may still hold this content -- purge those yourself.\n", rel)
 		return nil
 	})
 }

@@ -29,8 +29,8 @@ func (r *slowStopRunner) Run(ctx context.Context) error {
 }
 
 // TestShutdownDrainsRunnersBeforeReturn pins the shutdown order: Run must not
-// return — and therefore must not release the instance lock, which its defers
-// do on return — while a runner is still stopping. The pre-fix select returned
+// return -- and therefore must not release the instance lock, which its defers
+// do on return -- while a runner is still stopping. The pre-fix select returned
 // on ctx.Done without waiting, which released the vault's ownership with a
 // watcher write still in flight; daemon.sh caught it as a dirty vault tree
 // failing PurgePath. Verified to fail against that defect.
@@ -51,7 +51,7 @@ func TestShutdownDrainsRunnersBeforeReturn(t *testing.T) {
 
 	// The instance lock is database-global and other test packages (the store's
 	// mutual-exclusion test) hold it transiently on the same test database, so
-	// a boot-time Conflict here is contention, not failure — retry briefly.
+	// a boot-time Conflict here is contention, not failure -- retry briefly.
 	r := &slowStopRunner{}
 	var runErr error
 	for range 20 {
@@ -74,6 +74,6 @@ func TestShutdownDrainsRunnersBeforeReturn(t *testing.T) {
 		t.Fatalf("daemon.Run: %v", runErr)
 	}
 	if !r.stopped.Load() {
-		t.Fatal("Run returned before its runner finished stopping — locks were released with work still in flight")
+		t.Fatal("Run returned before its runner finished stopping -- locks were released with work still in flight")
 	}
 }

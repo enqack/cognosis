@@ -25,11 +25,11 @@ type Token struct {
 }
 
 // CreateToken registers a token hash under a unique name. The id comes from
-// the caller — it is embedded in the plaintext token for O(1) verification
+// the caller -- it is embedded in the plaintext token for O(1) verification
 // lookup, so the row must carry exactly that id.
 //
 // Only a unique violation (a live token already holds the name, or the id is
-// taken) is a Conflict; anything else — connection loss, cancellation — is
+// taken) is a Conflict; anything else -- connection loss, cancellation -- is
 // Internal. Callers branch on the distinction: EnsureLocalToken's "revoke and
 // restart" remedy is correct advice only for the former.
 func (s *Store) CreateToken(ctx context.Context, id uuid.UUID, name, hash string) error {
@@ -45,7 +45,7 @@ func (s *Store) CreateToken(ctx context.Context, id uuid.UUID, name, hash string
 	return nil
 }
 
-// GetTokenByID fetches one token row — the synchronous per-request check.
+// GetTokenByID fetches one token row -- the synchronous per-request check.
 // Revocation is read live here on every call, deliberately: no cache, no
 // revoked-token window.
 func (s *Store) GetTokenByID(ctx context.Context, id uuid.UUID) (Token, error) {
@@ -78,7 +78,7 @@ func (s *Store) RevokeToken(ctx context.Context, name string) error {
 	return nil
 }
 
-// ListTokens returns every token's metadata — names and timestamps, never
+// ListTokens returns every token's metadata -- names and timestamps, never
 // secrets (only hashes are stored anyway).
 func (s *Store) ListTokens(ctx context.Context) ([]Token, error) {
 	const op = "store.ListTokens"
@@ -105,12 +105,12 @@ func (s *Store) ListTokens(ctx context.Context) ([]Token, error) {
 
 // prunableTokens is the single definition of "safe to delete": revoked, and no
 // audit row points at it. Shared by PrunableTokens and PruneRevokedTokens so a
-// dry-run can never preview a different set than the delete performs — a
+// dry-run can never preview a different set than the delete performs -- a
 // preview that can drift from its action is worse than no preview.
 //
 // Referenced tokens are kept deliberately. audit_log joins to tokens.name at
 // read time and its FK is NO ACTION, so deleting a referenced row would error
-// rather than dangle — this predicate means the error is never reached, and the
+// rather than dangle -- this predicate means the error is never reached, and the
 // FK stays as the backstop that would turn a bug here into a failure rather
 // than a silently broken join.
 const prunableTokens = `revoked_at is not null
@@ -149,7 +149,7 @@ func (s *Store) PruneRevokedTokens(ctx context.Context) ([]string, error) {
 }
 
 // CountRevokedTokens counts revoked rows, so prune can report how many it kept
-// — which is the answer to "why is my revoked token still listed".
+// -- which is the answer to "why is my revoked token still listed".
 func (s *Store) CountRevokedTokens(ctx context.Context) (int, error) {
 	var n int
 	if err := s.pool.QueryRow(ctx,
@@ -185,8 +185,8 @@ func (s *Store) CountLiveTokens(ctx context.Context) (int, error) {
 }
 
 // TouchToken bumps last_used_at; best-effort and debounced. The auth path calls
-// this on every authorized request, so the UPDATE is conditional — it only
-// writes when the recorded time is stale (older than ~5 minutes) — turning a
+// this on every authorized request, so the UPDATE is conditional -- it only
+// writes when the recorded time is stale (older than ~5 minutes) -- turning a
 // read-heavy hot path from a write-per-request into an occasional write. The
 // metric stays "roughly last used", which is all it is for.
 func (s *Store) TouchToken(ctx context.Context, id uuid.UUID) {
@@ -197,7 +197,7 @@ func (s *Store) TouchToken(ctx context.Context, id uuid.UUID) {
 }
 
 // AppendAudit records one tool call. args_summary must already be redacted by
-// the caller — this layer never sees full note content.
+// the caller -- this layer never sees full note content.
 func (s *Store) AppendAudit(ctx context.Context, tokenID *uuid.UUID, tool, project, argsSummary string, success bool, errMsg string) error {
 	_, err := s.pool.Exec(ctx, `
 		insert into audit_log (token_id, tool_name, project, args_summary, success, error)

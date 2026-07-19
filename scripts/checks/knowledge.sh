@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Feature: knowledge management — compile_lifecycle (dry-run purity, decay,
+# Feature: knowledge management -- compile_lifecycle (dry-run purity, decay,
 # reinforce, falsify + retrieval filtering, verify related-context advisories),
 # personas (two-tier discovery, write_reflection, disabled rejection), and
 # vault history (vault_history -> restore_note round trip). The history.md

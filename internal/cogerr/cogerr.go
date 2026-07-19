@@ -72,7 +72,7 @@ func KindOf(err error) Kind {
 	return Internal
 }
 
-// Message returns err's text with the op and Kind prefixes stripped — the
+// Message returns err's text with the op and Kind prefixes stripped -- the
 // sentence a human or an agent can act on, without the internal identifiers
 // that belong in a log line.
 //

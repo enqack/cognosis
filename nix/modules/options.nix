@@ -28,7 +28,7 @@
       `COGNOSIS_EMBEDDING_URL`, etc.).
 
       This module does not provision or manage Postgres+pgvector or
-      Ollama — point `COGNOSIS_DSN` / `COGNOSIS_EMBEDDING_URL` at
+      Ollama -- point `COGNOSIS_DSN` / `COGNOSIS_EMBEDDING_URL` at
       instances your own system configuration (or a remote deployment)
       already makes reachable.
     '';

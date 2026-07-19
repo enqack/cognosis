@@ -23,7 +23,7 @@ type Provider interface {
 	Embed(ctx context.Context, texts []string) ([][]float32, error)
 	// EmbedQuery embeds a single retrieval query.
 	EmbedQuery(ctx context.Context, text string) ([]float32, error)
-	// Health is a lightweight reachability check — never a full embed round
+	// Health is a lightweight reachability check -- never a full embed round
 	// trip; startup uses it as a fatal gate.
 	Health(ctx context.Context) error
 	// Dimension reports the vector width, probing the provider if needed.

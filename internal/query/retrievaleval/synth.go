@@ -29,7 +29,7 @@ import (
 // (~0.036, the 5.0 row). It also sits mid-band, so it is not near a cliff.
 //
 // Note that top50_same_cluster is flat from 0.25 to 2.0 and so is a weak
-// discriminator on its own — min_d and stddev_d are what separate those rows.
+// discriminator on its own -- min_d and stddev_d are what separate those rows.
 // The authoritative check that this corpus can detect ANN degradation is the
 // empirical recall curve in the Phase 5 capacity tests, not this table.
 const DefaultSpread = 1.0
@@ -45,8 +45,8 @@ const DefaultSpread = 1.0
 //     artifact on a model bump.
 //
 // Cluster structure is the point, not decoration. Uniform-random 768-dim
-// vectors are the adversarial case for ANN — every pair is near-orthogonal and
-// distances concentrate — which makes measured recall a pessimistic bound
+// vectors are the adversarial case for ANN -- every pair is near-orthogonal and
+// distances concentrate -- which makes measured recall a pessimistic bound
 // rather than an estimate of production behavior, where topically-related
 // notes cluster strongly.
 type Synth struct {
@@ -57,7 +57,7 @@ type Synth struct {
 
 	// Labels pins the cluster for specific texts, mirroring embedtest.Stub's
 	// Vectors pin-map. The corpus builder needs it: it picks a cluster first,
-	// then draws that cluster's vocabulary into the chunk text — which changes
+	// then draws that cluster's vocabulary into the chunk text -- which changes
 	// the text, and so would change a hash-derived cluster. Pinning keeps the
 	// geometry (which centre the vector sits near), the pseudo-relevance label,
 	// and the lexical content all naming the same cluster. Without it the three
@@ -128,13 +128,13 @@ func (s *Synth) ClusterOf(text string) int {
 // Noise is scaled by 1/sqrt(Dim) so Spread is dimension-independent: a vector
 // of Dim iid N(0, sigma) components has expected norm sigma*sqrt(Dim), so
 // without the scaling the usable Spread band shifts with every change to Dim.
-// With it, Spread is the ratio of noise norm to centre norm — Spread=1.0 means
-// the noise is as large as the signal — and the same value means the same
+// With it, Spread is the ratio of noise norm to centre norm -- Spread=1.0 means
+// the noise is as large as the signal -- and the same value means the same
 // thing at 8, 768, or 3072 dimensions.
 func (s *Synth) vec(text string) []float32 {
 	c := s.ClusterOf(text)
 	// Seed the noise from the text so the same text always embeds identically
-	// — the Provider contract embedtest.Stub also honors.
+	// -- the Provider contract embedtest.Stub also honors.
 	h := fnv.New64a()
 	_, _ = h.Write([]byte("noise:" + text))
 	rng := rand.New(rand.NewSource(int64(h.Sum64()))) //nolint:gosec // not cryptographic
@@ -169,7 +169,7 @@ func normalize(v []float32) {
 // generator whose randomness was accidentally hoisted out of the per-row loop,
 // producing 20 000 rows holding 1 distinct vector. Every distance tied, recall
 // read as noise, and the result appeared to *falsify* the hypothesis under
-// test. A degenerate corpus yields confident, plausible, wrong numbers — so
+// test. A degenerate corpus yields confident, plausible, wrong numbers -- so
 // corpus construction asserts non-degeneracy before anything is measured.
 func DistinctVectors(vecs [][]float32) int {
 	seen := make(map[string]struct{}, len(vecs))
@@ -196,8 +196,8 @@ type SpreadReport struct {
 }
 
 // CalibrateSpread reports cluster tightness across candidate Spread values so
-// the caller can pick one deliberately. Pure in-memory cosine math — no
-// database, no index — so it is cheap to re-run when Dim or Clusters change.
+// the caller can pick one deliberately. Pure in-memory cosine math -- no
+// database, no index -- so it is cheap to re-run when Dim or Clusters change.
 func CalibrateSpread(dim, clusters int, seed int64, spreads []float64,
 	corpus, queries, k int) []SpreadReport {
 	out := make([]SpreadReport, 0, len(spreads))

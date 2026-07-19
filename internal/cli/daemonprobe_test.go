@@ -9,7 +9,7 @@ import (
 	"github.com/enqack/cognosis/internal/store/storetest"
 )
 
-// TestProbeDaemonReadsTheAdvisoryLock — the probe must reflect who holds
+// TestProbeDaemonReadsTheAdvisoryLock -- the probe must reflect who holds
 // LockInstance, not what the local PID file says. Advisory locks are
 // database-wide rather than schema-scoped, which is exactly the property that
 // lets this answer the question across hosts.

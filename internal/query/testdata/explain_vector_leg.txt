@@ -6,7 +6,7 @@ this would record a seqscan and prove nothing about index usage.
 
 What the two scopes show is the point of recording both. Unscoped, the planner
 takes the HNSW index and gets approximate neighbours. Scoped to a project it
-declines HNSW — with the index still available — and instead drives from
+declines HNSW -- with the index still available -- and instead drives from
 notes_project_idx through chunks to the embeddings pkey, sorting exactly. That
 is the access-path switch by scope selectivity, and the previous version of this
 artifact could not show it: it explained a query with no notes join and no WHERE.

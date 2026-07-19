@@ -28,8 +28,8 @@ func withStore(cmd *cobra.Command, fn func(ctx context.Context, s *store.Store) 
 
 	// Migrate only when no daemon owns this database.
 	//
-	// This ran unconditionally, so any store-using CLI command — including
-	// read-only ones like `token list` — could apply a schema migration to a
+	// This ran unconditionally, so any store-using CLI command -- including
+	// read-only ones like `token list` -- could apply a schema migration to a
 	// database a live daemon was serving from. A daemon migrates at startup, so
 	// when one is present the migration is redundant as well as unwelcome:
 	// skipping it is both safer and no less correct.
@@ -65,7 +65,7 @@ func newTokenCmd() *cobra.Command {
 						return err
 					}
 					_, _ = fmt.Fprintf(cmd.OutOrStdout(),
-						"%s\n\nThis token is shown once and stored only as a hash — save it now.\n", plaintext)
+						"%s\n\nThis token is shown once and stored only as a hash -- save it now.\n", plaintext)
 					return nil
 				})
 			},
@@ -111,7 +111,7 @@ func newTokenCmd() *cobra.Command {
 						// of rand_a, then 62 bits of rand_b:
 						//   - the first 8 hex characters are the timestamp's high
 						//     half, so they change only every ~65 seconds and read
-						//     identically for everything minted in one sitting —
+						//     identically for everything minted in one sitting --
 						//     exactly the rows this column exists to separate;
 						//   - rand_a looks like the first random field and is not.
 						//     google/uuid fills it with a sub-millisecond sequence
@@ -143,7 +143,7 @@ func newTokenPruneCmd() *cobra.Command {
 		Use:   "prune",
 		Short: "Delete revoked tokens no audit row references",
 		Long: "Deletes revoked tokens that nothing in audit_log points at. Referenced tokens are " +
-			"kept by design — the audit trail joins to them — so a revoked token remaining after " +
+			"kept by design -- the audit trail joins to them -- so a revoked token remaining after " +
 			"a prune means it was used, not that the prune failed.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {

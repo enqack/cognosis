@@ -2,7 +2,7 @@ package query
 
 import "sort"
 
-// Generic reciprocal-rank fusion. Structural, not behavioral — the element
+// Generic reciprocal-rank fusion. Structural, not behavioral -- the element
 // type is a type parameter, keyed by a caller-supplied identity function, so
 // the same merge fuses ranked chunks today and any future ranked type without
 // an interface or a runtime type assertion.

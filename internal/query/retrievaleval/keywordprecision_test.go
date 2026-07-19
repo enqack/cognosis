@@ -22,8 +22,8 @@ type keywordArms struct {
 	oracleJac, noFTSJac         float64
 }
 
-// measureKeywordArms fuses exactly the way Run fuses — same k, same weights,
-// same ChunkID key — and holds the graph seeds fixed across arms so the only
+// measureKeywordArms fuses exactly the way Run fuses -- same k, same weights,
+// same ChunkID key -- and holds the graph seeds fixed across arms so the only
 // variable is the keyword leg's ordering or presence.
 func measureKeywordArms(t *testing.T, ctx context.Context, c *Corpus, rrfK, topK, pool int) keywordArms {
 	t.Helper()
@@ -106,7 +106,7 @@ func measureKeywordArms(t *testing.T, ctx context.Context, c *Corpus, rrfK, topK
 // measurement could not settle.
 //
 // At the default corpus the keyword leg runs at ~99% precision and a perfect
-// re-ranking changes 2 of 30 queries — which reads as "BM25 cannot help", but
+// re-ranking changes 2 of 30 queries -- which reads as "BM25 cannot help", but
 // only establishes that it cannot help *when the keyword leg is already almost
 // never wrong*. A real vault is not that corpus, and an RRF-damping explanation
 // for the flatness was already tried and refuted: sweeping k from 1 to 60 moved

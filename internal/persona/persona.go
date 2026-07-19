@@ -73,7 +73,7 @@ func (r *Registry) enabled(id string) bool {
 }
 
 // List returns tier-1 metadata for every enabled persona. A missing or
-// unparseable file is logged and skipped — a broken persona shouldn't take
+// unparseable file is logged and skipped -- a broken persona shouldn't take
 // discovery down with it.
 func (r *Registry) List() []Meta {
 	var out []Meta
@@ -90,7 +90,7 @@ func (r *Registry) List() []Meta {
 	return out
 }
 
-// Get returns the full persona — tier 2, called once the agent has decided
+// Get returns the full persona -- tier 2, called once the agent has decided
 // this persona fits the moment. Disabled personas are NotFound even when
 // their file exists: disabled means not available to invoke.
 func (r *Registry) Get(id string) (Persona, error) {

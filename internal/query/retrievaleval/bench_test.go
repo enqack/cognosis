@@ -12,7 +12,7 @@ import (
 // asserts on wall-clock. Run with `mage bench`, never with -race (race
 // instrumentation makes latency numbers meaningless).
 //
-// The corpus is built once per benchmark function, outside the timed loop —
+// The corpus is built once per benchmark function, outside the timed loop --
 // index construction otherwise dominates every measurement.
 
 func BenchmarkVectorLeg(b *testing.B) {
@@ -115,7 +115,7 @@ func BenchmarkRunEndToEnd(b *testing.B) {
 	//
 	// The arms above cannot show this. Every query in c.Queries returns a full
 	// pool of 50 keyword candidates on this corpus, so the fallback never
-	// triggers and its cost is a single length comparison — which is why the
+	// triggers and its cost is a single length comparison -- which is why the
 	// recorded baseline says nothing about it. Only the starving set puts the
 	// leg in the regime where the OR retry executes.
 	//

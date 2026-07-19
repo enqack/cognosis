@@ -7,7 +7,7 @@ import (
 	"github.com/enqack/cognosis/internal/store"
 )
 
-// TestAuditGraphDetectsAMissingEdge — the graph is the one part of the index
+// TestAuditGraphDetectsAMissingEdge -- the graph is the one part of the index
 // that can decay while notes, chunks and embeddings all stay correct, because
 // links are resolved once at index time and never re-derived. Deleting an edge
 // directly is exactly what the failures this audit exists for leave behind:
@@ -48,7 +48,7 @@ func TestAuditGraphDetectsAMissingEdge(t *testing.T) {
 		t.Fatal(err)
 	}
 	if g.OK() {
-		t.Fatal("audit reports healthy with an edge deleted — it cannot see the failure it exists for")
+		t.Fatal("audit reports healthy with an edge deleted -- it cannot see the failure it exists for")
 	}
 	if g.Missing != 1 {
 		t.Errorf("missing = %d, want 1", g.Missing)
@@ -59,7 +59,7 @@ func TestAuditGraphDetectsAMissingEdge(t *testing.T) {
 }
 
 // An edge the content does not imply is the opposite corruption, and must not
-// be silently tolerated — a stale edge keeps a note reachable through a link
+// be silently tolerated -- a stale edge keeps a note reachable through a link
 // its author removed.
 func TestAuditGraphDetectsAnExtraEdge(t *testing.T) {
 	p, s, _, ctx := testPipeline(t)

@@ -29,7 +29,7 @@ func (g GraphAudit) OK() bool { return g.Missing == 0 && g.Extra == 0 }
 // links are resolved once at index time and are not re-derived afterwards: a
 // note indexed before its target loses that edge, and reconciliation skips it
 // forever after since its content hash never changes. An editor's atomic save
-// used to cause exactly this — measured at 7 edges down to 6 — while every
+// used to cause exactly this -- measured at 7 edges down to 6 -- while every
 // health check reported ok.
 //
 // It re-derives through the indexer's own resolveLinks rather than a private

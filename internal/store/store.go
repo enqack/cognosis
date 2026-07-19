@@ -48,7 +48,7 @@ func ResolveDSN(configured string) (string, error) {
 		parent := filepath.Dir(dir)
 		if parent == dir {
 			return "", cogerr.Ef(op, cogerr.Unavailable,
-				"dsn not configured and no .pg-data found above cwd — set dsn in config or run pg-start")
+				"dsn not configured and no .pg-data found above cwd -- set dsn in config or run pg-start")
 		}
 		dir = parent
 	}
@@ -76,7 +76,7 @@ func sockDir(repoDir, pgdata string) string {
 	//
 	// Changing it moves this directory, and the consequence is indirect but
 	// real: an old and a new binary place the socket in different places, so
-	// they can reach *different postmasters* — and LockInstance only excludes
+	// they can reach *different postmasters* -- and LockInstance only excludes
 	// daemons that reached the same database. The lock key itself is a fixed
 	// constant and does not move. Stop the daemon before upgrading across this
 	// change. The flake derives the same directory with b3sum so the shell and
@@ -96,14 +96,14 @@ const HNSWEfSearch = 100
 // of stopping after one ef_search-sized candidate list. This is the setting
 // that actually fixes filtered retrieval: with a project or status predicate,
 // a fixed candidate list is filtered *after* the graph walk, so a scope holding
-// a quarter of the corpus returned as few as 8 rows for a requested 50 — recall
+// a quarter of the corpus returned as few as 8 rows for a requested 50 -- recall
 // 0.205 against exact KNN. Raising ef_search alone does not fix it (0.883 at
 // ef_search=200); it only enlarges the list being filtered down.
 //
 // relaxed_order over strict_order deliberately. relaxed admits slight
 // out-of-distance-order results (Kendall ~0.995 vs 1.000) but retrieves more
 // of the true neighbours (0.981 vs 0.969 recall on the worst scope), and RRF
-// consumes rank position with k=60 damping — rank 1 scores 1/61 and rank 50
+// consumes rank position with k=60 damping -- rank 1 scores 1/61 and rank 50
 // scores 1/110, so the whole rank range spans 1.8x while a *missing* item
 // contributes exactly 0. Recall dominates ordering under this fusion.
 const HNSWIterativeScan = "relaxed_order"
@@ -146,7 +146,7 @@ func connect(ctx context.Context, dsn string, settings []string) (*Store, error)
 		return nil, cogerr.E(op, cogerr.Validation, err)
 	}
 	// On a fresh database the vector extension doesn't exist until migration
-	// 0001 creates it — and the startup reachability check connects before
+	// 0001 creates it -- and the startup reachability check connects before
 	// migrations run. Missing type is fine then: nothing can query embeddings
 	// before provisioning; connections opened after the migration register the
 	// types normally.
@@ -154,7 +154,7 @@ func connect(ctx context.Context, dsn string, settings []string) (*Store, error)
 		// Scan settings first, and independent of the type registration
 		// below: Postgres accepts dotted (extension-namespaced) GUC names as
 		// placeholders even before the extension loads, so these apply on
-		// pre-migration connections too — which matters because such a
+		// pre-migration connections too -- which matters because such a
 		// connection is pooled and reused long after migrations finish.
 		//
 		// A failure here is not fatal. On a pgvector too old to know
@@ -190,7 +190,7 @@ func connect(ctx context.Context, dsn string, settings []string) (*Store, error)
 
 func (s *Store) Close() { s.pool.Close() }
 
-// redactDSN strips credentials for error messages — startup failures should
+// redactDSN strips credentials for error messages -- startup failures should
 // name the attempted target, not its secrets.
 func redactDSN(dsn string) string {
 	u, err := url.Parse(dsn)

@@ -3,7 +3,7 @@
 # persist anything durable from the session via its Cognosis MCP tools.
 #
 # Reads the SessionEnd stdin payload and resumes the ending session
-# (`--resume "$session_id"`) so the headless turn actually sees what happened —
+# (`--resume "$session_id"`) so the headless turn actually sees what happened --
 # a bare `claude -p` would start a context-less new session and judge blind.
 #
 # Deliberately a nudge, not a scraper: judgment about what's worth keeping
@@ -48,8 +48,8 @@ fi
 resume_args=()
 [ -n "${session_id:-}" ] && resume_args=(--resume "$session_id")
 
-COGNOSIS_SESSION_END_NUDGE_ACTIVE=1 claude -p "The session is ending. If anything durable surfaced this session —
-decisions, gotchas, open questions, completed work — persist it now with the
+COGNOSIS_SESSION_END_NUDGE_ACTIVE=1 claude -p "The session is ending. If anything durable surfaced this session --
+decisions, gotchas, open questions, completed work -- persist it now with the
 cognosis write_note tool (entries/ for raw capture), or write_reflection if a
 notable moment warrants one. If you already captured a note this session, use
 edit_note to extend it rather than rewriting the whole file. If nothing durable

@@ -13,7 +13,7 @@ import (
 // Request-scoped log calls in this package must use slog's *Context variants,
 // or the caller's token identity is silently dropped (see
 // auth.NewIdentityHandler). A plain Info() compiles, runs, and produces a line
-// that looks correct and is unattributable — so this is enforced statically
+// that looks correct and is unattributable -- so this is enforced statically
 // rather than left to review.
 //
 // A Go test rather than a script under scripts/checks/: check-all.sh treats
@@ -23,7 +23,7 @@ import (
 // never ran. This one needs nothing and runs under `mage test`.
 //
 // Allowlisted by message literal, not line number, so moving code does not
-// require touching this list — but deleting or renaming an allowlisted call
+// require touching this list -- but deleting or renaming an allowlisted call
 // does, which is the point.
 var contextlessLogAllowed = map[string]string{
 	"mcp server listening": "startup, before any request; there is no caller to attribute it to",
@@ -78,7 +78,7 @@ func TestRequestScopedLogsCarryContext(t *testing.T) {
 					seenAllowed[msg] = true
 					return true
 				}
-				t.Errorf("%s: s.log.%s(%q) drops the caller's identity — use %sContext(ctx, ...) "+
+				t.Errorf("%s: s.log.%s(%q) drops the caller's identity -- use %sContext(ctx, ...) "+
 					"or add it to contextlessLogAllowed with a reason",
 					fset.Position(call.Pos()), method, msg, method)
 				return true
@@ -90,12 +90,12 @@ func TestRequestScopedLogsCarryContext(t *testing.T) {
 	// nobody re-reads why it was exempt.
 	for msg := range contextlessLogAllowed {
 		if !seenAllowed[msg] {
-			t.Errorf("allowlisted message %q was not found — delete the entry or fix the scan", msg)
+			t.Errorf("allowlisted message %q was not found -- delete the entry or fix the scan", msg)
 		}
 	}
 
-	// Without this the scan can match nothing at all — a renamed `log` field, a
-	// changed AST shape — and the check above passes vacuously forever.
+	// Without this the scan can match nothing at all -- a renamed `log` field, a
+	// changed AST shape -- and the check above passes vacuously forever.
 	if scanned == 0 {
 		t.Fatal("scanned no non-test .go files: the directory walk is broken")
 	}

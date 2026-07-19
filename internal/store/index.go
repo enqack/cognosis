@@ -14,7 +14,7 @@ import (
 // chunks, upsert the chunks' embeddings into every given provider table (a
 // write during a provider migration lands in both the active and the
 // in-progress table), and replace its outbound links. Either everything lands
-// or nothing does — a crash between the file write and this commit is exactly
+// or nothing does -- a crash between the file write and this commit is exactly
 // what boot reconciliation repairs.
 func (s *Store) IndexNote(ctx context.Context, n Note, chunks []Chunk,
 	embedsByTable map[string]map[int][]float32, links []Link) error {
@@ -87,9 +87,9 @@ func (s *Store) IndexNote(ctx context.Context, n Note, chunks []Chunk,
 
 // ResolveBasenames maps wikilink targets to note ids. Plain basenames (no
 // directory, no .md) resolve first-match-wins across the whole KB; qualified
-// "project:basename" targets resolve exactly within that project — the
+// "project:basename" targets resolve exactly within that project -- the
 // cross-project disambiguation for colliding basenames. Names that resolve to
-// no indexed note are simply absent from the result — dangling links are
+// no indexed note are simply absent from the result -- dangling links are
 // dropped, not errors.
 func (s *Store) ResolveBasenames(ctx context.Context, names []string) (map[string]uuid.UUID, error) {
 	const op = "store.ResolveBasenames"

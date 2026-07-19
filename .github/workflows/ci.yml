@@ -17,7 +17,7 @@ jobs:
 
       # All targets run through mage inside the flake's dev shell, so CI uses
       # the exact toolchain (Go, mage, Postgres+pgvector, a C compiler for
-      # -race) the flake pins — no separate setup-go/service-container drift.
+      # -race) the flake pins -- no separate setup-go/service-container drift.
 
       - name: lint
         run: nix develop --command mage lint

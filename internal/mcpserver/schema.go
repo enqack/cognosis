@@ -10,7 +10,7 @@ import (
 // the nullable-type unions jsonschema-go emits for Go slices and maps
 // ("type": ["null","array"]) into the single non-null type.
 //
-// The unions are technically correct — a nil Go slice marshals to JSON null —
+// The unions are technically correct -- a nil Go slice marshals to JSON null --
 // but real MCP clients degrade on them: a client whose schema model only
 // represents a single type string drops the field to untyped, then serializes
 // array arguments as strings, which this server's own validation rejects.

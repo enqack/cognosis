@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Feature: retrieval extensions — cached summaries in hits, as_of temporal
+# Feature: retrieval extensions -- cached summaries in hits, as_of temporal
 # views, list_decaying, and soft-delete hygiene (archived/faded excluded by
 # default, surfaced with include_archived). The archived-link RRF penalty is
 # proven deterministically by the query unit goldens (go test ./internal/query).

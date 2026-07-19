@@ -9,7 +9,7 @@ import (
 )
 
 // This is the CI-tier guard for the scan-capacity fix. It is deliberately
-// cheap — no corpus, no index, no timing, milliseconds — because the expensive
+// cheap -- no corpus, no index, no timing, milliseconds -- because the expensive
 // sweeps that established *what* the settings should be live in
 // internal/query/retrievaleval and are local-only. This one only guards that
 // the invariant still holds.
@@ -17,7 +17,7 @@ import (
 // The regression it exists to catch: someone raises candidatePool past
 // ef_search, or a refactor drops the AfterConnect hook, and the vector leg
 // silently under-returns again with no symptom anywhere. That is exactly how
-// the defect went unnoticed in the first place — a truncated candidate list
+// the defect went unnoticed in the first place -- a truncated candidate list
 // produces plausible results, not an error.
 
 func TestCandidatePoolWithinScanCapacity(t *testing.T) {
@@ -28,7 +28,7 @@ func TestCandidatePoolWithinScanCapacity(t *testing.T) {
 	}
 }
 
-// The constants agreeing is necessary but not sufficient — they also have to
+// The constants agreeing is necessary but not sufficient -- they also have to
 // reach the database. This asserts a connection opened by store.Connect really
 // carries both settings.
 func TestConnectAppliesScanSettings(t *testing.T) {

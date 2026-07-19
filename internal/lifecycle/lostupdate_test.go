@@ -15,7 +15,7 @@ import (
 	"github.com/enqack/cognosis/internal/write"
 )
 
-// TestLifecycleAndPipelineShareOneLock — the cross-package lost update.
+// TestLifecycleAndPipelineShareOneLock -- the cross-package lost update.
 //
 // lifecycle.rewrite writes vault files directly rather than through the
 // Pipeline, so before this fix the two writers serialized against themselves
@@ -25,7 +25,7 @@ import (
 // report success, and reconciliation cannot repair it because the file and the
 // index agree on the wrong value.
 //
-// The unit tests in write/pipeline_test.go structurally cannot catch this —
+// The unit tests in write/pipeline_test.go structurally cannot catch this --
 // they race Edit against Edit, which was always serialized. This races Edit
 // against the lifecycle writer, which is the pair that was not.
 func TestLifecycleAndPipelineShareOneLock(t *testing.T) {
@@ -104,13 +104,13 @@ func TestLifecycleAndPipelineShareOneLock(t *testing.T) {
 	_ = context.Background()
 }
 
-// TestMoveDoesNotRevertAConcurrentEdit — move was the one rewrite path with no
+// TestMoveDoesNotRevertAConcurrentEdit -- move was the one rewrite path with no
 // stale protection, and the worst one to lose it on: it writes the destination
 // and deletes the source, so a concurrent edit is reverted *and* the note is
 // archived out of retrieval, with both calls reporting success.
 //
 // rewriteLocked reads the file it is about to write, which for a move is the
-// destination — and move has already refused if that exists. So its check
+// destination -- and move has already refused if that exists. So its check
 // always hit the not-exist arm and was skipped by construction. The source is
 // what has to be compared.
 func TestMoveDoesNotRevertAConcurrentEdit(t *testing.T) {
@@ -245,14 +245,14 @@ func TestCompileSkipsArchivalWithoutAbortingTheRun(t *testing.T) {
 // A skipped write must leave no trace of the actions it was carrying. One
 // reinforce appends up to three (`reinforced`, `dispute-cleared`, `promoted`)
 // before the write, so replacing only the last left `reinforced` standing above
-// `skipped` — the report affirming something that never reached disk.
+// `skipped` -- the report affirming something that never reached disk.
 func TestReportReplaceSinceDropsEveryActionForTheNote(t *testing.T) {
 	r := &Report{Actions: []Action{{"reinforced", "other", "kept"}}}
 	mark := len(r.Actions)
 	r.Actions = append(r.Actions,
-		Action{"reinforced", "target", "0.7→0.8"},
+		Action{"reinforced", "target", "0.7->0.8"},
 		Action{"dispute-cleared", "target", ""},
-		Action{"promoted", "target", "seed→developing"})
+		Action{"promoted", "target", "seed->developing"})
 
 	r.replaceSince(mark, Action{"skipped", "target", "(changed during the run)"})
 
@@ -294,18 +294,18 @@ func (s *editOnNthSuppress) Suppress(string) {
 }
 func (s *editOnNthSuppress) Unsuppress(string) {}
 
-// TestReinforceThenGraduateKeepsTheLandedWrite — caller-level, and the third
+// TestReinforceThenGraduateKeepsTheLandedWrite -- caller-level, and the third
 // distinct wrong-entry bug in this mechanism.
 //
 // One iteration can write twice: the `changed` block writes a reinforce, then
 // the graduate block writes again. `mark` was captured once per note, so a skip
-// on the *second* write truncated back past the first — deleting actions for a
+// on the *second* write truncated back past the first -- deleting actions for a
 // change already on disk, already indexed and already counted in changedFiles.
 // log.md would then deny a confidence bump that happened, and an agent reading
 // "not applied" would re-issue the reinforce and apply it twice.
 //
 // The edit has to land *between* the two writes. An earlier attempt held the
-// shared lock for the whole run, which blocked the first write instead — so
+// shared lock for the whole run, which blocked the first write instead -- so
 // both were skipped, truncation was harmless, and the test passed with the bug
 // present. Hooking the second Suppress makes the interleave exact.
 func TestReinforceThenGraduateKeepsTheLandedWrite(t *testing.T) {
@@ -351,7 +351,7 @@ func TestReinforceThenGraduateKeepsTheLandedWrite(t *testing.T) {
 		}
 	}
 	if !kinds["reinforced"] {
-		t.Errorf("the reinforce is on disk but the report dropped it — log.md would deny a change "+
+		t.Errorf("the reinforce is on disk but the report dropped it -- log.md would deny a change "+
 			"that happened, and an agent would re-issue it: %+v", rep.Actions)
 	}
 	if !kinds["skipped"] {

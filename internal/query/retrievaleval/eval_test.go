@@ -13,7 +13,7 @@ import (
 
 // The sweeps below are local-tier: they build multi-second corpora and produce
 // numbers that jitter with HNSW graph construction and machine load. CI is the
-// wrong home for that — a perf or recall threshold on a shared runner is either
+// wrong home for that -- a perf or recall threshold on a shared runner is either
 // meaningless or flaky, and flaky assertions get muted rather than fixed.
 //
 // The cheap harness-correctness tests (synth, metrics, the small corpus smoke
@@ -28,7 +28,7 @@ func requireEval(t testing.TB) {
 }
 
 // evalSpec is the sweep corpus. Size is env-tunable because the only hard
-// requirement is that the planner actually chooses HNSW — below roughly 3k
+// requirement is that the planner actually chooses HNSW -- below roughly 3k
 // chunks it picks a seqscan and every cell reports a full result set and
 // perfect recall, which is indistinguishable from "no defect".
 func evalSpec(t testing.TB) CorpusSpec {
@@ -70,7 +70,7 @@ var gucSettings = []struct {
 }{
 	// The pre-fix baseline must be stated explicitly. store.Connect now sets
 	// ef_search and iterative_scan on every pooled connection, so a probe with
-	// no SET LOCAL inherits the *fixed* settings — leaving "default" as nil
+	// no SET LOCAL inherits the *fixed* settings -- leaving "default" as nil
 	// would silently relabel the fix as the baseline and make the sweep claim
 	// there was never a defect.
 	{"PRE-FIX(ef=40,off)", store.SessionSettings{
@@ -79,7 +79,7 @@ var gucSettings = []struct {
 	// Every row below pins BOTH knobs. A partial SET LOCAL inherits the other
 	// from the session, so "ef_search=200" with iterative_scan left alone
 	// silently measured ef_search=200 + relaxed_order once Connect started
-	// setting it — reading 0.985 where the isolated setting measures 0.883.
+	// setting it -- reading 0.985 where the isolated setting measures 0.883.
 	{"ef_search=200,iter=off", store.SessionSettings{
 		"hnsw.ef_search": "200", "hnsw.iterative_scan": "off"}},
 	{"ef=40,iterative=relaxed", store.SessionSettings{
@@ -88,7 +88,7 @@ var gucSettings = []struct {
 		"hnsw.ef_search": "40", "hnsw.iterative_scan": "strict_order"}},
 	// relaxed_order may return rows slightly out of distance order. RRF
 	// consumes rank *position*, so ordering error in a leg propagates into
-	// fusion — which is why strict_order is measured alongside rather than
+	// fusion -- which is why strict_order is measured alongside rather than
 	// assumed equivalent. Kendall tau in the recall sweep is the number that
 	// separates them.
 	{"ef_search=200+relaxed", store.SessionSettings{
@@ -128,7 +128,7 @@ func accessPath(plan, table string) string {
 // different scan settings, and that is not self-evident: pushing GUCs through
 // the DSN's startup-packet options *looks* like it works, but AfterConnect
 // runs afterwards and overwrites them. That silently collapsed both arms into
-// one configuration twice — once in the fused-overlap test (0/30 changed) and
+// one configuration twice -- once in the fused-overlap test (0/30 changed) and
 // once in the end-to-end benchmark (~0 delta). Both readings are perfectly
 // plausible and both were wrong. Assert the premise instead of trusting it.
 func assertPoolsDiffer(ctx context.Context, t testing.TB, a, b *store.Store) {
@@ -142,7 +142,7 @@ func assertPoolsDiffer(ctx context.Context, t testing.TB, a, b *store.Store) {
 		t.Fatal(err)
 	}
 	if av == bv {
-		t.Fatalf("both pools report hnsw.ef_search=%s — the arms are identically configured, "+
+		t.Fatalf("both pools report hnsw.ef_search=%s -- the arms are identically configured, "+
 			"so any measured difference is noise (did settings go through the DSN instead of "+
 			"ConnectWithScanSettings?)", av)
 	}
@@ -190,7 +190,7 @@ func writeArtifact(t testing.TB, name, body string) {
 
 // baselineSetting names the pre-fix row that every other row is compared
 // against. It is a plain string compared against gucSettings[i].Name, so a
-// rename over there does NOT break compilation — it yields a missing map key,
+// rename over there does NOT break compilation -- it yields a missing map key,
 // which reads as 0 and produces a confident false failure. That exact thing
 // happened once already (every setting reporting recall 0.000 against a
 // baseline whose key no longer existed). TestBaselineSettingExists is what

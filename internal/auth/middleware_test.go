@@ -13,7 +13,7 @@ import (
 	"github.com/enqack/cognosis/internal/store"
 )
 
-// fakeTokenStore is an in-memory TokenStore — Middleware needs no database.
+// fakeTokenStore is an in-memory TokenStore -- Middleware needs no database.
 type fakeTokenStore struct {
 	tok      store.Token
 	found    bool

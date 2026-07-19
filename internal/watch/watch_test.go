@@ -58,7 +58,7 @@ func writeEntry(t *testing.T, root, rel, content string) string {
 	return p
 }
 
-// TestBootFastPathZeroHashes — the 1b exit criterion: a second boot against an
+// TestBootFastPathZeroHashes -- the 1b exit criterion: a second boot against an
 // unchanged vault computes zero hashes (counter assertion, not timing). Vault
 // size is 1k files.
 func TestBootFastPathZeroHashes(t *testing.T) {
@@ -82,7 +82,7 @@ func TestBootFastPathZeroHashes(t *testing.T) {
 	}
 }
 
-// TestSweepCatchesMtimePreservingEdit — an edit that preserves size and mtime
+// TestSweepCatchesMtimePreservingEdit -- an edit that preserves size and mtime
 // slips the fast path; the forced-hash sweep catches it.
 func TestSweepCatchesMtimePreservingEdit(t *testing.T) {
 	w, s, root, ctx := testWatcher(t)
@@ -132,7 +132,7 @@ func TestSweepCatchesMtimePreservingEdit(t *testing.T) {
 	}
 }
 
-// TestBrokenHandEditIsolated — invalid frontmatter is logged and not indexed;
+// TestBrokenHandEditIsolated -- invalid frontmatter is logged and not indexed;
 // the previous DB state survives.
 func TestBrokenHandEditIsolated(t *testing.T) {
 	w, s, root, ctx := testWatcher(t)
@@ -162,7 +162,7 @@ func TestBrokenHandEditIsolated(t *testing.T) {
 	}
 }
 
-// TestDeletionReconciled — a file removed while the daemon was down disappears
+// TestDeletionReconciled -- a file removed while the daemon was down disappears
 // from the index on boot reconciliation.
 func TestDeletionReconciled(t *testing.T) {
 	w, s, root, ctx := testWatcher(t)
@@ -181,7 +181,7 @@ func TestDeletionReconciled(t *testing.T) {
 	}
 }
 
-// TestDriftCommittedToHistory — confirmed drift lands as a history commit
+// TestDriftCommittedToHistory -- confirmed drift lands as a history commit
 // in the vault history repo.
 func TestDriftCommittedToHistory(t *testing.T) {
 	w, s, root, ctx := testWatcher(t)
@@ -198,7 +198,7 @@ func TestDriftCommittedToHistory(t *testing.T) {
 	}
 }
 
-// TestWatcherConvergence — live events converge the index within a deadline
+// TestWatcherConvergence -- live events converge the index within a deadline
 // (never event-count assertions; fsnotify coalescing varies by platform).
 func TestWatcherConvergence(t *testing.T) {
 	w, s, root, ctx := testWatcher(t)
@@ -245,7 +245,7 @@ func TestWatcherConvergence(t *testing.T) {
 	}
 }
 
-// TestSuppressedPathIgnored — events for a path Cognosis is writing are
+// TestSuppressedPathIgnored -- events for a path Cognosis is writing are
 // dropped (write-conflict handling).
 func TestSuppressedPathIgnored(t *testing.T) {
 	w, s, root, ctx := testWatcher(t)
@@ -268,7 +268,7 @@ func TestSuppressedPathIgnored(t *testing.T) {
 
 // TestBatchIndexResolvesLinksRegardlessOfOrder pins the graph against index
 // order. Link resolution matches notes already in the index, so in a batch a
-// note whose target is indexed later loses that edge — and nothing repairs it,
+// note whose target is indexed later loses that edge -- and nothing repairs it,
 // because reconciliation confirms drift by content hash and an unchanged file
 // is skipped forever. A rebuild after dropping the schema therefore silently
 // produced a partial graph.
@@ -309,8 +309,8 @@ Refers to [[zzz-target]] in the body.
 // relinkBatch cannot: the referrer is not in the batch at all.
 //
 // A references B, B does not exist yet, so A's edge is dropped. When B lands
-// in a *later* run, A is unchanged — drift detection confirms by content hash
-// and skips it forever — so without a reverse lookup from B's basename back to
+// in a *later* run, A is unchanged -- drift detection confirms by content hash
+// and skips it forever -- so without a reverse lookup from B's basename back to
 // whoever mentions it, that edge stays dangling for good.
 func TestLaterArrivalRepairsDanglingLink(t *testing.T) {
 	w, s, root, ctx := testWatcher(t)
@@ -350,7 +350,7 @@ Refers to [[late-target]] which does not exist yet.
 	}
 }
 
-// The same repair must happen on a sanctioned write, not only on reconcile —
+// The same repair must happen on a sanctioned write, not only on reconcile --
 // write_note is how most notes actually land.
 func TestLaterArrivalRepairsOnPipelineWrite(t *testing.T) {
 	w, s, root, ctx := testWatcher(t)
@@ -383,7 +383,7 @@ Refers to [[written-target]] which does not exist yet.
 	}
 }
 
-// TestAtomicSaveKeepsInboundLinks — vim, VS Code and most editors save by
+// TestAtomicSaveKeepsInboundLinks -- vim, VS Code and most editors save by
 // writing a temp file and renaming it over the target. fsnotify reports that
 // as Rename/Remove on the target path, and treating it as a deletion drops the
 // note row, which cascades every *inbound* link away. The follow-up Create
@@ -391,7 +391,7 @@ Refers to [[written-target]] which does not exist yet.
 // referrers: those notes did not change, so reconcile skips them by content
 // hash forever.
 //
-// Observed in the real vault — editing one note's frontmatter took the graph
+// Observed in the real vault -- editing one note's frontmatter took the graph
 // from 7 edges to 6, and the lost edge was the one pointing *at* it. Ordinary
 // editing silently degraded the graph leg of retrieval.
 func TestAtomicSaveKeepsInboundLinks(t *testing.T) {
@@ -424,7 +424,7 @@ Refers to [[target]] in the body.
 	time.Sleep(200 * time.Millisecond)
 
 	// The atomic save. The temp file is not .md, so it draws no events of its
-	// own — only the rename onto the watched path does.
+	// own -- only the rename onto the watched path does.
 	final := filepath.Join(root, "entries", "target.md")
 	tmp := filepath.Join(root, "entries", "target.md.swaptmp")
 	if err := os.WriteFile(tmp, []byte(entryContent(target)+"\nEdited in place.\n"), 0o600); err != nil {
@@ -448,7 +448,7 @@ Refers to [[target]] in the body.
 	}
 }
 
-// The settle window must not swallow a real deletion — that is the behaviour it
+// The settle window must not swallow a real deletion -- that is the behaviour it
 // is inserted in front of, and the one users rely on when they delete a note.
 func TestRealDeletionStillRemovesTheNote(t *testing.T) {
 	w, s, root, ctx := testWatcher(t)

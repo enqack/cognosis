@@ -1,5 +1,5 @@
 // Package auth implements per-client bearer tokens: Argon2id-hashed at rest,
-// checked synchronously against the tokens table on every request (no cache —
+// checked synchronously against the tokens table on every request (no cache --
 // revocation is effective on the very next request, by design), with every
 // tool call audit-logged under the resolved token identity.
 package auth
@@ -24,7 +24,7 @@ import (
 	"github.com/enqack/cognosis/internal/store"
 )
 
-// Argon2id parameters — server-side hashing of high-entropy secrets, so the
+// Argon2id parameters -- server-side hashing of high-entropy secrets, so the
 // moderate memory cost is about defense in depth, not password stretching.
 const (
 	argonTime    = 1
@@ -40,7 +40,7 @@ const (
 func Generate() (plaintext string, id uuid.UUID, hash string, err error) {
 	const op = "auth.Generate"
 	// UUIDv7: time-ordered, so ids sort lexically by creation and the id itself
-	// dates a credential — the same contract note ids carry. Safe despite being
+	// dates a credential -- the same contract note ids carry. Safe despite being
 	// predictable, because the id is a lookup key rather than a secret: auth
 	// rests on the Argon2id-verified secret half, and Middleware returns one
 	// 401 for both an unknown id and a bad secret, so there is no oracle.
@@ -139,7 +139,7 @@ func FromContext(ctx context.Context) (Identity, bool) {
 	return id, ok
 }
 
-// TokenStore is the minimal token surface Middleware needs — the concrete
+// TokenStore is the minimal token surface Middleware needs -- the concrete
 // *store.Store satisfies it, and tests can supply a fake without a database.
 type TokenStore interface {
 	GetTokenByID(ctx context.Context, id uuid.UUID) (store.Token, error)
@@ -176,16 +176,16 @@ func Middleware(s TokenStore, next http.Handler) http.Handler {
 // EnsureLocalToken implements the zero-config local posture: local clients
 // (the CLI, hooks, Claude Code registration) authenticate with the plaintext
 // token stashed (0600) in the state dir. The file is the source of truth for
-// "is local access provisioned" — a live DB token without the file (fresh
+// "is local access provisioned" -- a live DB token without the file (fresh
 // state dir against an existing database) still needs a fresh mint, since
 // plaintexts are never recoverable from hashes. The file is the local trust
-// boundary — same as the vault itself.
+// boundary -- same as the vault itself.
 //
 // Provisioned means the stashed plaintext still authenticates, not merely that
 // the file exists. Both halves are droppable independently: the tokens table
 // lives in the database schema, which the vault contract declares derived and
-// rebuildable, so `drop schema public cascade` — the documented remedy for a
-// migration renumber — takes every token row with it while the file survives.
+// rebuildable, so `drop schema public cascade` -- the documented remedy for a
+// migration renumber -- takes every token row with it while the file survives.
 // A presence-only check left that file pointing at a deleted row: the daemon
 // reported healthy, `status` said ok, and every client silently 401'd with
 // nothing in the logs connecting the two.
@@ -213,13 +213,13 @@ func EnsureLocalToken(ctx context.Context, s *store.Store, tokenFile string) err
 	// The file is written before the row on purpose: a crash between the two
 	// then leaves a file whose row never existed, which the next boot detects
 	// as unusable and re-mints over. The other order left a live row with no
-	// file — a state this function refuses to mint past (below), so a crash
+	// file -- a state this function refuses to mint past (below), so a crash
 	// mid-provision wedged the daemon until a manual revoke.
 	if err := os.WriteFile(tokenFile, []byte(plaintext+"\n"), 0o600); err != nil {
 		return cogerr.E(op, cogerr.Internal, err)
 	}
 	// Always the plain name. Uniqueness is scoped to live tokens, so a revoked
-	// `local` frees the name and rotation keeps it — which is what makes
+	// `local` frees the name and rotation keeps it -- which is what makes
 	// `token=local` in a log line always mean exactly the daemon.
 	//
 	// A *live* `local` this state dir has no plaintext for means a fresh state
@@ -228,7 +228,7 @@ func EnsureLocalToken(ctx context.Context, s *store.Store, tokenFile string) err
 	// mangled name: a daemon whose own token is called something unrecognisable
 	// is worse than one that says what is wrong. Mirrors the revocation refusal
 	// in localTokenUsable. Any other create failure (connection loss) is
-	// reported as-is — the revoke remedy would be wrong advice for it.
+	// reported as-is -- the revoke remedy would be wrong advice for it.
 	if err := s.CreateToken(ctx, id, LocalTokenName, hash); err != nil {
 		// Refusing to mint must leave no token file: the plaintext written above
 		// was never registered, and a file that cannot authenticate reads as
@@ -275,8 +275,8 @@ func CheckLocalToken(ctx context.Context, s *store.Store, tokenFile string) erro
 }
 
 // localTokenUsable reports whether the stashed plaintext would still pass
-// Middleware. It runs the same checks in the same order — parse, look up by
-// embedded id, reject revoked, verify the secret — because a divergence here
+// Middleware. It runs the same checks in the same order -- parse, look up by
+// embedded id, reject revoked, verify the secret -- because a divergence here
 // is exactly the failure being fixed: a token that provisioning calls fine and
 // every request calls invalid.
 //
@@ -299,7 +299,7 @@ func localTokenUsable(ctx context.Context, s *store.Store, tokenFile, plaintext 
 	}
 	if t.RevokedAt != nil {
 		// Deliberate operator action, not drift. Minting a replacement would
-		// undo a revocation silently — and, since the name is taken, under a
+		// undo a revocation silently -- and, since the name is taken, under a
 		// second name, leaving the revoked row looking effective. Fail loud
 		// and make deleting the file the explicit re-provision gesture, which
 		// is what the file being the source of truth already means.

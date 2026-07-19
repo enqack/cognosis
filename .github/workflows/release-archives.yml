@@ -24,7 +24,7 @@ jobs:
         run: nix develop --command mage release
 
       # The release card body is the tagged version's CHANGELOG headline prose
-      # plus its Breaking section — the details stay in CHANGELOG.md, which the
+      # plus its Breaking section -- the details stay in CHANGELOG.md, which the
       # card links to. One source of truth; the card can never say something
       # the log does not. test -s fails the workflow when the tagged version
       # has no CHANGELOG section, instead of shipping an empty card.

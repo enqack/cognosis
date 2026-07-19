@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// TestEnsureProviderProvisionsShape — a provider with an unseen dimension gets
+// TestEnsureProviderProvisionsShape -- a provider with an unseen dimension gets
 // a correctly shaped table, asserted via catalog query, not by using it.
 func TestEnsureProviderProvisionsShape(t *testing.T) {
 	s, ctx := testStore(t)
@@ -54,7 +54,7 @@ func TestEnsureProviderProvisionsShape(t *testing.T) {
 	}
 }
 
-// TestActiveProviderIsSingular — activating a second provider deactivates the
+// TestActiveProviderIsSingular -- activating a second provider deactivates the
 // first; exactly one row is ever active.
 func TestActiveProviderIsSingular(t *testing.T) {
 	s, ctx := testStore(t)
@@ -103,7 +103,7 @@ func TestUpsertEmbeddings(t *testing.T) {
 	if err := s.UpsertEmbeddings(ctx, "embeddings_a_m", vecs); err != nil {
 		t.Fatal(err)
 	}
-	// Upsert twice — conflict path.
+	// Upsert twice -- conflict path.
 	vecs[chunkID] = []float32{0, 1, 0}
 	if err := s.UpsertEmbeddings(ctx, "embeddings_a_m", vecs); err != nil {
 		t.Fatal(err)

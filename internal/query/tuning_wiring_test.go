@@ -8,7 +8,7 @@ import (
 
 // The accessor tests in tuning_test.go prove Tuning *resolves* correctly. They
 // would all pass if Run ignored Tuning entirely. These prove it is actually
-// wired into Run — a missed call site is otherwise invisible.
+// wired into Run -- a missed call site is otherwise invisible.
 
 // DisableGraph must remove the graph leg. entries/garden.md is reachable only
 // via the link graph (see TestGraphOnlyNoteAppears), so it is the sharpest
@@ -82,8 +82,8 @@ func TestTuningCandidatePoolApplies(t *testing.T) {
 // and doubles as the record of why the golden ranking changed when it shipped.
 //
 // The fixture query is "where is the index stored". Under AND the conjunction
-// matches only entries/pg.md ("stores the derived index") — one candidate,
-// below the threshold — so the leg re-runs with OR and picks up
+// matches only entries/pg.md ("stores the derived index") -- one candidate,
+// below the threshold -- so the leg re-runs with OR and picks up
 // notes/scoped.md ("Project-scoped capture about the index"), which contains
 // one term but not both.
 //
@@ -111,7 +111,7 @@ func TestTuningFTSFallbackReachesRun(t *testing.T) {
 		t.Errorf("with fallback: scoped.md at %d, want 1 (got %v)", idx, gotWith)
 	}
 	if idx := indexOf(gotWithout, "notes/scoped.md"); idx != 2 {
-		t.Errorf("fallback disabled: scoped.md at %d, want 2 — the tuning knob did not "+
+		t.Errorf("fallback disabled: scoped.md at %d, want 2 -- the tuning knob did not "+
 			"reach Run, or the fallback is not what moved it (got %v)", idx, gotWithout)
 	}
 }

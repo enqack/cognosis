@@ -21,10 +21,10 @@ import (
 // `n.path, c.ordinal` as a tie-break: rows tying on the ranking expression
 // would otherwise come back in physical-row order, which a schema drop +
 // reindex does not preserve. Chunk ids are re-minted on reindex, so
-// (path, ordinal) — derived from vault content — is the stable key. The
+// (path, ordinal) -- derived from vault content -- is the stable key. The
 // vector leg carries no tie-break on purpose: pgvector matches an HNSW index
 // only against the bare `<=>` order-by expression (see vectorLegSQL), and the
-// leg is ANN-approximate — graph-build-order dependent — so exact float-tie
+// leg is ANN-approximate -- graph-build-order dependent -- so exact float-tie
 // determinism is not on offer there anyway.
 
 // RankedChunk is one candidate from a single leg, in leg order.
@@ -44,20 +44,20 @@ type Filter struct {
 	IncludeFalsified bool
 	// IncludeArchived surfaces soft-deleted notes (status faded/archived).
 	// Default false: an archived concept is shelved, so its own chunks must not
-	// come back in ordinary retrieval — that is the whole point of a soft
+	// come back in ordinary retrieval -- that is the whole point of a soft
 	// delete. Audit/history callers set it true.
 	IncludeArchived bool
 	// AsOf reasons over frontmatter timestamps: only notes created at or
 	// before T are visible, and a note falsified or archived *after* T counts
 	// as believed/live at T (at-T status overrides current status). Content is
-	// always current — recovering content-at-T is the vault history's job.
+	// always current -- recovering content-at-T is the vault history's job.
 	AsOf *time.Time
 }
 
 // timeFilterSQL is the temporal predicate shared by the legs. Parameters:
 // $if = include_falsified (bool), $ia = include_archived (bool),
 // $ts = as_of (nullable timestamptz), $tx = as_of formatted as the frontmatter
-// timestamp layout (text) — the falsified_at/archived_at comparisons are
+// timestamp layout (text) -- the falsified_at/archived_at comparisons are
 // lexicographic over the fixed-width layout, which sidesteps timezone coercion
 // between JSONB text and timestamptz.
 func timeFilterSQL(ifP, iaP, tsP, txP string) string {
@@ -97,13 +97,13 @@ func scanRanked(rows pgx.Rows) ([]RankedChunk, error) {
 const rankedCols = `c.id, n.id, n.path, n.category, coalesce(c.heading_path, ''), c.content, n.summary`
 
 // vectorLegSQL renders the vector leg. Callers must have validated table
-// against tableNameRe first — it is interpolated, not parameterized.
+// against tableNameRe first -- it is interpolated, not parameterized.
 //
 // exact defeats index matching on the order-by expression: pgvector only
 // matches the bare `<=>` operator to an HNSW index, so `+ 0.0` forces an exact
 // scan regardless of GUCs or cost estimates. That is how the retrieval
 // evaluation harness gets brute-force ground truth over a byte-identical
-// filter scope — scoring the approximate leg against a differently-shaped
+// filter scope -- scoring the approximate leg against a differently-shaped
 // query would measure something that is not the vector leg.
 func vectorLegSQL(table string, exact bool) string {
 	order := "e.embedding <=> $1"
@@ -147,7 +147,7 @@ func (s *Store) RankVector(ctx context.Context, table string, vec []float32,
 }
 
 // TSQueryMode selects how a query string becomes a tsquery. The keyword leg's
-// candidate set — not its ordering — is what dominates fused output (measured:
+// candidate set -- not its ordering -- is what dominates fused output (measured:
 // deleting the leg changes every query, perfectly reordering it changes ~2 in
 // 30), and this is the knob that sets it.
 type TSQueryMode int
@@ -161,7 +161,7 @@ const (
 	//
 	// Formerly measurement-only. It is now reachable from the request path, but
 	// only as a fallback when the AND conjunction returns fewer than
-	// query.ftsFallbackBelow candidates — never as the primary connective.
+	// query.ftsFallbackBelow candidates -- never as the primary connective.
 	// Measured on both a 125-chunk and a 2000-chunk corpus, that threshold
 	// fires on zero healthy queries while lifting target-note recall on queries
 	// whose terms span chunks; using OR unconditionally instead costs roughly
@@ -171,10 +171,10 @@ const (
 
 // tsqueryExpr renders the tsquery construction for a mode. The OR form
 // tokenizes through to_tsvector first so it inherits the same stemming and
-// stopword handling as the production path — differing on the connective
+// stopword handling as the production path -- differing on the connective
 // alone, which is what makes the comparison isolate that one choice. nullif
-// guards an all-stopword query: to_tsquery(”) raises a syntax error, whereas
-// a NULL tsquery matches nothing, which is the correct answer.
+// guards an all-stopword query: to_tsquery on the empty string raises a syntax
+// error, whereas a NULL tsquery matches nothing, which is the correct answer.
 func tsqueryExpr(mode TSQueryMode) string {
 	if mode == TSQueryOr {
 		return `to_tsquery('english', nullif(array_to_string(
@@ -216,7 +216,7 @@ func (s *Store) RankFTS(ctx context.Context, text string,
 
 // RankFTSMode is the keyword leg with an explicit connective. The request path
 // reaches TSQueryOr through it, as the fallback when the AND conjunction comes
-// back near-empty — see query.Engine and ftsFallbackBelow.
+// back near-empty -- see query.Engine and ftsFallbackBelow.
 func (s *Store) RankFTSMode(ctx context.Context, text string, mode TSQueryMode,
 	f Filter, limit int) ([]RankedChunk, error) {
 	const op = "store.RankFTSMode"
@@ -253,7 +253,7 @@ func graphLegArgs(seeds []uuid.UUID, f Filter, limit int) []any {
 
 // RankGraph is the graph leg: one hop out along links from the seed notes
 // (the notes behind the other legs' candidates), chunks of linked-to notes
-// ranked by how many distinct seeds reach them. A booster leg — it can
+// ranked by how many distinct seeds reach them. A booster leg -- it can
 // surface a note no text or vector match would find. Project scoping is
 // deliberately absent (it inherits through the seeds); the temporal and
 // falsified filters apply.
@@ -279,13 +279,13 @@ func (s *Store) RankGraph(ctx context.Context, seeds []uuid.UUID,
 //
 // It exists so retrieval can say "3 falsified notes also matched" instead of
 // silently returning nothing about them. Falsified notes are retained on
-// purpose — the vault records what it stopped believing — but the filtering
+// purpose -- the vault records what it stopped believing -- but the filtering
 // happens in SQL, so an agent working in an unusual context has no way to
 // notice that suppressed history exists and quietly reinvents it.
 //
 // Deliberately keyword-only: it reuses the FTS predicate, so it costs one
 // query and no embedding round trip. That makes it exact for the keyword leg
-// and blind to notes only the vector leg would have found — an undercount, and
+// and blind to notes only the vector leg would have found -- an undercount, and
 // the caller phrases it as "at least". Making it exact would mean re-running
 // every leg with the filter inverted, which is a second full retrieval per
 // query for a hint.
@@ -313,7 +313,7 @@ func (s *Store) CountSuppressedFalsified(ctx context.Context, text string, f Fil
 // outbound link to a soft-deleted (faded/archived) note. The RRF fusion layer
 // uses it to penalize chunks that describe a shelved concept: a dense old
 // reflection referencing a now-archived note stays in the index (the log is
-// append-only) but must not rank as current truth — the epistemological leak a
+// append-only) but must not rank as current truth -- the epistemological leak a
 // status filter on the note itself cannot catch.
 func (s *Store) ArchivedLinkers(ctx context.Context, noteIDs []uuid.UUID) (map[uuid.UUID]bool, error) {
 	const op = "store.ArchivedLinkers"
@@ -341,13 +341,13 @@ func (s *Store) ArchivedLinkers(ctx context.Context, noteIDs []uuid.UUID) (map[u
 	return out, rows.Err()
 }
 
-// ExplainRankVector captures the planner's strategy for the vector leg — the
+// ExplainRankVector captures the planner's strategy for the vector leg -- the
 // test suite records it as an artifact proving the HNSW index is used.
 //
 // It explains the *production* leg SQL, filters and all. An earlier version
 // explained a stripped query (no notes join, no WHERE, `select c.id`, a
 // hardcoded limit) and so could not show the thing most worth knowing: the
-// planner chooses a different access path depending on scope selectivity —
+// planner chooses a different access path depending on scope selectivity --
 // HNSW on a broad scope, a pkey scan plus exact Sort on a narrow one. An
 // artifact from the unfiltered query cannot catch a regression in the filtered
 // one, which is where filtered-ANN recall actually lives.

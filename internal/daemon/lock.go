@@ -45,7 +45,7 @@ func AcquireLock(path string) (*Lock, error) {
 			return nil, cogerr.Ef(op, cogerr.Conflict,
 				"another cognosis daemon is running (pid %d, lock %s)", pid, path)
 		}
-		// Stale lock: holder is gone — reclaim and retry once.
+		// Stale lock: holder is gone -- reclaim and retry once.
 		if rmErr := os.Remove(path); rmErr != nil && !os.IsNotExist(rmErr) {
 			return nil, cogerr.E(op, cogerr.Internal, rmErr)
 		}

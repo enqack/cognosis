@@ -43,7 +43,7 @@ func TestParseTokenRejectsGarbage(t *testing.T) {
 	}
 }
 
-// TestMiddlewareLifecycle — valid token passes with identity attached;
+// TestMiddlewareLifecycle -- valid token passes with identity attached;
 // revocation is effective on the very next request (no cache, no restart).
 func TestMiddlewareLifecycle(t *testing.T) {
 	s, _ := storetest.New(t)
@@ -92,7 +92,7 @@ func TestMiddlewareLifecycle(t *testing.T) {
 		t.Fatalf("identity = %+v", gotIdentity)
 	}
 
-	// Revoke → the very next request 401s.
+	// Revoke -> the very next request 401s.
 	if err := s.RevokeToken(ctx, "test-client"); err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestEnsureLocalTokenZeroConfig(t *testing.T) {
 
 	// Fresh state dir against an existing database (the file is gone, a live
 	// "local" row remains). The plaintext is not recoverable from the hash, so
-	// the daemon cannot serve — and it now refuses rather than minting under a
+	// the daemon cannot serve -- and it now refuses rather than minting under a
 	// mangled name. `token=local` in a log line therefore always means exactly
 	// the daemon, and the operator decides whether to kill a credential some
 	// client may still be holding.
@@ -162,12 +162,12 @@ func TestEnsureLocalTokenZeroConfig(t *testing.T) {
 	}
 	tokens, err = s.ListTokens(ctx)
 	if err != nil || len(tokens) != 1 {
-		t.Fatalf("tokens after refusal = %d (%v), want 1 — nothing should have been minted",
+		t.Fatalf("tokens after refusal = %d (%v), want 1 -- nothing should have been minted",
 			len(tokens), err)
 	}
 }
 
-// authenticates reports whether a plaintext token passes Middleware — the only
+// authenticates reports whether a plaintext token passes Middleware -- the only
 // definition of "works" that matters, since Middleware is what every client
 // hits. Asserting on store state instead would re-check the code under test
 // against itself.
@@ -196,7 +196,7 @@ func authenticates(t *testing.T, s *store.Store, plaintext string) bool {
 // Both halves are independently droppable, and the drop that matters is
 // documented: setup-guide.md recommends `drop schema public cascade` for a
 // migration renumber, which takes the tokens table with it while the file in
-// the state dir is untouched. On main this test fails at the last assertion —
+// the state dir is untouched. On main this test fails at the last assertion --
 // the file is byte-identical and still dead.
 func TestEnsureLocalTokenRepairsAStaleFile(t *testing.T) {
 	ctx := context.Background()
@@ -280,11 +280,11 @@ func TestEnsureLocalTokenLeavesAWorkingTokenAlone(t *testing.T) {
 	}
 	tokens, err := s.ListTokens(ctx)
 	if err != nil || len(tokens) != 1 {
-		t.Fatalf("tokens = %d (%v), want 1 — verification minted a duplicate", len(tokens), err)
+		t.Fatalf("tokens = %d (%v), want 1 -- verification minted a duplicate", len(tokens), err)
 	}
 }
 
-// TestEnsureLocalTokenRefusesToUndoRevocation — revocation is an operator
+// TestEnsureLocalTokenRefusesToUndoRevocation -- revocation is an operator
 // action, not drift, so it is the one unusable state that must not be
 // repaired. Re-minting here would be worse than the bug being fixed: the name
 // "local" is taken, so the replacement lands under a fallback name and the
@@ -307,7 +307,7 @@ func TestEnsureLocalTokenRefusesToUndoRevocation(t *testing.T) {
 		t.Fatal("revocation silently undone")
 	}
 	if !cogerr.Is(err, cogerr.Validation) {
-		t.Fatalf("kind = %v, want Validation — an operator has to be able to tell this from a database failure", cogerr.KindOf(err))
+		t.Fatalf("kind = %v, want Validation -- an operator has to be able to tell this from a database failure", cogerr.KindOf(err))
 	}
 	if !strings.Contains(err.Error(), tokenFile) {
 		t.Errorf("error does not name the file to delete: %v", err)
@@ -318,7 +318,7 @@ func TestEnsureLocalTokenRefusesToUndoRevocation(t *testing.T) {
 	}
 	tokens, err2 := s.ListTokens(ctx)
 	if err2 != nil || len(tokens) != 1 {
-		t.Fatalf("tokens = %d (%v), want 1 — a replacement was minted around the revocation", len(tokens), err2)
+		t.Fatalf("tokens = %d (%v), want 1 -- a replacement was minted around the revocation", len(tokens), err2)
 	}
 }
 
@@ -339,7 +339,7 @@ func TestEnsureLocalTokenReusesLocalNameAfterRevocation(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The documented rotation: revoke, then remove the file, then restart.
-	// Both must precede the restart — with the file present the daemon refuses
+	// Both must precede the restart -- with the file present the daemon refuses
 	// to mint around a revocation.
 	if err := s.RevokeToken(ctx, LocalTokenName); err != nil {
 		t.Fatal(err)
@@ -365,7 +365,7 @@ func TestEnsureLocalTokenReusesLocalNameAfterRevocation(t *testing.T) {
 		}
 	}
 	if len(live) != 1 || live[0] != LocalTokenName {
-		t.Fatalf("live tokens = %v, want exactly [%q] — the name was not reused",
+		t.Fatalf("live tokens = %v, want exactly [%q] -- the name was not reused",
 			live, LocalTokenName)
 	}
 	b, err := os.ReadFile(tokenFile)

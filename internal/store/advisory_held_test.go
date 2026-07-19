@@ -8,13 +8,13 @@ import (
 	"github.com/enqack/cognosis/internal/store/storetest"
 )
 
-// TestAdvisoryHeldObservesRealLocks — AdvisoryHeld decodes an advisory key into
+// TestAdvisoryHeldObservesRealLocks -- AdvisoryHeld decodes an advisory key into
 // the classid/objid pair pg_locks stores it under, and a wrong decode does not
 // error: it returns false forever, which reads as "no daemon owns this
 // database" and silently disables every guard built on it.
 //
 // So both directions are asserted against a lock genuinely held, rather than
-// the false case alone — which any broken query passes.
+// the false case alone -- which any broken query passes.
 //
 // The keys are per-run, not store.LockInstance/LockCompile/LockMigrate.
 // Advisory locks are scoped to the *database*, while storetest isolates tests by
@@ -73,7 +73,7 @@ func TestAdvisoryHeldObservesRealLocks(t *testing.T) {
 	}
 }
 
-// The production keys must decode too — they are the ones every guard actually
+// The production keys must decode too -- they are the ones every guard actually
 // passes. Only the "held" direction is safe to assert here, since another test
 // may hold them concurrently; a wrong decode returns false for a held lock, so
 // taking the lock first and requiring true still catches it.

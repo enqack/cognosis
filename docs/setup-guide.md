@@ -1,8 +1,8 @@
-# Cognosis — Setup Guide
+# Cognosis -- Setup Guide
 
 Full setup for every part of a working Cognosis install: the `cognosis` daemon, its Postgres index, the
-Ollama embedding server, the markdown vault, and an MCP client (Claude Code). Three paths are covered —
-the Nix dev shell (fastest), a manual/production install, and a Nix flake install — followed by
+Ollama embedding server, the markdown vault, and an MCP client (Claude Code). Three paths are covered --
+the Nix dev shell (fastest), a manual/production install, and a Nix flake install -- followed by
 configuration, session hooks, running as a service, verification, and troubleshooting.
 
 ## What you're setting up
@@ -20,7 +20,7 @@ rather than running degraded.
 
 ---
 
-## Path A — Nix dev shell (recommended for development)
+## Path A -- Nix dev shell (recommended for development)
 
 The flake provides the whole toolchain: Go, Postgres + pgvector, Ollama, mage, golangci-lint, xz.
 (The authoritative Go version pin lives in `go.mod` via its `toolchain` directive, not in the flake.)
@@ -43,7 +43,7 @@ exports `COGNOSIS_DSN`, so the daemon finds it with no config. `pg-stop` stops i
 
 ---
 
-## Path B — Manual / production install
+## Path B -- Manual / production install
 
 ### 1. Build or install the binary
 With Go 1.25+:
@@ -53,7 +53,7 @@ go install github.com/enqack/cognosis/cmd/cognosis@latest   # or: mage install
 ```
 
 `go.mod` pins `toolchain go1.26.5` (a stdlib security fix), so building on an older Go 1.25
-toolchain will transparently fetch and use Go 1.26.5 — this is expected, not an error.
+toolchain will transparently fetch and use Go 1.26.5 -- this is expected, not an error.
 
 Or download a release archive (`cognosis-<version>-<os>-<arch>.tar.gz`) and place `cognosis` on `PATH`.
 
@@ -66,16 +66,16 @@ create a database:
 createdb cognosis
 ```
 
-You do **not** need to run `CREATE EXTENSION` yourself — the daemon's migrations do it on first start
+You do **not** need to run `CREATE EXTENSION` yourself -- the daemon's migrations do it on first start
 (they run `create extension if not exists vector`). The connecting role must be allowed to create
 extensions (superuser, or a role granted `CREATE` on the DB with pgvector trusted).
 
 **pgvector 0.8 or newer is strongly recommended.** The daemon sets `hnsw.iterative_scan` on each
 connection, which older versions do not have. Without it the semantic leg under-returns on any
-project-scoped or archive-filtered query — measurably so: a scope holding a quarter of the corpus
+project-scoped or archive-filtered query -- measurably so: a scope holding a quarter of the corpus
 retrieved 20% of the correct results. The daemon still starts on an older pgvector, logging a
 warning per connection; retrieval degrades rather than failing. No `shared_preload_libraries` entry
-or other server-level configuration is needed — these are ordinary session settings.
+or other server-level configuration is needed -- these are ordinary session settings.
 
 ### 3. Ollama + the embedding model
 
@@ -89,7 +89,7 @@ A remote/other OpenAI-compatible embedding endpoint can be used instead via conf
 but Ollama with the pinned model is the default and what the checks exercise.
 
 ### 4. Point Cognosis at Postgres
-Set the DSN (env or config — see [Configuration](#configuration)):
+Set the DSN (env or config -- see [Configuration](#configuration)):
 
 ```sh
 export COGNOSIS_DSN="postgres://user:pass@localhost:5432/cognosis"
@@ -99,10 +99,10 @@ cognosis status
 
 ---
 
-## Path C — Nix flake install
+## Path C -- Nix flake install
 
 The flake also exposes a `cognosis` package/app and service modules, as an alternative to Path B for
-Nix users. It does **not** provision Postgres+pgvector or Ollama — point the module's `environment` at
+Nix users. It does **not** provision Postgres+pgvector or Ollama -- point the module's `environment` at
 whatever already makes those reachable (your own `services.postgresql`/`services.ollama`, or a remote
 endpoint), the same way `dsn`/`embedding.url` work in [Configuration](#configuration).
 
@@ -148,11 +148,11 @@ nix profile install github:enqack/cognosis            # onto PATH, no service
 
 All three modules generate the same `cognosis start --foreground` unit that
 [contrib/cognosis.service](../contrib/cognosis.service) / [contrib/com.enqack.cognosis.plist](../contrib/com.enqack.cognosis.plist)
-document for manual installs — use the Nix module *or* the manual copy-paste, not both. The `contrib/`
+document for manual installs -- use the Nix module *or* the manual copy-paste, not both. The `contrib/`
 files stay as the reference for non-Nix installs (Path B).
 
-For a complete single-host example wiring Postgres+pgvector, Ollama, and the service together —
-peer-authenticated, no passwords, the embedding model pre-pulled — see
+For a complete single-host example wiring Postgres+pgvector, Ollama, and the service together --
+peer-authenticated, no passwords, the embedding model pre-pulled -- see
 [contrib/flake.nix](../contrib/flake.nix).
 
 ---
@@ -160,7 +160,7 @@ peer-authenticated, no passwords, the embedding model pre-pulled — see
 ## Configuration
 
 Config lives at `$XDG_CONFIG_HOME/cognosis/config.yaml` (created on first `cognosis config set`).
-Any key can be overridden by a `COGNOSIS_*` env var (`.` → `_`, e.g. `COGNOSIS_DSN`,
+Any key can be overridden by a `COGNOSIS_*` env var (`.` -> `_`, e.g. `COGNOSIS_DSN`,
 `COGNOSIS_BIND_ADDRESS`, `COGNOSIS_EMBEDDING_MODEL`). Precedence is **env > file > default**.
 
 ```yaml
@@ -182,7 +182,7 @@ personas:
 ```
 
 ```sh
-cognosis config set dsn "postgres://…"     # persists to config.yaml
+cognosis config set dsn "postgres://..."     # persists to config.yaml
 cognosis config get bind_address           # env > file > default
 ```
 
@@ -213,7 +213,7 @@ mcp         ok  listening on 127.0.0.1:7433
 daemon      ok  pid 12345
 ```
 
-Any `postgres`/`embedding`/`schema` failure means the daemon refused to serve — fix the dependency and
+Any `postgres`/`embedding`/`schema` failure means the daemon refused to serve -- fix the dependency and
 restart.
 
 ---
@@ -225,11 +225,11 @@ claude mcp add --transport http cognosis http://127.0.0.1:7433 \
   --header "Authorization: Bearer $(cat ~/.local/state/cognosis/local-token)"
 ```
 
-That exposes the MCP tool surface (`write_note`, `edit_note`, `query_knowledge`, … — see [cli.md](cli.md)).
+That exposes the MCP tool surface (`write_note`, `edit_note`, `query_knowledge`, ... -- see [cli.md](cli.md)).
 
-Note that `$(cat …)` interpolates the token **into the client config**, which then holds a copy the
+Note that `$(cat ...)` interpolates the token **into the client config**, which then holds a copy the
 daemon knows nothing about. See [Keeping the token out of client config](#keeping-the-token-out-of-client-config)
-below, and mint one token per client rather than sharing `local` — see [remote.md](remote.md), which
+below, and mint one token per client rather than sharing `local` -- see [remote.md](remote.md), which
 applies locally too: a shared token makes every caller indistinguishable in `audit_log` and in the
 `token=` log attribute.
 
@@ -237,7 +237,7 @@ applies locally too: a shared token makes every caller indistinguishable in `aud
 
 ## Rotating the local token
 
-**Deleting `local-token` does not invalidate the old credential** — it only removes your copy. Both
+**Deleting `local-token` does not invalidate the old credential** -- it only removes your copy. Both
 steps are required, and **both must happen before the restart**:
 
 ```sh
@@ -248,10 +248,10 @@ cognosis stop && cognosis start             # mints a fresh token, under the sam
 
 The order is not arbitrary, and each wrong order fails differently:
 
-- **Restarting with the file still present** → the daemon refuses to start. It will not mint around
-  a revocation while a file points at the revoked row (see the `local token in … was revoked` row
+- **Restarting with the file still present** -> the daemon refuses to start. It will not mint around
+  a revocation while a file points at the revoked row (see the `local token in ... was revoked` row
   under [Troubleshooting](#troubleshooting)).
-- **Restarting before the revoke** → the old row is still live and owns the name, so the daemon
+- **Restarting before the revoke** -> the old row is still live and owns the name, so the daemon
   refuses to start rather than renaming itself. The error names the fix.
 
 The name survives because uniqueness applies to **live** tokens only: the revoked row keeps its name
@@ -285,7 +285,7 @@ it was used, not that the prune failed.
 
 Interpolating the token into a client config copies a secret into a file nothing rotates. Both clients
 below can read it from its 0600 file instead, so rotation is a file rewrite rather than a config edit.
-`cognosis token create` prints the plaintext once, so write it straight into that file — taking the
+`cognosis token create` prints the plaintext once, so write it straight into that file -- taking the
 first line only, since the command also prints a "shown once" notice that must not land in the file:
 
 ```sh
@@ -298,7 +298,7 @@ containing spaces, and `mcp-remote` sends a malformed header that the daemon ans
 
 ### Claude Code
 
-Claude Code fetches headers from a command on every connection, and again after a `401` — so rotation
+Claude Code fetches headers from a command on every connection, and again after a `401` -- so rotation
 needs no client reconfiguration at all:
 
 ```sh
@@ -320,7 +320,7 @@ Then set `headersHelper` on the server entry instead of `headers`:
 }
 ```
 
-`claude mcp add` has no flag for this — edit the config entry directly. The token then exists only in
+`claude mcp add` has no flag for this -- edit the config entry directly. The token then exists only in
 its 0600 file.
 
 The value runs through a shell, so a client with its own token sets the variable inline rather than
@@ -332,11 +332,11 @@ needing a second copy of the script:
 
 Omitting that is easy to miss and fails *silently in the direction that looks fine*: the helper falls
 back to `local-token`, the client connects, and every call is attributed to the shared token instead of
-this client. Check with `cognosis token list` — the per-client token should show a recent `last used`.
+this client. Check with `cognosis token list` -- the per-client token should show a recent `last used`.
 
 ### Claude Desktop
 
-Claude Desktop has no `headersHelper`, and its config speaks only stdio — a remote server is reached
+Claude Desktop has no `headersHelper`, and its config speaks only stdio -- a remote server is reached
 through the `mcp-remote` shim. Putting the token in `env` leaves the same unrotatable copy the helper
 exists to avoid, so run the command under a shell and let it read the file:
 
@@ -354,7 +354,7 @@ The config lives at `~/Library/Application Support/Claude/claude_desktop_config.
 entry above assumes a POSIX shell at `/bin/sh`; on Windows the equivalent needs a different wrapper.
 
 Unlike `headersHelper`, this resolves the token **once, at launch**. Rotating means restarting Claude
-Desktop, not just rewriting the file — the running process holds the old value until it exits, and the
+Desktop, not just rewriting the file -- the running process holds the old value until it exits, and the
 symptom of forgetting is a `401` on every call.
 
 Point it at a per-client token (`cognosis token create desktop`) for the same reason Claude Code does;
@@ -366,10 +366,10 @@ the fallback path above is `desktop-token` rather than `local-token` so that omi
 Automatic session context uses Claude Code hooks, wired in `.claude/settings.json`. Copy
 `hooks/settings.sample.json` and point the commands at your checkout's `hooks/` scripts:
 
-- **SessionStart** → `hooks/session-start-inject.sh` runs `cognosis context inject` and injects a
+- **SessionStart** -> `hooks/session-start-inject.sh` runs `cognosis context inject` and injects a
   project-scoped knowledge index. Budget via `COGNOSIS_INJECT_BUDGET` (default 2000).
-- **SessionEnd** → `hooks/session-end-nudge.sh` resumes the ending session (via the `session_id` on the
-  hook's stdin) for one headless `claude` turn nudging the agent to persist anything durable — resuming
+- **SessionEnd** -> `hooks/session-end-nudge.sh` resumes the ending session (via the `session_id` on the
+  hook's stdin) for one headless `claude` turn nudging the agent to persist anything durable -- resuming
   so the turn sees what happened, and guarding against re-entry so the nested run can't loop (needs the
   `claude` CLI logged in; exits quietly if not).
 
@@ -383,7 +383,7 @@ echo "my-project" > .cognosis-project   # tag a repo; the value is the project n
 
 ## Git commit capture (optional, opt-in per repo)
 
-Land commits as structured vault entries — install the hook only where wanted:
+Land commits as structured vault entries -- install the hook only where wanted:
 
 ```sh
 cp /path/to/cognosis/hooks/post-commit.sh .git/hooks/post-commit
@@ -413,7 +413,7 @@ Adjust the binary path in the unit/plist to wherever `cognosis` is installed.
 ## Remote access
 
 Keep the daemon on loopback behind a TLS-terminating reverse proxy (recommended), or configure built-in
-TLS (`tls.cert_file`/`tls.key_file`) — the only way a non-loopback bind is permitted. Full guidance,
+TLS (`tls.cert_file`/`tls.key_file`) -- the only way a non-loopback bind is permitted. Full guidance,
 including per-client tokens and threat notes, is in [remote.md](remote.md).
 
 ---
@@ -422,15 +422,15 @@ including per-client tokens and threat notes, is in [remote.md](remote.md).
 
 With the daemon up and registered, from your MCP client:
 
-1. `write_note` a note under `entries/…` with valid frontmatter.
-2. `query_knowledge` for its text — it comes back hybrid-ranked with a score.
+1. `write_note` a note under `entries/...` with valid frontmatter.
+2. `query_knowledge` for its text -- it comes back hybrid-ranked with a score.
 3. `get_note` returns the exact content.
 
 Or run the full end-to-end feature checks (wants `COGNOSIS_DSN` + a local Ollama;
 a check whose prerequisites are missing reports itself skipped and the run goes on):
 
 ```sh
-mage check          # scripts/check-all.sh — daemon, memory-loop, retrieval,
+mage check          # scripts/check-all.sh -- daemon, memory-loop, retrieval,
                     # knowledge, platform, tls, embedding-migration,
                     # retrieval-eval
 ```
@@ -441,16 +441,16 @@ mage check          # scripts/check-all.sh — daemon, memory-loop, retrieval,
 
 | Symptom | Cause / fix |
 |---|---|
-| `startup: postgres: … unreachable` | Postgres not running or wrong DSN. Start it (`pg-start` in dev) and check `COGNOSIS_DSN` / `dsn`. |
-| `startup: embedding provider: …` | Ollama not running. `ollama serve`, and confirm `embedding.url`. |
+| `startup: postgres: ... unreachable` | Postgres not running or wrong DSN. Start it (`pg-start` in dev) and check `COGNOSIS_DSN` / `dsn`. |
+| `startup: embedding provider: ...` | Ollama not running. `ollama serve`, and confirm `embedding.url`. |
 | Writes/queries error about the model | Model not pulled: `ollama pull nomic-embed-text:v1.5`. |
-| `bind_address … is not loopback` | A non-loopback `bind_address` needs TLS. Set `tls.cert_file`/`tls.key_file`, or bind loopback behind a proxy (see [remote.md](remote.md)). |
-| `another cognosis daemon …` / lock refusal | The single-instance invariant: only one daemon per database. Stop the other instance (even on another machine — the Postgres advisory lock is the arbiter). |
-| `no migration found for version N` after a manual DB reset | The derived index is rebuildable, not migrated across a schema renumber. Recreate it: drop the schema (`drop schema public cascade; create schema public;`) or the database, then restart — boot reconciliation re-indexes from the vault. **This also drops the `tokens` table**, so the daemon mints a fresh local token on restart: re-read `local-token` and update any client config holding the old one (see the `401` row). No revoke is needed here — dropping the table removes the rows outright, unlike [rotation](#rotating-the-local-token). |
+| `bind_address ... is not loopback` | A non-loopback `bind_address` needs TLS. Set `tls.cert_file`/`tls.key_file`, or bind loopback behind a proxy (see [remote.md](remote.md)). |
+| `another cognosis daemon ...` / lock refusal | The single-instance invariant: only one daemon per database. Stop the other instance (even on another machine -- the Postgres advisory lock is the arbiter). |
+| `no migration found for version N` after a manual DB reset | The derived index is rebuildable, not migrated across a schema renumber. Recreate it: drop the schema (`drop schema public cascade; create schema public;`) or the database, then restart -- boot reconciliation re-indexes from the vault. **This also drops the `tokens` table**, so the daemon mints a fresh local token on restart: re-read `local-token` and update any client config holding the old one (see the `401` row). No revoke is needed here -- dropping the table removes the rows outright, unlike [rotation](#rotating-the-local-token). |
 | SessionStart hook does nothing | No `.cognosis-project` marker at/above the repo root (by design). Add one to opt the repo in. |
-| `401` from an MCP call | Run `cognosis status` first — a failing `auth` check confirms the stashed token itself no longer authenticates, and a passing one means the caller is sending something else. Otherwise: missing/typo'd bearer token, or the token was revoked. Re-read `local-token`, or mint one with `cognosis token create <name>`. A client config carrying a *copy* of the token is the usual culprit after a schema rebuild: the daemon re-mints into `local-token`, but nothing rewrites the copy. |
-| `local token in … was revoked` on startup | Deliberate: the daemon will not mint around a revocation. Delete `local-token` to provision a new one — the file is the source of truth for whether local access is granted. The replacement reuses the name `local`; the revoked row stays for the audit trail until `cognosis token prune`. |
-| `a live token named "local" already exists but this state dir holds no working plaintext for it` on startup | The database has a live `local` row but the state-dir file is gone — a fresh state dir pointed at an existing database, or a rotation done out of order. The plaintext cannot be recovered from the hash, so the daemon refuses rather than minting under a mangled name. `cognosis token revoke local`, then restart. |
-| Rotated the local token but the old one still works | Deleting `local-token` removes your copy without revoking the row. Revoke it explicitly — see [Rotating the local token](#rotating-the-local-token). |
-| Vault history full of `.obsidian` or `history.md` commits | Vaults created before this behaviour existed still *track* those files, and `.gitignore` alone does not untrack. Cognosis no longer commits them, but the already-tracked copies keep showing as modified — which also makes `note delete --hard` retry, since git refuses to rewrite history on a dirty tree. One-time cleanup: `cd "$XDG_DATA_HOME/cognosis/kb" && git rm -r --cached --quiet .obsidian/workspace.json .obsidian/graph.json history.md && git commit -m "stop tracking editor and generated state"`. Nothing is deleted from disk. |
-| `graph FAIL … edge(s) missing` from `cognosis status` | The link graph disagrees with what the indexed note content implies. Links are resolved once at index time and never re-derived, so an edge lost to an interrupted write stays lost — reconciliation confirms drift by content hash and skips an unchanged file forever. Repair by **changing the content** of a named note (`edit_note` — `touch` will not do, for the same hash reason), which re-resolves its links; or drop the schema and restart to rebuild the whole index from the vault. Retrieval still works meanwhile: only the graph leg is degraded. |
+| `401` from an MCP call | Run `cognosis status` first -- a failing `auth` check confirms the stashed token itself no longer authenticates, and a passing one means the caller is sending something else. Otherwise: missing/typo'd bearer token, or the token was revoked. Re-read `local-token`, or mint one with `cognosis token create <name>`. A client config carrying a *copy* of the token is the usual culprit after a schema rebuild: the daemon re-mints into `local-token`, but nothing rewrites the copy. |
+| `local token in ... was revoked` on startup | Deliberate: the daemon will not mint around a revocation. Delete `local-token` to provision a new one -- the file is the source of truth for whether local access is granted. The replacement reuses the name `local`; the revoked row stays for the audit trail until `cognosis token prune`. |
+| `a live token named "local" already exists but this state dir holds no working plaintext for it` on startup | The database has a live `local` row but the state-dir file is gone -- a fresh state dir pointed at an existing database, or a rotation done out of order. The plaintext cannot be recovered from the hash, so the daemon refuses rather than minting under a mangled name. `cognosis token revoke local`, then restart. |
+| Rotated the local token but the old one still works | Deleting `local-token` removes your copy without revoking the row. Revoke it explicitly -- see [Rotating the local token](#rotating-the-local-token). |
+| Vault history full of `.obsidian` or `history.md` commits | Vaults created before this behaviour existed still *track* those files, and `.gitignore` alone does not untrack. Cognosis no longer commits them, but the already-tracked copies keep showing as modified -- which also makes `note delete --hard` retry, since git refuses to rewrite history on a dirty tree. One-time cleanup: `cd "$XDG_DATA_HOME/cognosis/kb" && git rm -r --cached --quiet .obsidian/workspace.json .obsidian/graph.json history.md && git commit -m "stop tracking editor and generated state"`. Nothing is deleted from disk. |
+| `graph FAIL ... edge(s) missing` from `cognosis status` | The link graph disagrees with what the indexed note content implies. Links are resolved once at index time and never re-derived, so an edge lost to an interrupted write stays lost -- reconciliation confirms drift by content hash and skips an unchanged file forever. Repair by **changing the content** of a named note (`edit_note` -- `touch` will not do, for the same hash reason), which re-resolves its links; or drop the schema and restart to rebuild the whole index from the vault. Retrieval still works meanwhile: only the graph leg is degraded. |

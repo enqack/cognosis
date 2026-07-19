@@ -15,19 +15,19 @@ plus a `-race` test suite.
 
 New here? See [docs/setup-guide.md](docs/setup-guide.md) for full setup.
 
-- **Memory loop**: `write_note` → `query_knowledge` (semantic + keyword +
-  link-graph, RRF-fused) → `get_note`, over Streamable HTTP MCP with local
+- **Memory loop**: `write_note` -> `query_knowledge` (semantic + keyword +
+  link-graph, RRF-fused) -> `get_note`, over Streamable HTTP MCP with local
   Ollama embeddings.
-- **Knowledge lifecycle**: `compile_lifecycle` — explicit, agent-justified
+- **Knowledge lifecycle**: `compile_lifecycle` -- explicit, agent-justified
   reinforce/falsify/dispute/graduate with automatic decay, archival, passive
   citation-refresh, and in-place graduation to canon; every run is one
   revertible history commit; `dry_run` previews without writing.
 - **Temporal + visibility**: `query_knowledge` takes `as_of` ("what did the
-  KB believe at time T" — existence and status at T; recover past *content*
+  KB believe at time T" -- existence and status at T; recover past *content*
   via `vault restore`), and `list_decaying` surfaces the reinforce shortlist.
 - **Soft-delete hygiene**: archived/faded notes drop out of ordinary retrieval
   (`include_archived` surfaces them for audits), and any chunk whose note links
-  to an archived note is severely penalized in RRF fusion — a dense stale
+  to an archived note is severely penalized in RRF fusion -- a dense stale
   reflection about a shelved concept can't leak back into the agent's context.
 - **Vault history, surfaced**: a generated read-only `history.md` dashboard at
   the vault root lists the last revertable states with the exact restore
@@ -35,7 +35,7 @@ New here? See [docs/setup-guide.md](docs/setup-guide.md) for full setup.
   `vault_history` / `restore_note` MCP tools let an agent read the commit log
   and mediate a rollback without the operator touching a terminal.
 - **Single-instance invariant**: enforced by a Postgres **session advisory
-  lock** held for the daemon's lifetime, not just a local PID lockfile — two
+  lock** held for the daemon's lifetime, not just a local PID lockfile -- two
   daemons on different machines pointed at one database cannot both run (the
   lock releases automatically if a daemon crashes). The lockfile stays as a
   fast same-machine guard.
@@ -51,7 +51,7 @@ New here? See [docs/setup-guide.md](docs/setup-guide.md) for full setup.
   description is embedded, never the styled body), and `persona_filter` as a
   retrieval lens. Deep Thoughts ships as the first inhabitant.
 - **Auth + audit**: per-client bearer tokens (Argon2id at rest, checked
-  synchronously — revocation is effective on the very next request), a
+  synchronously -- revocation is effective on the very next request), a
   zero-config auto-minted local token, and a redacted audit trail of every
   tool call.
 - **Session hooks**: `cognosis context inject` (marker-gated: silent no-op
@@ -62,15 +62,15 @@ New here? See [docs/setup-guide.md](docs/setup-guide.md) for full setup.
   `darwinModules.default`, and `homeManagerModules.default` declare the service (same unit `contrib/`
   documents for manual installs) without provisioning Postgres/Ollama themselves.
 - **Embedding migration**: `cognosis embeddings migrate --from <n>/<m> --to <n>/<m>` switches
-  providers/models with the system fully queryable throughout — a background back-fill worker,
+  providers/models with the system fully queryable throughout -- a background back-fill worker,
   lazy touch-migration of queried chunks, dual-embedding of new writes, and the query fan-out as
   the fallback read. Pausable, resumable, rollback-able; the old table survives until an explicit
   `embeddings prune`. Progress via `embeddings status` or the `get_migration_status` MCP tool.
   Proven under load: a 5k-chunk corpus migrates while concurrent queries never once return empty.
 - **Git commit capture** (opt-in): install `hooks/post-commit.sh` in a repo's
-  `.git/hooks/` — commits in `.cognosis-project`-marked repos land as
+  `.git/hooks/` -- commits in `.cognosis-project`-marked repos land as
   structured vault entries.
-- **Remote access**: see `docs/remote.md` — reverse proxy terminating TLS
+- **Remote access**: see `docs/remote.md` -- reverse proxy terminating TLS
   (recommended; Cognosis stays on loopback), or built-in TLS via
   `tls.cert_file`/`tls.key_file` (the only door to a non-loopback bind).
 
@@ -87,7 +87,7 @@ cognosis status    # daemon / postgres / schema / mcp / auth / graph / embedding
 
 The vault lives at `$XDG_DATA_HOME/cognosis/kb/`; config at
 `$XDG_CONFIG_HOME/cognosis/config.yaml`. Hand-editing the vault (Obsidian,
-any editor) is supported — the daemon reconciles out-of-band edits live, on
+any editor) is supported -- the daemon reconciles out-of-band edits live, on
 boot, and via a periodic sweep, and every change is versioned in an
 auto-managed git history repo inside the vault.
 
@@ -107,10 +107,10 @@ That exposes `write_note`, `edit_note`, `query_knowledge`, `list_notes`, `list_d
 `get_migration_status` (see [docs/cli.md](docs/cli.md) for each tool's
 arguments).
 For automatic session context, wire up the hooks in `hooks/`
-(`settings.sample.json`) — SessionStart injects a project-scoped index in
+(`settings.sample.json`) -- SessionStart injects a project-scoped index in
 repos carrying a `.cognosis-project` marker; unmarked repos are untouched.
 The server binds loopback only by default; a non-loopback bind requires
-built-in TLS or a TLS-terminating reverse proxy — see
+built-in TLS or a TLS-terminating reverse proxy -- see
 [docs/remote.md](docs/remote.md).
 
 ## Development
@@ -147,18 +147,18 @@ the corpus knobs, and which retrieval questions are already settled.
 Integration tests need `COGNOSIS_TEST_DSN` pointing at a Postgres with
 pgvector (the dev shell provides one); Ollama-backed tests skip when no
 server is reachable. The `scripts/checks/*.sh` end-to-end checks additionally
-want `COGNOSIS_DSN` (e.g. `pg-start`) and a local Ollama with the pinned model —
+want `COGNOSIS_DSN` (e.g. `pg-start`) and a local Ollama with the pinned model --
 a check whose prerequisites are missing reports itself skipped, and `check-all.sh`
 carries on to the next one rather than failing the run.
 
 ## Documentation
 
-- [docs/setup-guide.md](docs/setup-guide.md) — full system setup (Nix and manual/production), first
+- [docs/setup-guide.md](docs/setup-guide.md) -- full system setup (Nix and manual/production), first
   start, Claude Code registration, hooks, service management, troubleshooting.
-- [docs/architecture.md](docs/architecture.md) — how it's built and why (vault-as-source-of-truth,
+- [docs/architecture.md](docs/architecture.md) -- how it's built and why (vault-as-source-of-truth,
   derived index, retrieval, lifecycle, history, single-instance lock).
-- [docs/configuration.md](docs/configuration.md) — every `config.yaml` key, its default, and the
+- [docs/configuration.md](docs/configuration.md) -- every `config.yaml` key, its default, and the
   `COGNOSIS_*` env override.
-- [docs/cli.md](docs/cli.md) — the `cognosis` CLI and the MCP tool surface.
-- [docs/remote.md](docs/remote.md) — remote access: reverse proxy or built-in TLS.
-- [CHANGELOG.md](CHANGELOG.md) — release notes.
+- [docs/cli.md](docs/cli.md) -- the `cognosis` CLI and the MCP tool surface.
+- [docs/remote.md](docs/remote.md) -- remote access: reverse proxy or built-in TLS.
+- [CHANGELOG.md](CHANGELOG.md) -- release notes.

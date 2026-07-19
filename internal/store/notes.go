@@ -135,7 +135,7 @@ type NoteMeta struct {
 }
 
 // ListNotes returns metadata for every note, optionally project-scoped,
-// newest-updated first. Never returns content — that's GetNote's job.
+// newest-updated first. Never returns content -- that's GetNote's job.
 func (s *Store) ListNotes(ctx context.Context, project string) ([]NoteMeta, error) {
 	const op = "store.ListNotes"
 	rows, err := s.pool.Query(ctx, `
@@ -173,21 +173,21 @@ type DecayingNote struct {
 }
 
 // ListDecaying surfaces notes nobody has explicitly asserted since the cutoff
-// — the shortlist to feed compile_lifecycle's reinforce. Decay-shielded notes
+// -- the shortlist to feed compile_lifecycle's reinforce. Decay-shielded notes
 // (falsified, paused, graduated canon) are excluded. Comparison is
 // lexicographic over the fixed-width timestamp layout, matching how the
 // lifecycle reads frontmatter time.
 //
 // It keys on last_explicit_reinforce (falling back to created), NOT
 // last_reinforced. last_reinforced is written by passive citation refresh and
-// by decay, so a note being kept alive by citations — or actively decaying —
+// by decay, so a note being kept alive by citations -- or actively decaying --
 // looks freshly reinforced by that field and would drop off the very list that
 // exists to surface it. The distinction only became load-bearing once decay
 // started resetting the clock; before that these two orderings agreed often
 // enough to hide the difference.
 func (s *Store) ListDecaying(ctx context.Context, cutoff time.Time, project string) ([]DecayingNote, error) {
 	const op = "store.ListDecaying"
-	// asserted: the explicit anchor when present, else created — mirroring
+	// asserted: the explicit anchor when present, else created -- mirroring
 	// lifecycle.passiveBudgetLeft so the two never disagree about a note's age.
 	const asserted = `coalesce(
 		nullif(frontmatter->>'last_explicit_reinforce', ''),
@@ -226,7 +226,7 @@ func (s *Store) ListDecaying(ctx context.Context, cutoff time.Time, project stri
 }
 
 // Referrer is a note that mentions some basename, with everything needed to
-// recompute its outbound links — no disk read required.
+// recompute its outbound links -- no disk read required.
 type Referrer struct {
 	ID          uuid.UUID
 	Path        string
@@ -241,8 +241,8 @@ type Referrer struct {
 // drops a target it cannot resolve, so a note referencing one that does not
 // exist yet loses that edge permanently: the referrer is unchanged, so drift
 // detection skips it forever, and nothing re-resolves it when the target
-// finally lands. Both halves of a reference live in columns already — body
-// wikilinks in `content`, provenance in `frontmatter->'sources'` — so this
+// finally lands. Both halves of a reference live in columns already -- body
+// wikilinks in `content`, provenance in `frontmatter->'sources'` -- so this
 // needs no schema change and no file read.
 //
 // Body matching is a substring test on the literal `[[name]]` form. That can
@@ -301,7 +301,7 @@ func (s *Store) ReferrersOf(ctx context.Context, names []string) ([]Referrer, er
 // AllReferrers returns every note with the columns needed to re-derive its
 // outbound links. It exists for the graph audit in `cognosis status`, which
 // compares the edges the index holds against the edges the indexed content
-// implies — a difference means the link graph decayed, which is invisible to
+// implies -- a difference means the link graph decayed, which is invisible to
 // every other check because notes, chunks and embeddings are all still correct.
 func (s *Store) AllReferrers(ctx context.Context) ([]Referrer, error) {
 	const op = "store.AllReferrers"
@@ -331,7 +331,7 @@ func (s *Store) AllReferrers(ctx context.Context) ([]Referrer, error) {
 }
 
 // DeleteNote removes a note (chunks/links cascade). Deleting a missing path
-// is not an error — deletion is idempotent for the watcher's sake.
+// is not an error -- deletion is idempotent for the watcher's sake.
 func (s *Store) DeleteNote(ctx context.Context, path string) error {
 	if _, err := s.pool.Exec(ctx, `delete from notes where path = $1`, path); err != nil {
 		return cogerr.E("store.DeleteNote", cogerr.Internal, err)
@@ -432,7 +432,7 @@ func (s *Store) CountChunks(ctx context.Context, path string) (int, error) {
 	return n, nil
 }
 
-// LinkDsts returns the destination ids of a note's outbound edges —
+// LinkDsts returns the destination ids of a note's outbound edges --
 // introspection for tests and link-graph tooling.
 // AllLinks returns every edge grouped by source note. One query for the whole
 // graph: the alternative is a LinkDsts round trip per note, which is what made

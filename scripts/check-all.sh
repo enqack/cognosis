@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run every feature check under scripts/checks/ in order; also run by `mage
 # check`. Checks want COGNOSIS_DSN (pg-start) and a local Ollama with the pinned
-# embedding model pulled — a check whose prerequisites are missing reports itself
+# embedding model pulled -- a check whose prerequisites are missing reports itself
 # skipped (exit 2 from _lib.sh's require_env) and the run carries on, so a
 # partial environment still gets whatever signal it can. A real failure (exit 1)
 # still stops the run at the first one.
@@ -33,7 +33,7 @@ ran=$(( ${#order[@]} - ${#skipped[@]} ))
 if [ "${#skipped[@]}" -eq 0 ]; then
   echo "check-all: all ${#order[@]} feature checks pass"
 elif [ "$ran" -eq 0 ]; then
-  echo "check-all: every check skipped — nothing was verified (needs COGNOSIS_DSN + Ollama)" >&2
+  echo "check-all: every check skipped -- nothing was verified (needs COGNOSIS_DSN + Ollama)" >&2
   exit 2
 else
   echo "check-all: $ran passed, ${#skipped[@]} skipped (${skipped[*]})"

@@ -116,7 +116,7 @@ func chunkIDs(t *testing.T, s *store.Store, ctx context.Context, path string) []
 	t.Helper()
 	// Reuse MissingAmong's shape via a direct batch read: everything is
 	// missing from a table that doesn't exist yet, so read via the batch API
-	// against the from table before embedding… simplest is the dedicated
+	// against the from table before embedding... simplest is the dedicated
 	// helper below.
 	refs, err := s.ChunkRefsForNote(ctx, path)
 	if err != nil {
@@ -147,7 +147,7 @@ func (h *harness) waitDone(t *testing.T, deadline time.Duration) store.Migration
 }
 
 // TestZeroDowntimeUnderLoad is the M4 claim in test form: a 5k-chunk corpus
-// migrates between providers while goroutines hammer the query path — zero
+// migrates between providers while goroutines hammer the query path -- zero
 // queries return empty results at any point.
 func TestZeroDowntimeUnderLoad(t *testing.T) {
 	if testing.Short() {
@@ -192,7 +192,7 @@ func TestZeroDowntimeUnderLoad(t *testing.T) {
 		t.Fatalf("migration status = %s", m.Status)
 	}
 	if empties.Load() != 0 {
-		t.Fatalf("%d of %d queries returned empty results during migration — the zero-downtime claim failed",
+		t.Fatalf("%d of %d queries returned empty results during migration -- the zero-downtime claim failed",
 			empties.Load(), queries.Load())
 	}
 	if queries.Load() == 0 {
@@ -218,7 +218,7 @@ func TestZeroDowntimeUnderLoad(t *testing.T) {
 	t.Logf("load: %d queries, backfill %d, lazy %d", queries.Load(), m.ChunksBackfill, m.ChunksLazy)
 }
 
-// TestPauseResumeConverges — pause parks the back-fill (missing count stops
+// TestPauseResumeConverges -- pause parks the back-fill (missing count stops
 // moving), resume completes, and the counters account for every chunk.
 func TestPauseResumeConverges(t *testing.T) {
 	h := newHarness(t, 500)
@@ -266,7 +266,7 @@ func TestPauseResumeConverges(t *testing.T) {
 	}
 }
 
-// TestKillMidBatchResumes — cancelling the worker and starting a fresh one
+// TestKillMidBatchResumes -- cancelling the worker and starting a fresh one
 // resumes with no duplicate embeddings and exact accounting.
 func TestKillMidBatchResumes(t *testing.T) {
 	h := newHarness(t, 800)
@@ -310,12 +310,12 @@ func TestKillMidBatchResumes(t *testing.T) {
 		if sum > m.ChunksTotal {
 			direction = "double-counted (credited more than once)"
 		}
-		t.Fatalf("backfill(%d)+lazy(%d) = %d != total(%d) — chunks were %s",
+		t.Fatalf("backfill(%d)+lazy(%d) = %d != total(%d) -- chunks were %s",
 			m.ChunksBackfill, m.ChunksLazy, sum, m.ChunksTotal, direction)
 	}
 }
 
-// TestLazyMigratesAheadOfBackfill — with the worker never running (paused
+// TestLazyMigratesAheadOfBackfill -- with the worker never running (paused
 // migration, no worker goroutine), a query's hits still migrate via the lazy
 // path: hot memory ahead of batch order.
 func TestLazyMigratesAheadOfBackfill(t *testing.T) {
@@ -347,7 +347,7 @@ func TestLazyMigratesAheadOfBackfill(t *testing.T) {
 	}
 }
 
-// TestRollbackMidMigration — immediate: the active provider never moved, the
+// TestRollbackMidMigration -- immediate: the active provider never moved, the
 // worker goes idle, and writes stop dual-embedding.
 func TestRollbackMidMigration(t *testing.T) {
 	h := newHarness(t, 100)
@@ -405,7 +405,7 @@ func TestRollbackAfterCompletion(t *testing.T) {
 	}
 }
 
-// TestDryRunWritesNothing — plan only: no state row, no target table.
+// TestDryRunWritesNothing -- plan only: no state row, no target table.
 func TestDryRunWritesNothing(t *testing.T) {
 	h := newHarness(t, 50)
 	plan, err := h.coord.Start(h.ctx, fromRef, toRef, true)
@@ -429,7 +429,7 @@ func TestDryRunWritesNothing(t *testing.T) {
 	}
 }
 
-// TestConcurrentStartConflicts — a second start while one is in progress is
+// TestConcurrentStartConflicts -- a second start while one is in progress is
 // an explicit Conflict, not a race.
 func TestConcurrentStartConflicts(t *testing.T) {
 	h := newHarness(t, 50)

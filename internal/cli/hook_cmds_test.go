@@ -29,7 +29,7 @@ func runHookPostCommit(t *testing.T) error {
 	return root.Execute()
 }
 
-// TestPostCommitCapturesInMarkedRepo — a commit in a marked repo lands as a
+// TestPostCommitCapturesInMarkedRepo -- a commit in a marked repo lands as a
 // structured vault entry; the daemon's reconciliation machinery owns indexing
 // it (out-of-band by design).
 func TestPostCommitCapturesInMarkedRepo(t *testing.T) {
@@ -77,7 +77,7 @@ func TestPostCommitCapturesInMarkedRepo(t *testing.T) {
 	}
 }
 
-// TestPostCommitUnmarkedIsSilent — no marker: exit 0, nothing written.
+// TestPostCommitUnmarkedIsSilent -- no marker: exit 0, nothing written.
 func TestPostCommitUnmarkedIsSilent(t *testing.T) {
 	sandbox := t.TempDir()
 	for _, k := range []string{"XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"} {

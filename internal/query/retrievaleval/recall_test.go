@@ -20,7 +20,7 @@ func TestVectorLegRecallVsExact(t *testing.T) {
 	c := Build(t, spec)
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "vector leg recall vs exact KNN — %d chunks, k=50, averaged over %d queries\n\n",
+	fmt.Fprintf(&b, "vector leg recall vs exact KNN -- %d chunks, k=50, averaged over %d queries\n\n",
 		spec.Notes*spec.ChunksPerNote, len(c.Queries))
 	fmt.Fprintf(&b, "%-14s %-24s %8s %8s %8s %8s\n",
 		"SCOPE", "SETTING", "RETURNED", "RECALL", "NDCG", "KENDALL")
@@ -97,7 +97,7 @@ func TestVectorLegRecallVsExact(t *testing.T) {
 		// Sanity floor: a scope using HNSW must retrieve *something* correct,
 		// or the corpus geometry is degenerate and the whole run is void.
 		if def <= 0 {
-			t.Errorf("%s: pre-fix baseline recall is %.3f — corpus geometry is degenerate", scope, def)
+			t.Errorf("%s: pre-fix baseline recall is %.3f -- corpus geometry is degenerate", scope, def)
 		}
 	}
 }

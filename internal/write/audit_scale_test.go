@@ -15,7 +15,7 @@ import (
 // TestAuditGraphScales pins the query count, not the wall clock. The first
 // version issued a full scan of `notes` plus a LinkDsts round trip per note, so
 // the audit blew `Status`'s 15s budget on a few thousand notes and reported
-// FAIL on a healthy daemon — the check whose entire value is being trustworthy.
+// FAIL on a healthy daemon -- the check whose entire value is being trustworthy.
 func TestAuditGraphScales(t *testing.T) {
 	s, _ := storetest.NewTB(t)
 	ctx := context.Background()
@@ -58,8 +58,8 @@ func TestAuditGraphScales(t *testing.T) {
 	}
 	// Threshold measured, not guessed. At this N the per-note implementation
 	// took 1.92s and the three-query one takes ~5ms, so 500ms separates them by
-	// a wide margin in both directions. A 5s bound — the first thing I reached
-	// for — passes on *both* and would have proved nothing.
+	// a wide margin in both directions. A 5s bound -- the first thing I reached
+	// for -- passes on *both* and would have proved nothing.
 	//
 	// The absolute number matters less than the growth: work per note was a
 	// full scan of `notes` plus a round trip, so the cost is quadratic and

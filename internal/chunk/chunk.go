@@ -1,6 +1,6 @@
 // Package chunk splits notes into embeddable pieces. Mechanics ported from
 // silo-kb with one stage adaptation: reflections embed only their frontmatter
-// description — a stylized comedic body would embed literally and scatter the
+// description -- a stylized comedic body would embed literally and scatter the
 // note across vector space, while the dry description clusters it near the
 // events it records.
 //
@@ -77,7 +77,7 @@ type section struct {
 
 var md = goldmark.New()
 
-// headingText reconstructs a heading's text from its source line segments —
+// headingText reconstructs a heading's text from its source line segments --
 // the replacement for the deprecated ast.Node.Text, which the library now
 // steers callers away from in favor of the line segments.
 func headingText(h *ast.Heading, src []byte) string {

@@ -13,7 +13,7 @@ import (
 	"github.com/enqack/cognosis/internal/cogerr"
 )
 
-// TestDisclosureGateOverRealMCPSession — mayDiscloseTo reads the forwarding
+// TestDisclosureGateOverRealMCPSession -- mayDiscloseTo reads the forwarding
 // markers off req.Extra.Header, which nothing in this package populates. It is
 // filled by the SDK's streamable transport from the live HTTP request, so a
 // unit test that hand-builds a request proves only that the comparison works,
@@ -97,7 +97,7 @@ func TestDisclosureGateOverRealMCPSession(t *testing.T) {
 	}
 
 	// Opted in, but this call carries a proxy marker. httptest binds loopback,
-	// so the packet is indistinguishable from the local CLI by address — the
+	// so the packet is indistinguishable from the local CLI by address -- the
 	// header is the only evidence, and it must withdraw the detail.
 	if body := call(t, serve(t, loopbackTrusting), true); discloses(body) {
 		t.Errorf("disclosed the DSN to a caller carrying X-Forwarded-For; every reverse-proxied deployment leaks: %s", body)
@@ -126,7 +126,7 @@ func (h headerRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 	return http.DefaultTransport.RoundTrip(clone)
 }
 
-// TestMayDiscloseToWithholdsWithoutHeaderMetadata — absent metadata must read
+// TestMayDiscloseToWithholdsWithoutHeaderMetadata -- absent metadata must read
 // as "cannot verify", not as "nothing suspicious". A request with no Extra, or
 // an Extra with no Header, has not been shown to be local; treating it as local
 // would make every non-HTTP transport disclose by default.

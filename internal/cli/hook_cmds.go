@@ -16,7 +16,7 @@ import (
 
 // Opt-in git commit capture: a repo's post-commit hook shells out to
 // `cognosis hook post-commit`, which records the commit as a structured
-// entries/ note. The note is written directly into the vault — the sanctioned
+// entries/ note. The note is written directly into the vault -- the sanctioned
 // out-of-band path: the running daemon's watcher (or the next boot
 // reconciliation) indexes and versions it like any hand-edit.
 
@@ -27,7 +27,7 @@ func newHookCmd() *cobra.Command {
 		Use:   "post-commit",
 		Short: "Record the current repo's latest commit as a vault entry (call from .git/hooks/post-commit)",
 		Long: "Marker-gated like every hook: without a .cognosis-project marker above the working\n" +
-			"directory this exits 0 silently. Opt-in per repo — install hooks/post-commit.sh into\n" +
+			"directory this exits 0 silently. Opt-in per repo -- install hooks/post-commit.sh into\n" +
 			".git/hooks/ only where commit capture is wanted.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			project, found := resolveProjectMarker()
@@ -84,7 +84,7 @@ Files:
 	return cmd
 }
 
-// latestCommit reads the hooked repo's newest commit — read-only, run by the
+// latestCommit reads the hooked repo's newest commit -- read-only, run by the
 // operator's own git invocation.
 func latestCommit(ctx context.Context) (hash, subject, files string, err error) {
 	out, err := exec.CommandContext(ctx, "git", "log", "-1", "--format=%H%n%s").Output()

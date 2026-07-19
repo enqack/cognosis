@@ -8,7 +8,7 @@
 # fixed. The assertions here are bounds and relations only; the numbers land in
 # internal/query/retrievaleval/testdata/ for a human to read.
 #
-# Needs Postgres only — no Ollama. The corpus uses the deterministic clustered
+# Needs Postgres only -- no Ollama. The corpus uses the deterministic clustered
 # Synth provider, not a live embedding server.
 set -euo pipefail
 source "$(dirname "$0")/_lib.sh"
@@ -27,7 +27,7 @@ echo "running retrieval evaluation sweeps (corpus size: ${COGNOSIS_EVAL_NOTES:-1
 # The AND/OR artifact is already recorded and its control only checks that the
 # connective takes effect. The fallback sweep's control fails when the corpus
 # stops starving the keyword leg, which a future change to query generation or
-# the vocabulary could do silently — text generation has quietly emptied a
+# the vocabulary could do silently -- text generation has quietly emptied a
 # fixture property twice before.
 go test ./internal/query/retrievaleval/ -v -timeout 30m \
   -run 'TestVectorLegCapacity|TestVectorLegRecallVsExact|TestFusedTopKUnderCorrectedScan|TestRecordExactProbePlan|TestKeywordORFallbackSweep' \

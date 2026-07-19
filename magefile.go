@@ -34,7 +34,7 @@ func Test() error {
 	return sh.RunV("go", "test", "-race", "./...")
 }
 
-// TestShort runs the suite with -short, skipping the tests that gate on it —
+// TestShort runs the suite with -short, skipping the tests that gate on it --
 // today just the 5k-chunk load test in internal/migrate. The fast inner-loop
 // suite; Test remains the one that proves the load claim.
 func TestShort() error {
@@ -42,7 +42,7 @@ func TestShort() error {
 }
 
 // Bench runs the retrieval-evaluation benchmarks (internal/query/retrievaleval).
-// Local/dev only — needs COGNOSIS_TEST_DSN and COGNOSIS_EVAL_DSN set, and
+// Local/dev only -- needs COGNOSIS_TEST_DSN and COGNOSIS_EVAL_DSN set, and
 // deliberately runs WITHOUT -race: race instrumentation makes latency numbers
 // meaningless. Feed the output to benchstat to compare default against
 // corrected scan settings.
@@ -53,7 +53,7 @@ func Bench() error {
 
 // Lint runs gofmt (check mode) and golangci-lint over the correctness +
 // security linter set configured in .golangci.yml (govet, errcheck,
-// staticcheck, gosec, and more) — see that file for the authoritative list.
+// staticcheck, gosec, and more) -- see that file for the authoritative list.
 func Lint() error {
 	out, err := sh.Output("gofmt", "-l", ".")
 	if err != nil {
@@ -71,7 +71,7 @@ func Install() error {
 }
 
 // Check runs the end-to-end feature checks (scripts/checks/*.sh via
-// scripts/check-all.sh). Local/dev only — needs a reachable Postgres
+// scripts/check-all.sh). Local/dev only -- needs a reachable Postgres
 // (COGNOSIS_DSN, e.g. pg-start) and a local Ollama with the embedding model
 // pulled, so it is deliberately not part of CI.
 func Check() error {
@@ -174,7 +174,7 @@ func archiveTarGz(archivePath, binPath, nameInArc string) error {
 }
 
 // archiveTarXz writes a single-file .tar.xz by streaming the tar through the
-// xz(1) binary — the Go stdlib has no xz writer, and xz is flake-provided.
+// xz(1) binary -- the Go stdlib has no xz writer, and xz is flake-provided.
 func archiveTarXz(archivePath, binPath, nameInArc string) error {
 	out, err := os.Create(archivePath)
 	if err != nil {

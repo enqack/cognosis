@@ -7,7 +7,7 @@ import "sync"
 //
 // It is shared rather than owned by the Pipeline because the Pipeline is not
 // the only writer: lifecycle.Engine.rewrite writes vault files directly. That
-// was harmless while every writer was single-shot — a caller supplying whole
+// was harmless while every writer was single-shot -- a caller supplying whole
 // content has nothing that can go stale. Pipeline.Edit is the first
 // read-modify-write, and it made the gap load-bearing:
 //
@@ -16,7 +16,7 @@ import "sync"
 //
 // The reinforce is silently reverted. `confidence` and `last_reinforced` are
 // canonical frontmatter, so that is a lost update to the source of truth, not
-// index skew — and reconciliation cannot repair it, because the file and the
+// index skew -- and reconciliation cannot repair it, because the file and the
 // index agree on the wrong value. Both tools report success.
 //
 // The zero value is not usable; construct with NewPathLocks and give the same
@@ -41,7 +41,7 @@ func (p *PathLocks) Lock(rel string) func() {
 // LockTwo acquires both paths in a fixed global order and returns their
 // release. Ordering by path is what makes a two-path operation (a stage move,
 // which writes the destination and deletes the source) safe against another
-// one running the opposite direction — locking in call order would deadlock
+// one running the opposite direction -- locking in call order would deadlock
 // the pair.
 func (p *PathLocks) LockTwo(a, b string) func() {
 	if a == b {

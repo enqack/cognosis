@@ -52,7 +52,7 @@ func TestStageOf(t *testing.T) {
 	}
 }
 
-// TestRoundTripIdentity is the round-trip property: parse → serialize → parse
+// TestRoundTripIdentity is the round-trip property: parse -> serialize -> parse
 // yields the same frontmatter and body, including preserved comments.
 func TestRoundTripIdentity(t *testing.T) {
 	src := `---
@@ -154,7 +154,7 @@ Raw capture.
 		"log.md":     "append-only log, no frontmatter\n",
 		"index.md":   "---\nokf_version: 1\n---\ngenerated\n",
 		"stray.txt":  "not markdown",
-		"other/x.md": "outside the stage folders — skipped\n",
+		"other/x.md": "outside the stage folders -- skipped\n",
 	})
 	notes, err := Walk(root)
 	if err != nil {

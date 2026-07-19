@@ -22,7 +22,7 @@ import (
 // Daemonize re-execs the current binary in the foreground mode, detached in
 // its own session, with output going to the state-dir log file. The parent
 // returns the child PID and exits; the child is the actual daemon. Baseline
-// self-managed lifecycle as the baseline — platform service files just skip this by
+// self-managed lifecycle as the baseline -- platform service files just skip this by
 // running `start --foreground` themselves.
 func Daemonize(ctx context.Context, paths config.Paths) (int, error) {
 	const op = "daemon.Daemonize"
@@ -56,7 +56,7 @@ func Daemonize(ctx context.Context, paths config.Paths) (int, error) {
 	}
 	// Read the pid *before* releasing. Release sets Process.Pid to -1 to mark
 	// the handle spent, and Go does not specify whether a non-call operand in a
-	// return statement is evaluated before or after a call beside it — so
+	// return statement is evaluated before or after a call beside it -- so
 	// `return cmd.Process.Pid, cmd.Process.Release()` reported -1 rather than
 	// the child's pid, in the one message whose job is to say what started.
 	pid := cmd.Process.Pid
@@ -170,13 +170,13 @@ func Status(ctx context.Context, cfg *config.Config) []Check {
 	// dependencies answer" is not the same claim as "the thing works".
 	// Bound the connect like every other probe: cobra's cmd.Context() carries
 	// no deadline, and a firewall that DROPs rather than RSTs would hang
-	// `cognosis status` indefinitely — the command an operator runs precisely
+	// `cognosis status` indefinitely -- the command an operator runs precisely
 	// when the database is misbehaving.
 	//
 	// The auth and graph budgets below derive from ctx, NOT from this one.
 	// context.WithTimeout takes the earlier of the two deadlines, so deriving
 	// them here would silently cap a 15s graph audit at whatever remained of
-	// these 3s — reporting FAIL on a healthy vault that merely takes 4s, which
+	// these 3s -- reporting FAIL on a healthy vault that merely takes 4s, which
 	// is the exact defect the audit rewrite removed.
 	cctx2, ccancel2 := context.WithTimeout(ctx, 3*time.Second)
 	defer ccancel2()
@@ -202,10 +202,10 @@ func Status(ctx context.Context, cfg *config.Config) []Check {
 		default:
 			// The remedy names a *content* change deliberately. Reconciliation
 			// confirms drift by content hash, so touch(1) is skipped and the
-			// note keeps its stale edges forever — that skip is half of how
+			// note keeps its stale edges forever -- that skip is half of how
 			// this failure becomes permanent in the first place.
 			checks = append(checks, Check{"graph", false, fmt.Sprintf(
-				"%d edge(s) missing, %d unexpected across %d notes (e.g. %s) — repair by changing "+
+				"%d edge(s) missing, %d unexpected across %d notes (e.g. %s) -- repair by changing "+
 					"the content of an affected note (edit_note; touch(1) will not do, reconcile "+
 					"confirms drift by content hash), or drop the schema and restart to rebuild",
 				g.Missing, g.Extra, g.Notes, strings.Join(g.Sample, ", "))})

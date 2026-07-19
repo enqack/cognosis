@@ -17,20 +17,20 @@ import (
 //
 // This exists because TestKeywordANDvsOR cannot answer it. That experiment
 // compares the two connectives on the head-drawn query set, where both arms
-// saturate a pool of 50 and report EMPTY-Q 0/30 — a corpus on which AND never
+// saturate a pool of 50 and report EMPTY-Q 0/30 -- a corpus on which AND never
 // starves, so the failure a fallback would fix does not occur and "OR is not
 // better" is a statement about the fixture. Same shape as the ceiling run that
 // reported no headroom because the keyword leg could not be wrong.
 //
 // The motivating failure is from the real vault, not this corpus: a four-term
-// query built from strings unique to one note returned a single FTS candidate —
-// belonging to a different note — and the target was absent from the fused
+// query built from strings unique to one note returned a single FTS candidate --
+// belonging to a different note -- and the target was absent from the fused
 // top-6 entirely. Under OR the same query returned 33 candidates with the
 // target at ranks 1, 2 and 7. The terms were distributed across different H2
 // sections of the target, and chunking is per-section, so no chunk held all
 // four and the conjunction matched none of them.
 //
-// Two things this deliberately does NOT do. It asserts no quality threshold —
+// Two things this deliberately does NOT do. It asserts no quality threshold --
 // it reports a sweep and fails only on broken premises. And it changes no
 // production code: the fallback is simulated by selecting between two probes,
 // so the numbers exist before the design is committed to.
@@ -91,7 +91,7 @@ func TestKeywordORFallbackSweep(t *testing.T) {
 	healthy := measureFallback(ctx, t, c, healthyProbes, filter, ns, pool, topK, rrfK, graphWeight)
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "keyword leg: OR fallback threshold sweep — %d chunks, pool=%d, top-%d\n",
+	fmt.Fprintf(&b, "keyword leg: OR fallback threshold sweep -- %d chunks, pool=%d, top-%d\n",
 		spec.Notes*spec.ChunksPerNote, pool, topK)
 	fmt.Fprintf(&b, "%d starving queries: %d markers, one from each of %d chunks of ONE target note\n",
 		len(c.StarveQueries), len(c.StarveQueries[0].Sections), len(c.StarveQueries[0].Sections))
@@ -107,20 +107,20 @@ func TestKeywordORFallbackSweep(t *testing.T) {
 	b.WriteString("Ground truth for both starving sets is the TARGET NOTE, not the cluster.\n" +
 		"TGT-IN-CAND is the keyword leg reaching the note at all; TGT-RECALL is it\n" +
 		"surviving into the fused top-8. The gap between them is fusion burying a\n" +
-		"candidate the leg did find — a different defect from never finding it.\n\n")
+		"candidate the leg did find -- a different defect from never finding it.\n\n")
 
-	fmt.Fprintf(&b, "TOTALLY STARVING (%d queries) — AND returns nothing at all.\n", total.queries)
+	fmt.Fprintf(&b, "TOTALLY STARVING (%d queries) -- AND returns nothing at all.\n", total.queries)
 	b.WriteString("Every N >= 1 fires here, so this set answers 'does falling back help',\n")
 	b.WriteString("not 'which N'.\n")
 	writeFallbackTable(&b, ns, total, total.queries, true)
 
-	fmt.Fprintf(&b, "\nPARTIALLY STARVING (%d queries) — AND returns exactly one candidate,\n", partial.queries)
+	fmt.Fprintf(&b, "\nPARTIALLY STARVING (%d queries) -- AND returns exactly one candidate,\n", partial.queries)
 	b.WriteString("belonging to a DIFFERENT note. This is the regime the real vault was in,\n")
 	b.WriteString("and the only one where the threshold is a real choice: N=1 cannot fire\n")
 	b.WriteString("(one candidate is not fewer than one), N=2 can.\n")
 	writeFallbackTable(&b, ns, partial, partial.queries, true)
 
-	b.WriteString("\nHEALTHY SET — collateral damage on queries that already work.\n")
+	b.WriteString("\nHEALTHY SET -- collateral damage on queries that already work.\n")
 	b.WriteString("JACCARD is the fused top-8 against the N=0 baseline; 1.000 means the arm\n")
 	b.WriteString("never fired here. Read it together with the histogram below, not alone.\n")
 	writeFallbackTable(&b, ns, healthy, len(c.Queries), false)
@@ -208,7 +208,7 @@ func TestFallbackRowsSelects(t *testing.T) {
 // n candidates. n=0 never falls back and is the shipped behaviour; n greater
 // than the pool is OR-always.
 //
-// Nothing in the request path does this — store.RankFTS takes no mode and
+// Nothing in the request path does this -- store.RankFTS takes no mode and
 // store.TSQueryOr is measurement-only. This is the change under evaluation,
 // simulated so it can be measured before it is written.
 func fallbackRows(and, or []store.RankedChunk, n int) ([]store.RankedChunk, bool) {
@@ -240,7 +240,7 @@ type fallbackArm struct {
 
 	// Target-note metrics, populated only for the starving set.
 	// targetInCand and targetInTop separate "the keyword leg never surfaced the
-	// note" from "the leg surfaced it and fusion buried it" — different bugs
+	// note" from "the leg surfaced it and fusion buried it" -- different bugs
 	// with different fixes, indistinguishable from a single recall number.
 	targetInCand int
 	targetInTop  int
@@ -280,7 +280,7 @@ func (r *fallbackRun) histogram() string {
 	return strings.Join(parts, "  ")
 }
 
-// measureFallback probes each query twice — once per connective — and derives
+// measureFallback probes each query twice -- once per connective -- and derives
 // every threshold from those two slices. Fusion is evaluated once per side, not
 // once per threshold, so adding N values to the sweep costs nothing: the arms
 // differ only in which of the two cached fusions they select.

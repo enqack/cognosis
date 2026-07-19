@@ -10,7 +10,7 @@ import (
 	"github.com/enqack/cognosis/internal/config"
 )
 
-// TestDaemonizeReturnsTheChildPID — `cognosis start` prints the returned pid,
+// TestDaemonizeReturnsTheChildPID -- `cognosis start` prints the returned pid,
 // and it printed -1. Cause: Release marks a spent handle by setting
 // Process.Pid to -1, and the old
 //
@@ -21,7 +21,7 @@ import (
 // one, so the field could be read after Release had already zeroed it.
 //
 // The child here is the test binary re-invoked with daemon flags it does not
-// understand; it exits immediately. That is fine — this asserts on the pid the
+// understand; it exits immediately. That is fine -- this asserts on the pid the
 // parent reports, not on anything the child does.
 func TestDaemonizeReturnsTheChildPID(t *testing.T) {
 	dir := t.TempDir()
@@ -42,7 +42,7 @@ func TestDaemonizeReturnsTheChildPID(t *testing.T) {
 	if pid == os.Getpid() {
 		t.Fatalf("Daemonize returned the parent's own pid %d", pid)
 	}
-	// Reap it if it is somehow still around — it was setsid'd and released, so
+	// Reap it if it is somehow still around -- it was setsid'd and released, so
 	// a signal is the only handle left and failure is not interesting.
 	_ = syscall.Kill(pid, syscall.SIGKILL)
 }

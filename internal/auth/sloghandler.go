@@ -11,7 +11,7 @@ import (
 //
 // It exists because per-leg retrieval counters (query_knowledge's vector/fts/
 // graph/fused/sources numbers) live only in the structured log, never in
-// audit_log — so without this there is no way to tell one client's query shape
+// audit_log -- so without this there is no way to tell one client's query shape
 // from another's. An agent investigating retrieval writes telemetry
 // indistinguishable from ordinary use and silently becomes the majority of the
 // sample: 19 of 22 recorded queries, on the first occasion this was checked.
@@ -53,7 +53,7 @@ func (h identityHandler) Handle(ctx context.Context, r slog.Record) error {
 
 // WithAttrs and WithGroup must re-wrap. Returning h.inner.WithAttrs(as)
 // directly compiles and passes any test that logs through a freshly constructed
-// handler — and silently drops identity from every line the MCP server emits,
+// handler -- and silently drops identity from every line the MCP server emits,
 // because mcpserver.NewTLS calls .With("component", "mcpserver") on
 // construction. That bug disables this entirely while leaving it looking wired.
 func (h identityHandler) WithAttrs(as []slog.Attr) slog.Handler {
@@ -62,8 +62,8 @@ func (h identityHandler) WithAttrs(as []slog.Attr) slog.Handler {
 
 // WithGroup nests the identity attribute under the group, so a record logged
 // after WithGroup("g") carries g.token rather than token. Nothing in this tree
-// calls WithGroup; the alternative — holding a second pre-group handler to emit
-// the attribute ungrouped — is materially more code for a case that does not
+// calls WithGroup; the alternative -- holding a second pre-group handler to emit
+// the attribute ungrouped -- is materially more code for a case that does not
 // occur. Pinned by a test so the nesting is a decision rather than an accident.
 func (h identityHandler) WithGroup(name string) slog.Handler {
 	return identityHandler{inner: h.inner.WithGroup(name)}

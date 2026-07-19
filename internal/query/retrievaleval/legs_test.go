@@ -16,7 +16,7 @@ import (
 // This is deliberately not part of the gucSettings sweep: hnsw.* affects only
 // the vector leg, so sweeping the keyword and graph legs across those rows
 // would repeat the same number and imply a relationship that does not exist.
-// The question here is different — which legs can actually fill the candidate
+// The question here is different -- which legs can actually fill the candidate
 // pool, and which are structurally short.
 //
 // The graph leg had never been measured directly before this. That mattered:
@@ -33,7 +33,7 @@ func TestAllLegCapacityAtShippedSettings(t *testing.T) {
 	const pool = 50
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "per-leg capacity at shipped scan settings — %d chunks, pool=%d, %d queries\n\n",
+	fmt.Fprintf(&b, "per-leg capacity at shipped scan settings -- %d chunks, pool=%d, %d queries\n\n",
 		spec.Notes*spec.ChunksPerNote, pool, len(c.Queries))
 	b.WriteString("Graph-leg note: project scoping is deliberately absent from that leg (it\n" +
 		"inherits scope through its seeds), so its row varies with the seeds it is given,\n" +
@@ -124,7 +124,7 @@ func TestAllLegCapacityAtShippedSettings(t *testing.T) {
 	t.Log("\n" + b.String())
 
 	// The only hard assertion: no leg may exceed its limit. Under-returning is
-	// the interesting measurement and is recorded, not asserted — the keyword
+	// the interesting measurement and is recorded, not asserted -- the keyword
 	// leg legitimately returns fewer than the pool when few chunks match, and
 	// the graph leg returns whatever the seeds reach.
 	// (Over-returning would mean the LIMIT is not doing its job.)

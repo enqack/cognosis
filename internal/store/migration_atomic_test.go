@@ -78,7 +78,7 @@ func counterAndRows(t *testing.T, ctx context.Context, s *Store, table string) (
 // progress counter equals the number of embedding rows that actually landed.
 //
 // Under the previous two-transaction implementation a cancel between the
-// insert committing and the counter bump left rows > counter permanently —
+// insert committing and the counter bump left rows > counter permanently --
 // nothing revisits a chunk that already has a row, so the shortfall was not
 // recoverable. Here either both land or neither does.
 func TestRecordMigratedBatchAtomicUnderCancel(t *testing.T) {
@@ -100,7 +100,7 @@ func TestRecordMigratedBatchAtomicUnderCancel(t *testing.T) {
 		counter, rows := counterAndRows(t, ctx, s, table)
 
 		// The invariant, and the only one that matters: whatever landed is
-		// credited. Not "nothing landed on error" — a COMMIT can succeed on
+		// credited. Not "nothing landed on error" -- a COMMIT can succeed on
 		// the server while the client sees context.Canceled, and the client
 		// cannot distinguish that from a commit that never arrived. Both
 		// outcomes are safe precisely *because* the two writes are atomic: if
@@ -109,7 +109,7 @@ func TestRecordMigratedBatchAtomicUnderCancel(t *testing.T) {
 		// Asserting rows==0 on error would be asserting something Postgres
 		// does not promise.
 		if counter != rows {
-			t.Errorf("delay %v: counter=%d but %d rows landed — the progress counter and the "+
+			t.Errorf("delay %v: counter=%d but %d rows landed -- the progress counter and the "+
 				"destination table disagree, which is exactly the state that makes a migration "+
 				"report itself complete while chunks_backfill+chunks_lazy < chunks_total",
 				delay, counter, rows)
@@ -118,13 +118,13 @@ func TestRecordMigratedBatchAtomicUnderCancel(t *testing.T) {
 			t.Errorf("delay %v: reported %d inserted but %d rows landed", delay, inserted, rows)
 		}
 		if err == nil && inserted != len(vecs) {
-			t.Errorf("delay %v: succeeded with %d of %d inserted — a partial success would mean "+
+			t.Errorf("delay %v: succeeded with %d of %d inserted -- a partial success would mean "+
 				"the batch is neither complete nor retryable", delay, inserted, len(vecs))
 		}
 	}
 }
 
-// A context cancelled before the call must write nothing at all — the
+// A context cancelled before the call must write nothing at all -- the
 // deterministic end of the same invariant.
 func TestRecordMigratedBatchPreCancelledWritesNothing(t *testing.T) {
 	s, ctx, id, table, vecs := seedMigration(t, 8)
@@ -170,6 +170,6 @@ func TestRecordMigratedBatchCreditsOnlyWhatLanded(t *testing.T) {
 	}
 	counter2, rows2 := counterAndRows(t, ctx, s, table)
 	if counter2 != counter || rows2 != rows {
-		t.Errorf("re-record changed state: counter %d→%d rows %d→%d", counter, counter2, rows, rows2)
+		t.Errorf("re-record changed state: counter %d->%d rows %d->%d", counter, counter2, rows, rows2)
 	}
 }

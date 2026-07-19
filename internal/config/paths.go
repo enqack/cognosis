@@ -9,12 +9,12 @@ import (
 
 // Paths holds every filesystem location Cognosis uses, resolved per the XDG
 // Base Directory Specification. Precedence is
-// env-var-first, adrg/xdg platform default second — nothing else.
+// env-var-first, adrg/xdg platform default second -- nothing else.
 type Paths struct {
 	ConfigDir string // $XDG_CONFIG_HOME/cognosis
 	DataDir   string // $XDG_DATA_HOME/cognosis
 	StateDir  string // $XDG_STATE_HOME/cognosis
-	CacheDir  string // $XDG_CACHE_HOME/cognosis — reserved, unused in v1
+	CacheDir  string // $XDG_CACHE_HOME/cognosis -- reserved, unused in v1
 }
 
 // ResolvePaths reads the XDG env vars at call time (not package init) so env

@@ -19,13 +19,13 @@ import (
 
 type writeNoteArgs struct {
 	Path    string `json:"path" jsonschema:"vault-relative path under entries/, notes/, reflections/, or archive/ (e.g. entries/2026-07-12-capture.md)"`
-	Content string `json:"content" jsonschema:"full markdown file content including YAML frontmatter satisfying the contract. Omit id and one is assigned (a new UUIDv7 for a new path; the existing id when overwriting, which preserves that note's inbound links) — supply one only to pin a specific id, and it must be a UUIDv7. Required keys: category (entry under entries/; concept, cursed-knowledge or lesson-learned under notes/), created, updated. Notes under notes/ also require sources: a non-empty list of wikilinks to entries or reflections, so write the entry first. An optional one-line summary: key is cached and returned with every retrieval hit."`
+	Content string `json:"content" jsonschema:"full markdown file content including YAML frontmatter satisfying the contract. Omit id and one is assigned (a new UUIDv7 for a new path; the existing id when overwriting, which preserves that note's inbound links) -- supply one only to pin a specific id, and it must be a UUIDv7. Required keys: category (entry under entries/; concept, cursed-knowledge or lesson-learned under notes/), created, updated. Notes under notes/ also require sources: a non-empty list of wikilinks to entries or reflections, so write the entry first. An optional one-line summary: key is cached and returned with every retrieval hit."`
 	Project string `json:"project,omitempty" jsonschema:"optional cross-check: must match the note's own frontmatter project tag when set"`
 }
 
 type editNoteArgs struct {
 	Path      string `json:"path" jsonschema:"vault-relative path of an existing note"`
-	OldString string `json:"old_string" jsonschema:"exact text to replace, matched literally including whitespace and newlines. Must appear exactly once in the file — if it appears more than once the edit is rejected with the count, so extend the snippet until it is unique."`
+	OldString string `json:"old_string" jsonschema:"exact text to replace, matched literally including whitespace and newlines. Must appear exactly once in the file -- if it appears more than once the edit is rejected with the count, so extend the snippet until it is unique."`
 	NewString string `json:"new_string" jsonschema:"replacement text; empty deletes the matched text"`
 }
 
@@ -34,9 +34,9 @@ type queryArgs struct {
 	Project          string `json:"project,omitempty" jsonschema:"optional project filter"`
 	TopK             int    `json:"top_k,omitempty" jsonschema:"number of results, default 8"`
 	IncludeFalsified bool   `json:"include_falsified,omitempty" jsonschema:"include retained-but-invalidated (falsified) notes; default false"`
-	IncludeArchived  bool   `json:"include_archived,omitempty" jsonschema:"include soft-deleted (faded/archived) notes; default false — archived concepts are shelved and stay out of ordinary retrieval"`
+	IncludeArchived  bool   `json:"include_archived,omitempty" jsonschema:"include soft-deleted (faded/archived) notes; default false -- archived concepts are shelved and stay out of ordinary retrieval"`
 	PersonaFilter    string `json:"persona_filter,omitempty" jsonschema:"optional enabled persona id whose category bias reweights fused results (a lens, never a hard filter)"`
-	AsOf             string `json:"as_of,omitempty" jsonschema:"optional YYYY-MM-DD HH:MM:SS — answer from what the KB believed at that instant: notes created later vanish, notes falsified later count as still believed. Content is always current; use vault history to recover past content."`
+	AsOf             string `json:"as_of,omitempty" jsonschema:"optional YYYY-MM-DD HH:MM:SS -- answer from what the KB believed at that instant: notes created later vanish, notes falsified later count as still believed. Content is always current; use vault history to recover past content."`
 }
 
 type listDecayingArgs struct {
@@ -69,7 +69,7 @@ func textResult(s string) *mcp.CallToolResult {
 func (s *Server) addTools(srv *mcp.Server) {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "write_note",
-		Description: "Persist a finding to the vault so it survives this session — decisions, gotchas, dead ends worth not re-walking, " +
+		Description: "Persist a finding to the vault so it survives this session -- decisions, gotchas, dead ends worth not re-walking, " +
 			"anything a future session would waste time rediscovering. Raw capture goes in entries/. " +
 			"Validates the frontmatter contract, versions the write, chunks, embeds, and indexes it atomically.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args writeNoteArgs) (*mcp.CallToolResult, any, error) {
@@ -87,7 +87,7 @@ func (s *Server) addTools(srv *mcp.Server) {
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "edit_note",
-		Description: "Change part of an existing note without resending the whole file — fix a line, add a section, " +
+		Description: "Change part of an existing note without resending the whole file -- fix a line, add a section, " +
 			"append a source. Replaces one exact, unique occurrence of old_string with new_string, then revalidates, " +
 			"versions, re-chunks, re-embeds and re-indexes exactly as write_note does. " +
 			"Use write_note to create a note or to replace one wholesale; use this for everything smaller. " +
@@ -108,7 +108,7 @@ func (s *Server) addTools(srv *mcp.Server) {
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "query_knowledge",
-		Description: "Search your own past findings before deciding something non-obvious — a previous session may have already " +
+		Description: "Search your own past findings before deciding something non-obvious -- a previous session may have already " +
 			"settled it, or already been wrong about it. Hybrid semantic + keyword + link-graph retrieval, RRF-fused. " +
 			"Falsified notes are retained but excluded unless include_falsified.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args queryArgs) (*mcp.CallToolResult, any, error) {
@@ -146,9 +146,9 @@ func (s *Server) addTools(srv *mcp.Server) {
 			return nil, nil, s.toolError(req, err)
 		}
 		// Per-leg counts, not just the fused total. A query returning results
-		// says nothing about whether the keyword leg contributed any of them —
+		// says nothing about whether the keyword leg contributed any of them --
 		// on the evaluation corpus that leg returned 0-2 of a requested 50
-		// while fused output looked healthy — so the fused count alone cannot
+		// while fused output looked healthy -- so the fused count alone cannot
 		// tell whether the keyword leg's AND semantics are starving it in
 		// practice. Counts only: the audit summary records text_len rather
 		// than text, and this holds that line.
@@ -156,8 +156,8 @@ func (s *Server) addTools(srv *mcp.Server) {
 		// sources/fused_sources count distinct *notes* rather than chunks.
 		// Fusion has no per-note constraint, so a long note contributing many
 		// similar chunks can take most of the answer while a shorter note about
-		// the same event never places. The per-leg counts cannot show that —
-		// the crowding note's chunks are all genuinely relevant — and neither
+		// the same event never places. The per-leg counts cannot show that --
+		// the crowding note's chunks are all genuinely relevant -- and neither
 		// can `results`, which counts chunks.
 		s.log.InfoContext(ctx, "query_knowledge", "results", len(results),
 			"vector", stats.Vector, "fts", stats.FTS, "graph", stats.Graph, "fused", stats.Fused,
@@ -174,7 +174,7 @@ func (s *Server) addTools(srv *mcp.Server) {
 			Project:          args.Project,
 			IncludeFalsified: args.IncludeFalsified,
 		}); cerr == nil && n > 0 {
-			out += fmt.Sprintf("\n(at least %d falsified note(s) also matched and were excluded — "+
+			out += fmt.Sprintf("\n(at least %d falsified note(s) also matched and were excluded -- "+
 				"pass include_falsified to see what was ruled out and why.)\n", n)
 		}
 		return textResult(out), nil, nil
@@ -182,7 +182,7 @@ func (s *Server) addTools(srv *mcp.Server) {
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "list_notes",
-		Description: "Enumerate what the vault holds (path, category, status, project, updated) without content — the cheap way " +
+		Description: "Enumerate what the vault holds (path, category, status, project, updated) without content -- the cheap way " +
 			"to see coverage, or to find a path worth passing to get_note. To search by meaning rather than browse, use query_knowledge.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args listNotesArgs) (*mcp.CallToolResult, any, error) {
 		metas, err := s.store.ListNotes(ctx, args.Project)
@@ -201,7 +201,7 @@ func (s *Server) addTools(srv *mcp.Server) {
 			}
 			fmt.Fprintf(&b, ", updated %s)", m.Updated.Format("2006-01-02 15:04:05"))
 			if m.Summary != "" {
-				fmt.Fprintf(&b, " — %s", m.Summary)
+				fmt.Fprintf(&b, " -- %s", m.Summary)
 			}
 			b.WriteString("\n")
 		}
@@ -210,7 +210,7 @@ func (s *Server) addTools(srv *mcp.Server) {
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "list_decaying",
-		Description: "Surface decaying notes approaching staleness under the existing decay rules — the shortlist to feed compile_lifecycle's reinforce. Visibility only; shielded notes (paused, graduated, falsified) never appear.",
+		Description: "Surface decaying notes approaching staleness under the existing decay rules -- the shortlist to feed compile_lifecycle's reinforce. Visibility only; shielded notes (paused, graduated, falsified) never appear.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args listDecayingArgs) (*mcp.CallToolResult, any, error) {
 		if args.ThresholdDays <= 0 {
 			return nil, nil, fmt.Errorf("threshold_days must be positive")
@@ -231,7 +231,7 @@ func (s *Server) addTools(srv *mcp.Server) {
 			// passive citation refresh and on decay, while last asserted moves
 			// only when an agent actually reinforced. A note whose "asserted"
 			// is far older than its "reinforced" is one citations have been
-			// carrying — the ones most worth a deliberate look.
+			// carrying -- the ones most worth a deliberate look.
 			fmt.Fprintf(&b, "- %s (confidence %.1f, %s, last asserted %s, clock %s",
 				d.Path, d.Confidence, d.Maturity, d.LastAsserted, d.LastReinforced)
 			if d.Project != "" {
@@ -260,7 +260,7 @@ func (s *Server) addTools(srv *mcp.Server) {
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "vault_history",
-		Description: "Read the auto-managed vault git history — the invisible recovery net behind every write and compile pass. " +
+		Description: "Read the auto-managed vault git history -- the invisible recovery net behind every write and compile pass. " +
 			"Omit path for the whole-vault commit log; pass a path to scope it. Each entry carries the commit hash to feed restore_note. " +
 			"Lets you mediate a rollback (\"I changed that file at 2pm; want me to restore the 1:50pm version?\") without the operator touching a terminal.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args vaultHistoryArgs) (*mcp.CallToolResult, any, error) {
@@ -300,7 +300,7 @@ func (s *Server) addTools(srv *mcp.Server) {
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "restore_note",
-		Description: "Restore a note to a prior state from the vault history (ref from vault_history). The restore is itself a new commit — history moves forward, never rewritten — and the running daemon reindexes the restored file. Use it to undo a bad edit the operator flagged.",
+		Description: "Restore a note to a prior state from the vault history (ref from vault_history). The restore is itself a new commit -- history moves forward, never rewritten -- and the running daemon reindexes the restored file. Use it to undo a bad edit the operator flagged.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args restoreNoteArgs) (*mcp.CallToolResult, any, error) {
 		if strings.TrimSpace(args.Path) == "" || strings.TrimSpace(args.Ref) == "" {
 			return nil, nil, fmt.Errorf("path and ref are both required")
@@ -313,7 +313,7 @@ func (s *Server) addTools(srv *mcp.Server) {
 		//
 		// Normalise first. PathLocks keys on the raw string, and every other
 		// writer locks the cleaned path, so locking "./entries/x.md" here would
-		// take a different mutex than the pipeline's "entries/x.md" — a lock
+		// take a different mutex than the pipeline's "entries/x.md" -- a lock
 		// that reads as correct and serialises nothing. CleanPath also applies
 		// the stage and reserved-file rules restore had been skipping.
 		rel, err := write.CleanPath(args.Path)
@@ -357,7 +357,7 @@ func formatCommits(commits []vault.Commit) string {
 	return b.String()
 }
 
-// Format renders retrieval results as markdown — agents consume text better
+// Format renders retrieval results as markdown -- agents consume text better
 // than JSON.
 func Format(results []query.Result) string {
 	if len(results) == 0 {
@@ -367,7 +367,7 @@ func Format(results []query.Result) string {
 	for i, r := range results {
 		heading := ""
 		if r.HeadingPath != "" {
-			heading = " › " + r.HeadingPath
+			heading = " > " + r.HeadingPath
 		}
 		fmt.Fprintf(&b, "### %d. %s%s (%s, score %.4f)\n\n", i+1, r.Path, heading, r.Category, r.Score)
 		if r.Summary != "" {
@@ -389,5 +389,5 @@ func snippet(s string) string {
 	if i := strings.LastIndexByte(cut, '\n'); i >= snippetMax/2 {
 		cut = cut[:i]
 	}
-	return cut + "\n…"
+	return cut + "\n..."
 }

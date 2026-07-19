@@ -26,8 +26,8 @@ type noopSuppressor struct{}
 func (noopSuppressor) Suppress(string)   {}
 func (noopSuppressor) Unsuppress(string) {}
 
-// Pipeline is the sanctioned write path: validate → per-path lock → atomic
-// file write (watcher suppressed) → one history commit → chunk → embed →
+// Pipeline is the sanctioned write path: validate -> per-path lock -> atomic
+// file write (watcher suppressed) -> one history commit -> chunk -> embed ->
 // single-transaction index.
 type Pipeline struct {
 	Indexer  *Indexer
@@ -35,7 +35,7 @@ type Pipeline struct {
 	Hist     *vault.History
 	Supp     Suppressor
 
-	// Locks is shared with every other writer of the same vault — notably
+	// Locks is shared with every other writer of the same vault -- notably
 	// lifecycle.Engine, which writes files directly. See PathLocks.
 	Locks *PathLocks
 }
@@ -59,16 +59,16 @@ func NewPipeline(ix *Indexer, vaultDir string, hist *vault.History, supp Suppres
 // upsertNoteTx runs `delete from notes where path = $1 and id <> $2`, so a
 // changed id evicts the row and cascades its inbound edges. ensureNoteID
 // already avoids that for an *omitted* id, but that guard was one-sided: a
-// supplied-but-different id evicted just the same, and edit_note — advertised
-// for fixing a line or appending a source — made that a one-call operation on
+// supplied-but-different id evicted just the same, and edit_note -- advertised
+// for fixing a line or appending a source -- made that a one-call operation on
 // frontmatter the caller can now see and edit.
 //
 // The observable damage is subtler than "links are lost": RepairReferrers
 // re-resolves wikilinks by basename after the write, so edges are re-pointed at
 // the new id rather than dropped. What breaks is identity. An id is written
 // once and never rewritten precisely so it survives moves and renames, and
-// anything holding the old one — an external reference, an earlier retrieval
-// result — now names a row that no longer exists.
+// anything holding the old one -- an external reference, an earlier retrieval
+// result -- now names a row that no longer exists.
 //
 // Conflict rather than Validation: the content is well-formed, it just
 // disagrees with the note already at that path.
@@ -79,8 +79,8 @@ func (p *Pipeline) rejectIDChange(rel string, n *vault.Note) error {
 		return nil // ensureNoteID owns this case
 	}
 	// Ask the vault, not the index. Postgres is derived and droppable, so it
-	// must not arbitrate a vault write: a stale row — a note deleted while the
-	// daemon was down, or an event the watcher missed — would otherwise refuse
+	// must not arbitrate a vault write: a stale row -- a note deleted while the
+	// daemon was down, or an event the watcher missed -- would otherwise refuse
 	// a legitimate write creating a fresh note at that path, telling the agent
 	// to omit an id it had supplied correctly.
 	abs := filepath.Join(p.VaultDir, filepath.FromSlash(rel))
@@ -108,7 +108,7 @@ func (p *Pipeline) rejectIDChange(rel string, n *vault.Note) error {
 // ensureNoteID fills in a missing frontmatter `id`, returning the content to
 // write. Content that already carries one is returned untouched.
 //
-// The contract requires a UUIDv7 — ids sort lexically by creation, and an id is
+// The contract requires a UUIDv7 -- ids sort lexically by creation, and an id is
 // written once and never rewritten, so the version accepted at write time is
 // permanent. But a caller holding only the MCP tools has no way to mint one:
 // every note written during the session that surfaced this had to shell out to
@@ -119,7 +119,7 @@ func (p *Pipeline) rejectIDChange(rel string, n *vault.Note) error {
 // half. Minting unconditionally would hand an existing path a *new* id, and
 // UpsertNote treats same-path-different-id as an eviction: it deletes the row
 // and cascades every inbound link away. Omitting the id on an update would
-// then silently destroy that note's inbound graph — the same damage an atomic
+// then silently destroy that note's inbound graph -- the same damage an atomic
 // editor save used to do, arriving by a different route.
 func (p *Pipeline) ensureNoteID(ctx context.Context, rel, content string) (string, error) {
 	const op = "write.Pipeline.Write"
@@ -141,9 +141,9 @@ func (p *Pipeline) ensureNoteID(ctx context.Context, rel, content string) (strin
 	// The vault first, the index second, minting last.
 	//
 	// Consulting only the index made this contradict rejectIDChange, which
-	// reads the file: a note present on disk but absent from the index — the
+	// reads the file: a note present on disk but absent from the index -- the
 	// daemon was down when it appeared, the watcher missed the event, or the
-	// schema was dropped and reindexing has not reached it — got a freshly
+	// schema was dropped and reindexing has not reached it -- got a freshly
 	// minted id here and was then refused there, with advice ("omit the id")
 	// the caller had already followed. No wording of the call could succeed.
 	id := ""
@@ -182,14 +182,14 @@ func (p *Pipeline) ensureNoteID(ctx context.Context, rel, content string) (strin
 	// A present-but-blank `id:` means the same thing as no id at all, and it is
 	// one of the most natural ways to write "not filled in yet". Splicing on
 	// top of it produced two `id` keys, and YAML rejects that with
-	// `mapping key "id" already defined at line 1` — an error naming a line the
+	// `mapping key "id" already defined at line 1` -- an error naming a line the
 	// caller never wrote, on the exact case this feature exists to serve. Drop
 	// the blank key rather than stacking a second one over it.
 	afterFence := content[len(fence):]
 	switch classifyIDLine(frontmatterOf(afterFence)) {
 	case idLineMalformed:
 		return "", cogerr.Ef(op, cogerr.Validation,
-			"%s: `id` is present but did not parse as a string — quote it, or omit the key "+
+			"%s: `id` is present but did not parse as a string -- quote it, or omit the key "+
 				"entirely to have one assigned", rel)
 	case idLineBlank:
 		afterFence = dropBlankIDKey(afterFence)
@@ -202,7 +202,7 @@ func (p *Pipeline) ensureNoteID(ctx context.Context, rel, content string) (strin
 // value came back empty.
 //
 // A whitelist of null spellings was the wrong shape. Note.ID() returns "" for
-// *any* non-string value — 123, true, [], a bare date — and for a blank
+// *any* non-string value -- 123, true, [], a bare date -- and for a blank
 // carrying a trailing comment, so no list of literals can agree with it. The
 // two must agree: when ID() says absent and the dropper says present, a second
 // `id:` is spliced over one that was never removed and YAML rejects the write
@@ -211,7 +211,7 @@ func (p *Pipeline) ensureNoteID(ctx context.Context, rel, content string) (strin
 //
 // So classify only what the caller could have meant. Blank or null means "mint
 // one for me". Anything else parsed to a non-string, which is a malformed id
-// rather than a request — reported as such rather than silently replaced, since
+// rather than a request -- reported as such rather than silently replaced, since
 // minting over a typo would hand the note a different identity than its author
 // wrote.
 type idLineKind int
@@ -271,7 +271,7 @@ func dropBlankIDKey(afterFence string) string {
 }
 
 // Write validates and lands one note. project, when non-empty, must match the
-// note's own frontmatter — the file is the source of truth, the argument is a
+// note's own frontmatter -- the file is the source of truth, the argument is a
 // cross-check.
 func (p *Pipeline) Write(ctx context.Context, rel, content, project string) error {
 	rel, err := checkPath(rel)
@@ -283,14 +283,14 @@ func (p *Pipeline) Write(ctx context.Context, rel, content, project string) erro
 }
 
 // Edit replaces one exact, unique occurrence of oldStr with newStr in an
-// existing note, then lands the result through the same path Write uses —
+// existing note, then lands the result through the same path Write uses --
 // validation, history, chunk, embed, index, link repair.
 //
 // It exists because write_note takes whole-file content, so changing one line
 // of frontmatter meant resending several kilobytes verbatim. During the session
 // that surfaced this, the pragmatic route for small changes was editing the
 // file on disk and letting the watcher reconcile, which made the sanctioned
-// write path the harder one — and cost a note its inbound links when an atomic
+// write path the harder one -- and cost a note its inbound links when an atomic
 // save was misread as a deletion.
 //
 // Uniqueness is required rather than replacing the first match. A caller

@@ -9,7 +9,7 @@ import (
 	"github.com/enqack/cognosis/internal/cogerr"
 )
 
-// pgxTx is the slice of pgx.Tx the shared transactional helpers need — lets
+// pgxTx is the slice of pgx.Tx the shared transactional helpers need -- lets
 // the same helper run inside IndexNote's transaction or a standalone one.
 type pgxTx interface {
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
@@ -31,12 +31,12 @@ const (
 )
 
 // AcquireInstanceLock takes the process-lifetime single-instance lock. It runs
-// on a dedicated connection opened straight from the pool's config — session
+// on a dedicated connection opened straight from the pool's config -- session
 // advisory locks live on their backend connection, and a pooled conn would be
 // recycled back into circulation, silently dropping the lock. It fails with
 // Conflict when another daemon (even on another machine) already owns this
 // database. Because the lock releases the instant the connection dies, a
-// crashed daemon never wedges the invariant — no stale-lease window to tune.
+// crashed daemon never wedges the invariant -- no stale-lease window to tune.
 //
 // release drops the lock and closes the connection. alive pings the pinned
 // connection so the caller can detect a silently-lost lock and stop rather

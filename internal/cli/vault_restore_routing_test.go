@@ -34,7 +34,7 @@ func restoreFixture(t *testing.T) (dir, firstRef string) {
 	write := func(body string) {
 		t.Helper()
 		// The id is present because a restore re-validates the note against the
-		// current contract before writing it — unlike a write_note fixture, where
+		// current contract before writing it -- unlike a write_note fixture, where
 		// the daemon mints one.
 		note := "---\nid: 01920000-0000-7000-8000-00000000c0de\n" +
 			"category: entry\ncreated: \"2026-07-12 09:00:00\"\n" +
@@ -81,7 +81,7 @@ func restoreCmd(t *testing.T) (*cobra.Command, *bytes.Buffer, *bytes.Buffer) {
 	return cmd, &out, &errb
 }
 
-// TestRestoreRefusesWhenTheDaemonCannotBeReached — a daemon owns the database
+// TestRestoreRefusesWhenTheDaemonCannotBeReached -- a daemon owns the database
 // but its MCP door does not answer, so the restore must refuse rather than fall
 // back to a direct write. The moment the owner of your data is misbehaving is
 // the moment a racing write is least defensible, and the refusal has to name
@@ -114,7 +114,7 @@ func TestRestoreRefusesWhenTheDaemonCannotBeReached(t *testing.T) {
 	}
 }
 
-// TestRestoreForceLocalWritesUnderALiveDaemonAndWarns — --force-local is the
+// TestRestoreForceLocalWritesUnderALiveDaemonAndWarns -- --force-local is the
 // documented way out of the refusal above, so it must actually write while a
 // daemon owns the database, and it must say on stderr that it bypassed the
 // per-path lock. A flag that warns but does not write, or writes but does not
@@ -145,7 +145,7 @@ func TestRestoreForceLocalWritesUnderALiveDaemonAndWarns(t *testing.T) {
 	}
 }
 
-// TestRestoreWritesDirectlyWithNoDaemon — the unchanged case, pinned because it
+// TestRestoreWritesDirectlyWithNoDaemon -- the unchanged case, pinned because it
 // is the one the other two branches are measured against. Nothing holds the
 // instance lock, so the direct write is safe by construction and must happen
 // without the daemon warning.

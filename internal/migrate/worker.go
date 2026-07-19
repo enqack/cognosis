@@ -18,7 +18,7 @@ const (
 
 // Worker is the back-fill half: a daemon runner that continuously processes
 // batches while a migration is in progress and unpaused. It guarantees
-// eventual 100% coverage — the precondition for flipping the active provider.
+// eventual 100% coverage -- the precondition for flipping the active provider.
 // Implements daemon.Runner.
 type Worker struct {
 	C *Coordinator
@@ -100,7 +100,7 @@ func (w *Worker) step(ctx context.Context) (bool, error) {
 
 	if err := w.C.embedBatch(ctx, m, batch, "backfill"); err != nil {
 		// Transient failure: the batch stays missing and will be retried, so
-		// only the error is recorded — counters track chunks actually moved.
+		// only the error is recorded -- counters track chunks actually moved.
 		if rerr := w.C.Store.RecordMigrationError(ctx, m.ID, err.Error()); rerr != nil {
 			w.C.log().Warn("recording migration error failed", "reason", rerr)
 		}

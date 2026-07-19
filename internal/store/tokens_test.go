@@ -12,7 +12,7 @@ import (
 )
 
 // mint creates a token row under a name, returning its id. The hash is opaque
-// here — these tests are about the name/lifecycle rules, not verification.
+// here -- these tests are about the name/lifecycle rules, not verification.
 func mint(t *testing.T, s *store.Store, name string) uuid.UUID {
 	t.Helper()
 	id, err := uuid.NewV7()
@@ -25,7 +25,7 @@ func mint(t *testing.T, s *store.Store, name string) uuid.UUID {
 	return id
 }
 
-// TestTokenNameReusableAfterRevocation — uniqueness is scoped to live tokens,
+// TestTokenNameReusableAfterRevocation -- uniqueness is scoped to live tokens,
 // so rotation is revoke-then-recreate under the same name rather than burning
 // it. Against the old global UNIQUE the first half fails with Conflict.
 func TestTokenNameReusableAfterRevocation(t *testing.T) {
@@ -55,7 +55,7 @@ func TestTokenNameReusableAfterRevocation(t *testing.T) {
 	}
 }
 
-// TestRevokeTokenTargetsTheLiveRow — `where revoked_at is null` becomes
+// TestRevokeTokenTargetsTheLiveRow -- `where revoked_at is null` becomes
 // load-bearing once several rows can share a name: revoking must hit the
 // current credential, not an already-dead one.
 func TestRevokeTokenTargetsTheLiveRow(t *testing.T) {
@@ -101,7 +101,7 @@ func TestRevokeTokenTargetsTheLiveRow(t *testing.T) {
 	}
 }
 
-// TestPruneRevokedTokensKeepsReferenced — prune must never orphan the audit
+// TestPruneRevokedTokensKeepsReferenced -- prune must never orphan the audit
 // trail. audit_log joins to tokens at read time, so a referenced row stays even
 // though it is revoked; the FK (NO ACTION) is the backstop behind the predicate.
 func TestPruneRevokedTokensKeepsReferenced(t *testing.T) {
@@ -122,7 +122,7 @@ func TestPruneRevokedTokensKeepsReferenced(t *testing.T) {
 		}
 	}
 
-	// The dry run must predict exactly what the delete does — a preview that can
+	// The dry run must predict exactly what the delete does -- a preview that can
 	// drift from its action is worse than no preview.
 	preview, err := s.PrunableTokens(ctx)
 	if err != nil {

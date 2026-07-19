@@ -12,7 +12,7 @@ import (
 	"github.com/enqack/cognosis/internal/store"
 )
 
-// AND versus OR for the keyword leg — the lever the BM25 work pointed at.
+// AND versus OR for the keyword leg -- the lever the BM25 work pointed at.
 //
 // Two prior experiments established that the keyword leg contributes
 // membership rather than order: deleting it changes 30 of 30 fused top-8
@@ -61,7 +61,7 @@ func TestKeywordANDvsOR(t *testing.T) {
 	tops := map[string][]uuid.UUID{}
 	// Candidate *sets* per query, not counts. Both modes saturate a pool of 50
 	// on this corpus, so equal totals say nothing about whether the connective
-	// took effect — the first version of the control asserted on counts and
+	// took effect -- the first version of the control asserted on counts and
 	// fired a false alarm against a run whose fused output plainly differed.
 	candSets := map[string]map[uuid.UUID]bool{}
 	candSetDiff := 0
@@ -151,7 +151,7 @@ func TestKeywordANDvsOR(t *testing.T) {
 
 	n := float64(len(c.Queries))
 	var b strings.Builder
-	fmt.Fprintf(&b, "keyword leg: AND vs OR tsquery — %d chunks, pool=%d, top-%d, %d queries\n\n",
+	fmt.Fprintf(&b, "keyword leg: AND vs OR tsquery -- %d chunks, pool=%d, top-%d, %d queries\n\n",
 		spec.Notes*spec.ChunksPerNote, pool, topK, len(c.Queries))
 	b.WriteString("Membership, not ordering, is what the keyword leg contributes to fused output,\n" +
 		"and the tsquery connective is what sets membership. Top-8 relevance is the\n" +
@@ -179,7 +179,7 @@ func TestKeywordANDvsOR(t *testing.T) {
 
 	// Positive control: the two modes must actually produce different candidate
 	// sets. If OR returns exactly what AND returns, the connective never took
-	// effect — a NULL tsquery, a silently-identical plan — and "no difference"
+	// effect -- a NULL tsquery, a silently-identical plan -- and "no difference"
 	// would be a broken probe reported as a finding.
 	if candSetDiff == 0 {
 		t.Fatalf("every AND candidate also appears in the OR set across all %d queries: the "+

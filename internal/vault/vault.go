@@ -52,13 +52,13 @@ type Note struct {
 	// writer that mutates a note long after reading it can tell whether the
 	// file moved underneath it. lifecycle.Compile walks the whole vault once
 	// and rewrites notes much later, so its read-to-write window is a whole
-	// run — long enough for an agent's edit to land and be silently
+	// run -- long enough for an agent's edit to land and be silently
 	// overwritten.
 	//
 	// BLAKE3 to match write.FileMeta.Blake3 and the watcher's drift detection,
 	// which hash the same bytes for the same purpose. Comparable by
 	// construction, and one algorithm for "did this content change" rather than
-	// two. This is a change detector, not a security control — there is no
+	// two. This is a change detector, not a security control -- there is no
 	// adversary in a race between two of the daemon's own writers.
 	SrcBlake3 string
 }
@@ -107,7 +107,7 @@ func SplitFrontmatter(content []byte) (fm string, body string, hasFM bool) {
 	return rest[:end], rest[end+5:], true
 }
 
-// ParseNote parses one file's content (no contract validation — see Validate).
+// ParseNote parses one file's content (no contract validation -- see Validate).
 func ParseNote(relPath string, content []byte) (*Note, error) {
 	const op = "vault.ParseNote"
 	fm, body, hasFM := SplitFrontmatter(content)
@@ -261,7 +261,7 @@ func Walk(root string) ([]*Note, error) {
 	for _, n := range notes {
 		if prev, dup := byID[n.ID()]; dup {
 			problems = append(problems, fmt.Sprintf(
-				"%s: duplicate id %s (also in %s) — ids are assigned once and never reused; give one a fresh UUID",
+				"%s: duplicate id %s (also in %s) -- ids are assigned once and never reused; give one a fresh UUID",
 				n.Path, n.ID(), prev))
 		}
 		byID[n.ID()] = n.Path

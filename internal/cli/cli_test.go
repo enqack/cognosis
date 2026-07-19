@@ -40,7 +40,7 @@ func TestCommandTreeComplete(t *testing.T) {
 // Every command in the tree is implemented for real; the stub-phase test
 // retired with the last stub.
 
-// TestTokenCreateRejectsReservedName — `token create local` used to succeed,
+// TestTokenCreateRejectsReservedName -- `token create local` used to succeed,
 // which pushed the daemon onto a fallback name and made the documented remedy
 // `cognosis token revoke local` revoke the operator's token rather than the
 // daemon's. The rejection lives in cobra's Args, not RunE, which is what lets

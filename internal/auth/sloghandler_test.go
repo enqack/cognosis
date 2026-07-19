@@ -51,7 +51,7 @@ func TestIdentityHandlerSilentWithoutIdentity(t *testing.T) {
 // TestIdentityHandlerSurvivesWith is the test that matters. mcpserver.NewTLS
 // calls log.With("component", "mcpserver") on construction, so a WithAttrs that
 // returns the inner handler instead of re-wrapping drops identity from every
-// line the server ever emits — while every other test here still passes.
+// line the server ever emits -- while every other test here still passes.
 func TestIdentityHandlerSurvivesWith(t *testing.T) {
 	ctx := identityCtx(t, "code")
 	got := logWith(ctx, func(l *slog.Logger) *slog.Logger {

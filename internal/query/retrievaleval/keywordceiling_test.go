@@ -15,22 +15,22 @@ import (
 // How much can a better keyword ranker be worth here at all?
 //
 // BM25 (pg_textsearch, pg_search, vchord_bm25) is a Rust/PGRX extension that
-// needs shared_preload_libraries — a flake change, a Postgres restart, and the
+// needs shared_preload_libraries -- a flake change, a Postgres restart, and the
 // end of the per-schema test isolation this harness depends on. That is a real
 // cost, and it is worth knowing the size of the prize before paying it.
 //
 // The prize has a measurable ceiling. RRF consumes *rank*, not score, so any
 // keyword ranker can only ever permute the FTS candidate list. Replacing
-// ts_rank_cd's ordering with a perfect one — ground-truth relevance, which no
-// real ranker can beat — bounds every possible keyword ranker including BM25.
+// ts_rank_cd's ordering with a perfect one -- ground-truth relevance, which no
+// real ranker can beat -- bounds every possible keyword ranker including BM25.
 // If the fused top-8 barely moves under a perfect ranker, BM25 cannot help.
 //
 // Three arms, each fused exactly the way Run fuses (same k, same weights, same
 // ChunkID key, graph seeded from the other legs):
 //
 //	baseline  the shipped ts_rank_cd ordering
-//	oracle    FTS candidates reordered by ground-truth cluster — the ceiling
-//	no-fts    the keyword leg removed entirely — the floor
+//	oracle    FTS candidates reordered by ground-truth cluster -- the ceiling
+//	no-fts    the keyword leg removed entirely -- the floor
 //
 // baseline-vs-oracle is the headroom above the shipped ranker.
 // baseline-vs-no-fts is what the keyword leg contributes at all. The second
@@ -54,7 +54,7 @@ func TestKeywordRankerCeiling(t *testing.T) {
 	// corpus or about the fusion constant. RRF damps rank differences by k: at
 	// k=60 the whole 50-deep candidate list spans 1/61..1/110, a 1.8x range,
 	// while present-vs-absent spans 0.0164..0. If headroom appears only as k
-	// falls, the shipped k is what makes keyword ordering irrelevant — and no
+	// falls, the shipped k is what makes keyword ordering irrelevant -- and no
 	// ranker, BM25 included, can change that.
 	rrfKSweep := []int{1, 5, 15, 60}
 	sweepChanged := map[int]int{}
@@ -64,7 +64,7 @@ func TestKeywordRankerCeiling(t *testing.T) {
 	var oracleJac, noFTSJac float64
 	// Positive control. If the oracle never actually permutes the candidate
 	// list, "oracle == baseline" measures nothing and reports it as a clean
-	// negative result — the exact failure this harness exists to catch.
+	// negative result -- the exact failure this harness exists to catch.
 	reordered, labelled := 0, 0
 
 	for _, q := range c.Queries {
@@ -147,7 +147,7 @@ func TestKeywordRankerCeiling(t *testing.T) {
 
 	n := float64(len(c.Queries))
 	var b strings.Builder
-	fmt.Fprintf(&b, "keyword-ranker headroom — %d chunks, pool=%d, top-%d, %d queries\n\n",
+	fmt.Fprintf(&b, "keyword-ranker headroom -- %d chunks, pool=%d, top-%d, %d queries\n\n",
 		spec.Notes*spec.ChunksPerNote, pool, topK, len(c.Queries))
 	b.WriteString("RRF consumes rank, so any keyword ranker can only permute the FTS candidate\n" +
 		"list. 'oracle' orders it by ground-truth cluster, which no real ranker can beat,\n" +
@@ -167,7 +167,7 @@ func TestKeywordRankerCeiling(t *testing.T) {
 
 	// Assert the experiment is answerable, not what the answer is. If deleting
 	// the keyword leg changes nothing, the corpus cannot distinguish any two
-	// keyword rankers and every number above is vacuous — that is a defect in
+	// keyword rankers and every number above is vacuous -- that is a defect in
 	// the fixture, and it is exactly the state this corpus was just rebuilt to
 	// escape.
 	// Positive control, asserted rather than merely printed: an oracle that

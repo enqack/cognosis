@@ -75,14 +75,14 @@ func newEmbeddingsCmd() *cobra.Command {
 				}
 				if dryRun {
 					_, _ = fmt.Fprintf(cmd.OutOrStdout(),
-						"dry run — would migrate %d chunks:\n  from %s/%s (dim %d, table %s)\n  to   %s/%s (dim %d, table %s)\nnothing written.\n",
+						"dry run -- would migrate %d chunks:\n  from %s/%s (dim %d, table %s)\n  to   %s/%s (dim %d, table %s)\nnothing written.\n",
 						plan.ChunksTotal,
 						plan.From.Name, plan.From.Model, plan.From.Dimension, plan.From.Table,
 						plan.To.Name, plan.To.Model, plan.To.Dimension, plan.To.Table)
 					return nil
 				}
 				_, _ = fmt.Fprintf(cmd.OutOrStdout(),
-					"migration started (%d chunks); the daemon's worker is back-filling — watch with `cognosis embeddings status`\n",
+					"migration started (%d chunks); the daemon's worker is back-filling -- watch with `cognosis embeddings status`\n",
 					plan.ChunksTotal)
 				return nil
 			})

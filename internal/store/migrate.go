@@ -33,7 +33,7 @@ func Migrate(dsn string) error {
 	return nil
 }
 
-// SchemaStatus reports the applied version, dirtiness, and pending count —
+// SchemaStatus reports the applied version, dirtiness, and pending count --
 // backs `cognosis schema status` and the daemon health check.
 type SchemaStatus struct {
 	Version uint

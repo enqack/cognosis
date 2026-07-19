@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Feature: daemon process invariants — startup gates, single-instance lock
+# Feature: daemon process invariants -- startup gates, single-instance lock
 # (local + cross-machine), clean shutdown, and boot reconciliation of
 # out-of-band edits into the vault history.
 set -euo pipefail
@@ -35,7 +35,7 @@ kill -0 "$PID" || fail "lock pid $PID not alive"
 # than asserting "no line says FAIL".
 #
 # The generic form is tempting because `status` already exits nonzero when any
-# check fails — but this script deliberately declares only `require_env` (no
+# check fails -- but this script deliberately declares only `require_env` (no
 # ollama), so the embedding line legitimately reports FAIL here whenever no
 # embedding server is running, and a blanket assertion would silently couple
 # daemon.sh to a prerequisite it does not require. Naming them also makes a
@@ -96,7 +96,7 @@ Edited while the daemon was stopped.
 EOF
 # A second note linking to the first, so the graph audit asserted below has an
 # actual edge to agree or disagree about. At step 3 the sandbox vault is empty
-# and `graph ok` there means "0 edges across 0 notes" — true, but vacuous, and a
+# and `graph ok` there means "0 edges across 0 notes" -- true, but vacuous, and a
 # vacuously-true assertion is the failure mode this whole pass is guarding
 # against.
 cat > "$KB/entries/handedit-src.md" <<EOF
@@ -112,7 +112,7 @@ boot_daemon
 for _ in $(seq 1 100); do grep -q "note indexed.*handedit\.md" "$LOG" && break; sleep 0.1; done
 grep -q "note indexed.*handedit\.md" "$LOG" || fail "hand-edited note was not reconciled on boot"
 # The history commit lands *after* the "note indexed" line, so it needs its own
-# wait. Asserting it immediately was a latent race — every other step in this
+# wait. Asserting it immediately was a latent race -- every other step in this
 # script already polls; this one was the exception, and it fires whenever
 # anything slows the path between indexing and committing. It happened to win
 # while connection setup was cheap, and started losing consistently once
@@ -125,7 +125,7 @@ git -C "$KB" log --oneline -- entries/handedit.md | grep -q . \
   || fail "drift not committed to the vault history repo"
 pass "hand-edit reconciled on boot and committed to vault history"
 
-# The graph audit re-asserted over a vault that actually has an edge — an
+# The graph audit re-asserted over a vault that actually has an edge -- an
 # out-of-band write is precisely the route by which stored edges drift out of
 # agreement with note content, so this is where the check earns its keep.
 for _ in $(seq 1 100); do grep -q "note indexed.*handedit-src" "$LOG" && break; sleep 0.1; done
@@ -147,7 +147,7 @@ pass "link-graph audit agrees with note content after an out-of-band write"
 #
 # Setup: handedit.md already has one committed version (step 6). Give it a
 # second, out of band, so a restore to the first ref is observable as the
-# original text coming back — and so a restore that silently does nothing cannot
+# original text coming back -- and so a restore that silently does nothing cannot
 # read as success.
 ORIG_REF="$(git -C "$KB" log --format=%H -- entries/handedit.md | tail -1)"
 [ -n "$ORIG_REF" ] || fail "no committed version of handedit.md to restore to"
@@ -189,8 +189,8 @@ pass "--force-local writes directly under a live daemon and warns that it did"
 
 # 7c. the ordinary path: a daemon owns the database and answers, so the restore
 # is routed through restore_note rather than written here. "via the running
-# daemon" on stdout is the routing evidence — the direct path prints a different
-# line — and the audit row is the daemon's own record that it did the work.
+# daemon" on stdout is the routing evidence -- the direct path prints a different
+# line -- and the audit row is the daemon's own record that it did the work.
 sed_v2
 for _ in $(seq 1 100); do grep -q "SECOND VERSION" "$NOTE" && break; sleep 0.1; done
 set +e
@@ -208,7 +208,7 @@ pass "restore routes through the daemon's restore_note when a daemon owns the da
 # --- 8. hard delete is refused while a daemon owns the database --------------
 #
 # It rewrites git history, drops rows and removes a file, none of it under the
-# per-path lock, and there is no MCP tool to route it through — so refusing is
+# per-path lock, and there is no MCP tool to route it through -- so refusing is
 # the available correctness.
 set +e
 OUT8="$("$BIN" note delete entries/handedit.md --hard --yes 2>&1)"; RC8=$?
@@ -222,7 +222,7 @@ pass "hard delete refused while a daemon owns the database"
 #
 # The half that would rot silently. A guard asserted only in its refusing
 # direction passes just as well when it has become an unconditional wall, and
-# the failure mode there — erasure impossible even with the daemon stopped — is
+# the failure mode there -- erasure impossible even with the daemon stopped -- is
 # invisible until someone actually needs it.
 stop_daemon
 for _ in $(seq 1 100); do [ ! -f "$LOCK" ] && break; sleep 0.1; done
@@ -234,7 +234,7 @@ set -e
 [ ! -f "$NOTE" ] || fail "hard delete reported success but the file is still there"
 # Captured rather than piped into `grep -q`. Under `set -o pipefail`, grep -q
 # exits on the first match and SIGPIPEs git, so the pipeline reports 141 and a
-# trailing `&& fail` never runs — the assertion passes precisely when history
+# trailing `&& fail` never runs -- the assertion passes precisely when history
 # still holds the note, which is the bug it exists to catch. Verified by
 # removing the PurgePath call: the piped form stayed green, this one fails.
 HIST9="$(git -C "$KB" log --oneline -- entries/handedit.md)"
