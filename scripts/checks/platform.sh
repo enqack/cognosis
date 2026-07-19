@@ -14,8 +14,8 @@ boot_daemon
 harness platform || fail "platform audit harness failed"
 pass "every tool call audited; args_summary carries identifiers, never note content"
 
-# --- 2. token revocation is effective on the very next request ---------------
-CI_NAME="ci-revoke-$$-$RANDOM"   # token names are unique forever; scope to this run
+# --- 2. token lifecycle: synchronous revocation, name reuse, prune -----------
+CI_NAME="ci-revoke-$$-$RANDOM"   # scope to this run; uniqueness is live-scoped, revoke frees the name
 CI_TOKEN="$("$BIN" token create "$CI_NAME" | head -1)"
 CODE="$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $CI_TOKEN" "$URL/context?budget=100")"
 [ "$CODE" = "200" ] || fail "fresh token rejected ($CODE)"
@@ -25,6 +25,29 @@ CODE="$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $CI_TOK
 CODE="$(curl -s -o /dev/null -w '%{http_code}' "$URL/context?budget=100")"
 [ "$CODE" = "401" ] || fail "tokenless request accepted ($CODE)"
 pass "revocation effective on the next request; tokenless 401s"
+
+# Uniqueness is scoped to live rows (tokens_live_name_idx), so a revoked name is
+# immediately mintable again; the fresh plaintext authenticates while the old
+# one stays dead.
+CI_TOKEN2="$("$BIN" token create "$CI_NAME" | head -1)"
+[ "$CI_TOKEN2" != "$CI_TOKEN" ] || fail "re-created token reused the old plaintext"
+CODE="$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $CI_TOKEN2" "$URL/context?budget=100")"
+[ "$CODE" = "200" ] || fail "token re-created under a revoked name rejected ($CODE)"
+CODE="$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $CI_TOKEN" "$URL/context?budget=100")"
+[ "$CODE" = "401" ] || fail "old plaintext authenticates after name reuse ($CODE)"
+"$BIN" token revoke "$CI_NAME" >/dev/null
+pass "revoked name reusable; new plaintext live, old plaintext stays dead"
+
+# Prune deletes revoked tokens no audit row references. Both ci-revoke mints hit
+# /context, which is audited, so they must survive the prune; a revoked token
+# that never made a call must go.
+PRUNE_NAME="ci-prune-$$-$RANDOM"
+"$BIN" token create "$PRUNE_NAME" >/dev/null
+"$BIN" token revoke "$PRUNE_NAME" >/dev/null
+OUT="$("$BIN" token prune)"
+echo "$OUT" | grep -q "$PRUNE_NAME" || fail "prune kept the unreferenced revoked token: $OUT"
+"$BIN" token list | grep -q "$CI_NAME" || fail "prune deleted an audit-referenced token"
+pass "prune deletes unreferenced revoked tokens, keeps audit-referenced ones"
 
 # --- 3. context inject: marker-gated ----------------------------------------
 UNMARKED="$SANDBOX/unmarked"; mkdir -p "$UNMARKED"
