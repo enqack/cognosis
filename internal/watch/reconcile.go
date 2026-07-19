@@ -51,7 +51,7 @@ type Watcher struct {
 	// sweep is what bounds the drift this can cause.
 	suppressed sync.Map
 
-	// HashCount counts BLAKE3 hashes computed — tests assert the fast path
+	// HashCount counts BLAKE3 hashes computed -- tests assert the fast path
 	// via this counter, never via timing.
 	HashCount atomic.Int64
 }
@@ -86,7 +86,7 @@ func (w *Watcher) Reconcile(ctx context.Context, s *store.Store) error {
 }
 
 // reconcile walks the vault once. forceHash bypasses the mtime/size fast path
-// — the periodic sweep uses it to catch editors that preserve both.
+// -- the periodic sweep uses it to catch editors that preserve both.
 func (w *Watcher) reconcile(ctx context.Context, forceHash bool) error {
 	s := w.store()
 	states, err := s.FileStates(ctx)
@@ -167,7 +167,7 @@ func (w *Watcher) reconcile(ctx context.Context, forceHash bool) error {
 			w.HashCount.Add(1)
 			hash := hex.EncodeToString(sum[:])
 			if st, known := states[c.rel]; known && st.Blake3 == hash {
-				return // mtime/size differed but content didn't — refresh nothing
+				return // mtime/size differed but content didn't -- refresh nothing
 			}
 			driftMu.Lock()
 			drifts = append(drifts, drifted{c, hash, content})
@@ -177,7 +177,7 @@ func (w *Watcher) reconcile(ctx context.Context, forceHash bool) error {
 	wg.Wait()
 
 	// The hash workers append concurrently, so drifts arrives in completion
-	// order — meaning the index order, and therefore which links resolve on
+	// order -- meaning the index order, and therefore which links resolve on
 	// the first pass, varies run to run. Sort so a reconcile is reproducible
 	// and so tests can pin the order that used to lose edges.
 	sort.Slice(drifts, func(i, j int) bool { return drifts[i].rel < drifts[j].rel })
@@ -185,7 +185,16 @@ func (w *Watcher) reconcile(ctx context.Context, forceHash bool) error {
 	changed := 0
 	indexed := make([]drifted, 0, len(drifts))
 	for _, d := range drifts {
-		if err := w.indexFile(ctx, d.rel, d.content, d.mtime, d.size, d.hash); err == nil {
+		// Cancellation is honoured between files, never inside one: a started
+		// index (embed call included) runs to completion under graceful so a
+		// shutdown mid-write cannot drop the edit it interrupted.
+		if ctx.Err() != nil {
+			break
+		}
+		gctx, done := graceful(ctx)
+		err := w.indexFile(gctx, d.rel, d.content, d.mtime, d.size, d.hash)
+		done()
+		if err == nil {
 			changed++
 			indexed = append(indexed, d)
 		}
@@ -194,14 +203,14 @@ func (w *Watcher) reconcile(ctx context.Context, forceHash bool) error {
 	// Second pass: re-resolve links now that every note from this batch is in
 	// the index. Link resolution matches against notes already indexed, so on
 	// the first pass a note whose target came later in the loop silently lost
-	// that edge — and nothing repaired it afterwards, because reconciliation
+	// that edge -- and nothing repaired it afterwards, because reconciliation
 	// confirms drift by content hash and an unchanged file is skipped forever.
 	// A rebuild after dropping the schema therefore produced a partial graph.
 	// Cost is one resolve + SetLinks per note; no chunking, no embedding.
 	//
 	// This closes the within-batch ordering hole, which is the one a rebuild
-	// hits. The later-arrival case — A references B, B created in some later
-	// run, A unchanged and so never revisited — is closed by the third pass.
+	// hits. The later-arrival case -- A references B, B created in some later
+	// run, A unchanged and so never revisited -- is closed by the third pass.
 	if len(indexed) > 1 {
 		w.relinkBatch(ctx, indexed)
 	}
@@ -215,6 +224,9 @@ func (w *Watcher) reconcile(ctx context.Context, forceHash bool) error {
 
 	// Deletions: indexed paths that no longer exist on disk.
 	for rel := range states {
+		if ctx.Err() != nil {
+			break // shutdown: whatever was indexed above still gets committed
+		}
 		if !onDisk[rel] {
 			if err := s.DeleteNote(ctx, rel); err != nil {
 				w.log.Error("reconcile delete failed", "path", rel, "reason", err)
@@ -226,8 +238,14 @@ func (w *Watcher) reconcile(ctx context.Context, forceHash bool) error {
 	}
 
 	if changed > 0 {
-		// Commit the drift as found — hand-edits get history too.
-		if err := w.hist.CommitAll(ctx, fmt.Sprintf("reconcile: %d file(s) drifted out-of-band", changed)); err != nil {
+		// Commit the drift as found -- hand-edits get history too. Shielded:
+		// files already indexed must reach vault history even when this run is
+		// ending on a shutdown, or the tree is left dirty with the index ahead
+		// of history -- the exact state the daemon's runner drain exists to
+		// prevent.
+		gctx, done := graceful(ctx)
+		defer done()
+		if err := w.hist.CommitAll(gctx, fmt.Sprintf("reconcile: %d file(s) drifted out-of-band", changed)); err != nil {
 			w.log.Error("history commit failed", "reason", err)
 		}
 		w.log.Info("reconciliation applied", "changed", changed, "hashed", len(candidates))
@@ -292,7 +310,7 @@ func (w *Watcher) repairReferrers(ctx context.Context, batch []drifted) {
 	}
 }
 
-// repairReferrersOf is repairReferrers for a single path — the watch-event
+// repairReferrersOf is repairReferrers for a single path -- the watch-event
 // path, where notes arrive one at a time rather than in a reconcile batch.
 func (w *Watcher) repairReferrersOf(ctx context.Context, rel string) {
 	name := strings.TrimSuffix(path.Base(rel), ".md")
@@ -309,8 +327,8 @@ func (w *Watcher) repairReferrersOf(ctx context.Context, rel string) {
 }
 
 // indexFile validates one file and routes it through the shared indexing
-// core (chunks, embeddings, links — identical to a sanctioned write). Invalid
-// frontmatter is logged as a sync error and NOT indexed — the previous DB
+// core (chunks, embeddings, links -- identical to a sanctioned write). Invalid
+// frontmatter is logged as a sync error and NOT indexed -- the previous DB
 // state survives.
 func (w *Watcher) indexFile(ctx context.Context, rel string, content []byte, mtime time.Time, size int64, hash string) error {
 	n, err := vault.ParseNote(rel, content)
