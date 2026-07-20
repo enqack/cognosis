@@ -10,7 +10,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: cachix/install-nix-action@v30
         with:
@@ -40,7 +40,7 @@ jobs:
           test -s release-body.md
           printf '\nFull details in the [changelog](https://github.com/enqack/cognosis/blob/%s/CHANGELOG.md).\n' "$GITHUB_REF_NAME" >> release-body.md
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           body_path: release-body.md
           files: |
