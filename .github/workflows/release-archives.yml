@@ -5,8 +5,41 @@ on:
       - 'v*'
 
 jobs:
+  # v0.4.0 shipped from a red tree: this workflow succeeded while ci failed
+  # typecheck on the very same commit, because nothing here runs the gates.
+  # The tag and the main push share a SHA, so wait for the ci workflow's run
+  # on that SHA and refuse to build unless it concluded success. The two runs
+  # start together on `git push origin main vX.Y.Z`, hence the poll; a tag cut
+  # later on an already-green commit finds the completed run on the first tick.
+  gate:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    steps:
+      - name: wait for ci to pass on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for _ in $(seq 1 60); do
+            json=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&event=push&per_page=1")
+            status=$(jq -r '.workflow_runs[0].status // empty' <<<"$json")
+            conclusion=$(jq -r '.workflow_runs[0].conclusion // empty' <<<"$json")
+            if [ "$status" = "completed" ]; then
+              if [ "$conclusion" = "success" ]; then
+                exit 0
+              fi
+              echo "ci concluded '$conclusion' on $GITHUB_SHA; refusing to release" >&2
+              exit 1
+            fi
+            echo "ci on $GITHUB_SHA: ${status:-no run found yet}; waiting"
+            sleep 30
+          done
+          echo "timed out waiting for ci on $GITHUB_SHA" >&2
+          exit 1
+
   archives:
     runs-on: ubuntu-latest
+    needs: gate
     permissions:
       contents: write
     steps:
