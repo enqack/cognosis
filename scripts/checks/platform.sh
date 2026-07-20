@@ -59,11 +59,11 @@ echo "$OUT" | grep -q "knowledge index" || fail "inject output is not an index: 
 echo "$OUT" | grep -q "platform-project" || fail "inject not scoped to the marker project: $OUT"
 SMALL="$(cd "$MARKED" && "$BIN" context inject --budget 10)"
 # Bounds the output; does not prove truncation, since this vault is empty and has
-# no index lines to drop. The ceiling clears the guidance preamble (~800 chars),
-# which is fixed overhead exempt from the budget -- the budget governs the index
-# alone. Truncation itself is asserted in TestRenderContextPreamble, which can
-# stage notes; keep the two in step.
-[ "${#SMALL}" -le 1200 ] || fail "budget not respected (${#SMALL} chars for budget 10)"
+# no index lines to drop. The ceiling clears the embedded SOP preamble (~3000
+# chars, internal/mcpserver/sop.md), which is fixed overhead exempt from the
+# budget -- the budget governs the index alone. Truncation itself is asserted in
+# TestRenderContextPreamble, which can stage notes; keep the two in step.
+[ "${#SMALL}" -le 3600 ] || fail "budget not respected (${#SMALL} chars for budget 10)"
 pass "context inject: unmarked no-op; marked scoped + budget respected"
 
 # --- 4. git commit capture (opt-in, marker-gated) ----------------------------

@@ -97,6 +97,12 @@ func TestRenderContextPreamble(t *testing.T) {
 		{Path: "notes/b.md", Category: "concept", Status: "active", Project: "cognosis", Updated: time.Now()},
 	}
 
+	// Every HasPrefix assertion below is vacuously true against an empty
+	// preamble, so first pin that the embed actually carries the SOP.
+	if len(contextPreamble) < 500 || !strings.Contains(contextPreamble, "query_knowledge") {
+		t.Fatalf("embedded SOP missing or gutted (%d bytes)", len(contextPreamble))
+	}
+
 	out := renderContext(metas, "", 2000)
 	if !strings.HasPrefix(out, contextPreamble) {
 		t.Fatal("preamble must lead the payload -- an index the agent reads before the framing is a list of paths with no stated purpose")
@@ -120,9 +126,9 @@ func TestRenderContextPreamble(t *testing.T) {
 	}
 
 	// The preamble is exempt from the budget, which governs the index alone. 50
-	// tokens (~200 chars) could not fit the preamble (~193 tokens) and a note
-	// line both, so the notes appearing is what proves the exemption: were the
-	// preamble counted, the allowance would be gone before the first line.
+	// tokens (~200 chars) could not fit the embedded SOP (hundreds of tokens)
+	// and a note line both, so the notes appearing is what proves the exemption:
+	// were the preamble counted, the allowance would be gone before the first line.
 	exempt := renderContext(metas, "", 50)
 	for _, want := range []string{"entries/a.md", "notes/b.md"} {
 		if !strings.Contains(exempt, want) {

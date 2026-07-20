@@ -58,7 +58,7 @@ lifecycle stays top-level.
 ### Hook / session helpers
 | Command | Purpose |
 |---|---|
-| `cognosis context inject [--project <p>] [--budget N]` | Emit a project-scoped knowledge index for a SessionStart hook. Marker-gated (no `.cognosis-project` -> silent exit 0). `--budget` defaults to 2000. |
+| `cognosis context inject [--project <p>] [--budget N]` | Emit the embedded agent SOP followed by a project-scoped knowledge index for a SessionStart hook. Marker-gated (no `.cognosis-project` -> silent exit 0). The SOP is fixed overhead; `--budget` (default 2000) governs the index alone. |
 | `cognosis hook post-commit` | Capture the latest commit as a vault entry (called from a repo's `.git/hooks/post-commit`; marker-gated). |
 
 ---

@@ -6,6 +6,18 @@ All notable changes to Cognosis are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **The injected session preamble is now a full agent SOP, not a one-paragraph frame.** `cognosis
+  context inject` and the daemon's `/context` endpoint previously led with a short const string that
+  named the tools and little else. The framing now lives in `internal/mcpserver/sop.md`, embedded via
+  `go:embed` so a packaged binary carries it with no source checkout, and covers retrieval, writing,
+  lifecycle, and the trust and failure shapes an agent gets wrong cold -- query before deciding,
+  capture in-session, `edit_note` over full rewrites, decay touches only `notes/`, a bare connection
+  error usually means a stopped daemon. It stays fixed overhead exempt from `--budget`, which still
+  governs the index alone. The platform check's small-budget ceiling rises from 1200 to 3600 chars to
+  clear the larger preamble.
+
 ## [0.4.1] - 2026-07-20
 
 A repair release: the v0.4.0 tag points at a tree whose CI fails. No functional change over 0.4.0.

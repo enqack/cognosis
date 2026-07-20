@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	_ "embed"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -17,23 +18,12 @@ import (
 
 // contextPreamble frames the index that follows it. Without it the injection is
 // a list of paths with no stated purpose -- an agent can read it and still not
-// know the vault is its own memory rather than project files to browse.
-const contextPreamble = `# Cognosis
-
-This project has a Cognosis vault -- persistent memory across sessions, reachable through the
-` + "`cognosis`" + ` MCP tools. It is not a file store to browse; it is where your own past findings live.
-
-- Before deciding anything non-obvious, ` + "`query_knowledge`" + ` first -- a past session may have already
-  settled it, or already been wrong about it.
-- When something durable surfaces (a decision, a gotcha, a dead end worth not re-walking),
-  ` + "`write_note`" + ` it to ` + "`entries/`" + `. Capture in-session, not at the end.
-- ` + "`compile_lifecycle`" + ` is the deliberate pass that reinforces, falsifies, and graduates. Nothing is
-  inferred from mention alone.
-
-The index below is what is already in the vault -- paths only. Use ` + "`query_knowledge`" + ` to search it,
-or ` + "`get_note`" + ` to read one in full.
-
-`
+// know the vault is its own memory rather than project files to browse. The
+// content lives in sop.md and is embedded so a packaged binary carries it: the
+// SOP must reach every deployment, including ones with no source checkout.
+//
+//go:embed sop.md
+var contextPreamble string
 
 // handleContext serves GET /context?project=<p>&budget=<tokens>.
 func (s *Server) handleContext(w http.ResponseWriter, r *http.Request) {
@@ -75,6 +65,9 @@ func renderContext(metas []store.NoteMeta, project string, budget int) string {
 	// check). Measuring from base leaves the budget governing the index alone,
 	// exactly as it did before the preamble existed.
 	b.WriteString(contextPreamble)
+	// The embedded file ends with a single newline; the blank separator line is
+	// layout, so it lives here rather than as trailing whitespace in sop.md.
+	b.WriteString("\n")
 	if project != "" {
 		// Part of the budget-exempt framing, not the index: it must be written
 		// before base is taken. Dynamic because it names this repo's tag,

@@ -380,8 +380,9 @@ the fallback path above is `desktop-token` rather than `local-token` so that omi
 Automatic session context uses Claude Code hooks, wired in `.claude/settings.json`. Copy
 `hooks/settings.sample.json` and point the commands at your checkout's `hooks/` scripts:
 
-- **SessionStart** -> `hooks/session-start-inject.sh` runs `cognosis context inject` and injects a
-  project-scoped knowledge index. Budget via `COGNOSIS_INJECT_BUDGET` (default 2000).
+- **SessionStart** -> `hooks/session-start-inject.sh` runs `cognosis context inject` and injects the
+  embedded agent SOP followed by a project-scoped knowledge index. The SOP is fixed overhead; the
+  budget, via `COGNOSIS_INJECT_BUDGET` (default 2000), governs the index alone.
 - **SessionEnd** -> `hooks/session-end-nudge.sh` resumes the ending session (via the `session_id` on the
   hook's stdin) for one headless `claude` turn nudging the agent to persist anything durable -- resuming
   so the turn sees what happened, and guarding against re-entry so the nested run can't loop (needs the
