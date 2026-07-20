@@ -131,6 +131,12 @@ func TestFTSFallbackReportedInStats(t *testing.T) {
 		t.Errorf("FTSFallback = false, but the fixture's AND conjunction matches one chunk "+
 			"and the fallback demonstrably fired (fts=%d)", stats.FTS)
 	}
+	// The pre-retry count is the severity signal: it must record what the
+	// conjunction found on its own, not echo the disjunction that replaced it.
+	if stats.FTSPrimary >= stats.FTS {
+		t.Errorf("FTSPrimary = %d, FTS = %d: with the fallback fired the primary "+
+			"count must be smaller than the disjunction's", stats.FTSPrimary, stats.FTS)
+	}
 
 	e.Tuning = query.Tuning{FTSFallbackBelow: -1}
 	_, off, err := e.RunWithStats(ctx, queryText, query.Options{})
@@ -139,6 +145,10 @@ func TestFTSFallbackReportedInStats(t *testing.T) {
 	}
 	if off.FTSFallback {
 		t.Error("FTSFallback = true with the fallback disabled")
+	}
+	if off.FTSPrimary != off.FTS {
+		t.Errorf("FTSPrimary = %d, FTS = %d: they must be equal when no fallback "+
+			"replaced the result", off.FTSPrimary, off.FTS)
 	}
 }
 

@@ -6,6 +6,15 @@ All notable changes to Cognosis are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **`query_knowledge` log lines carry `fts_and`, the keyword leg's pre-fallback count.** `fts` reports
+  what the leg finally contributed, which is the disjunction's count whenever the OR fallback fired --
+  so production logs could show *that* the conjunction starved but not *how badly*. Real-traffic
+  sampling on 2026-07-19 found the fallback firing on 96% of logged queries and had to infer severity
+  from `fts_fallback=true` alone; the `fts`/`fts_and` pair now measures it directly. Equal values mean
+  no fallback replaced the result.
+
 ## [0.3.0] - 2026-07-19
 
 A recall and identity release, breaking once more. The keyword leg learns to fall back to OR when

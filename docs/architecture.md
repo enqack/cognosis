@@ -268,7 +268,7 @@ content. Non-loopback binds require TLS; see [remote.md](remote.md).
 
 MCP-originated log lines carry `token=<name>`, added by `auth.NewIdentityHandler` from the identity
 `auth.Middleware` puts in the request context. This is what makes per-leg retrieval telemetry --
-`query_knowledge`'s `vector`/`fts`/`graph`/`sources`/`fts_fallback` counters, which live only in the log
+`query_knowledge`'s `vector`/`fts`/`fts_and`/`graph`/`sources`/`fts_fallback` counters, which live only in the log
 and never in `audit_log` -- separable by client.
 
 **A missing `token=` identifies daemon-internal work, not broken attribution.** The watcher, the

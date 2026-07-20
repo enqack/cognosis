@@ -252,6 +252,15 @@ type LegStats struct {
 	// precision, and telling them apart from counts alone is impossible.
 	FTSFallback bool
 
+	// FTSPrimary is the candidate count of the keyword leg's first query,
+	// before any fallback: the AND conjunction's own result, or the
+	// disjunction's under Tuning.FTSPrimaryOr. FTS records what the leg
+	// finally contributed, so when the fallback fires the pair shows how
+	// starved the conjunction was -- the severity that FTSFallback alone
+	// cannot express, and that the 2026-07-19 traffic analysis had to infer.
+	// Equal to FTS whenever no fallback replaced the result.
+	FTSPrimary int
+
 	// FusedSources and Sources count *distinct notes*, before and after the
 	// top-K cut. Fusion is chunk-level with no per-note constraint, so one long
 	// note contributing many similar chunks can occupy most of the answer while
@@ -358,6 +367,7 @@ func (e *Engine) RunWithStats(ctx context.Context, text string, opts Options) ([
 		// FTSPrimaryOr already ran the disjunction; retrying it would measure
 		// the same query twice and report the second run as a fallback.
 		fellBack := false
+		primaryCount := len(kw)
 		if below := e.Tuning.ftsFallbackBelow(); !e.Tuning.FTSPrimaryOr && below > 0 && len(kw) < below {
 			alt, err := e.Store.RankFTSMode(gctx, text, store.TSQueryOr, opts.filter(), pool)
 			if err != nil {
@@ -375,6 +385,7 @@ func (e *Engine) RunWithStats(ctx context.Context, text string, opts Options) ([
 		primary[ftsIdx] = Leg[store.RankedChunk]{Items: kw, Weight: 1}
 		statsMu.Lock()
 		stats.FTS = len(kw)
+		stats.FTSPrimary = primaryCount
 		stats.FTSFallback = fellBack
 		statsMu.Unlock()
 		return nil

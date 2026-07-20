@@ -159,8 +159,12 @@ func (s *Server) addTools(srv *mcp.Server) {
 		// the same event never places. The per-leg counts cannot show that --
 		// the crowding note's chunks are all genuinely relevant -- and neither
 		// can `results`, which counts chunks.
+		// fts is what the keyword leg contributed; fts_and is its first query's
+		// own count before any OR fallback replaced it. The gap between them is
+		// how starved the conjunction was, which fts_fallback alone cannot show.
 		s.log.InfoContext(ctx, "query_knowledge", "results", len(results),
-			"vector", stats.Vector, "fts", stats.FTS, "graph", stats.Graph, "fused", stats.Fused,
+			"vector", stats.Vector, "fts", stats.FTS, "fts_and", stats.FTSPrimary,
+			"graph", stats.Graph, "fused", stats.Fused,
 			"fused_sources", stats.FusedSources, "sources", stats.Sources,
 			"fts_fallback", stats.FTSFallback)
 
