@@ -12,24 +12,18 @@ import (
 // TestProbeDaemonReadsTheAdvisoryLock -- the probe must reflect who holds
 // LockInstance, not what the local PID file says. Advisory locks are
 // database-wide rather than schema-scoped, which is exactly the property that
-// lets this answer the question across hosts.
-//
-// A live daemon is a fixture here rather than a reason to skip: if it already
-// holds the lock, that is the exact condition the probe exists to detect, so
-// assert on it and skip only the half that needs the lock free. The naive
-// version skipped outright and threw away the more realistic case.
+// lets this answer the question across hosts -- and exactly why this test
+// takes a private database (NewDB): on the shared test database, concurrent
+// packages that boot daemons hold the same lock and turn the lock-free half
+// into a coin flip.
 func TestProbeDaemonReadsTheAdvisoryLock(t *testing.T) {
-	s, dsn := storetest.New(t)
+	s, dsn := storetest.NewDB(t)
 	ctx := context.Background()
 	cfg := &config.Config{DSN: dsn}
 
 	release, err := s.AcquireAdvisory(ctx, store.LockInstance)
 	if err != nil {
-		// A real daemon owns it. That is the positive case, for free.
-		if got := probeDaemon(ctx, cfg); got != daemonPresent {
-			t.Fatalf("probe = %v while a real daemon holds the instance lock, want daemonPresent", got)
-		}
-		t.Skip("a daemon owns this database; the lock-free half needs it stopped")
+		t.Fatalf("instance lock held on a private database; nothing else can reach it: %v", err)
 	}
 
 	// Held by this test, standing in for a daemon anywhere.

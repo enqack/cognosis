@@ -89,11 +89,12 @@ func restoreCmd(t *testing.T) (*cobra.Command, *bytes.Buffer, *bytes.Buffer) {
 //
 // The instance lock is held by the test itself, which is exactly what
 // probeDaemon reads: no daemon process is needed to reproduce the branch.
+// A private database (NewDB) keeps concurrent packages off that lock.
 func TestRestoreRefusesWhenTheDaemonCannotBeReached(t *testing.T) {
-	s, dsn := storetest.New(t)
+	s, dsn := storetest.NewDB(t)
 	release, err := s.AcquireAdvisory(context.Background(), store.LockInstance)
 	if err != nil {
-		t.Skip("a real daemon owns this database; this test needs to hold the instance lock itself")
+		t.Fatalf("instance lock held on a private database; nothing else can reach it: %v", err)
 	}
 	defer release()
 
@@ -120,10 +121,10 @@ func TestRestoreRefusesWhenTheDaemonCannotBeReached(t *testing.T) {
 // per-path lock. A flag that warns but does not write, or writes but does not
 // warn, is a worse outcome than not having it.
 func TestRestoreForceLocalWritesUnderALiveDaemonAndWarns(t *testing.T) {
-	s, dsn := storetest.New(t)
+	s, dsn := storetest.NewDB(t)
 	release, err := s.AcquireAdvisory(context.Background(), store.LockInstance)
 	if err != nil {
-		t.Skip("a real daemon owns this database; this test needs to hold the instance lock itself")
+		t.Fatalf("instance lock held on a private database; nothing else can reach it: %v", err)
 	}
 	defer release()
 
@@ -148,12 +149,14 @@ func TestRestoreForceLocalWritesUnderALiveDaemonAndWarns(t *testing.T) {
 // TestRestoreWritesDirectlyWithNoDaemon -- the unchanged case, pinned because it
 // is the one the other two branches are measured against. Nothing holds the
 // instance lock, so the direct write is safe by construction and must happen
-// without the daemon warning.
+// without the daemon warning. The lock-free premise only actually holds on a
+// private database (NewDB): on the shared one, any concurrent package booting
+// a daemon in a test makes the probe see daemonPresent.
 func TestRestoreWritesDirectlyWithNoDaemon(t *testing.T) {
-	s, dsn := storetest.New(t)
+	s, dsn := storetest.NewDB(t)
 	release, err := s.AcquireAdvisory(context.Background(), store.LockInstance)
 	if err != nil {
-		t.Skip("a daemon owns this database; this case needs the instance lock free")
+		t.Fatalf("instance lock held on a private database; nothing else can reach it: %v", err)
 	}
 	release()
 
