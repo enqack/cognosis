@@ -174,14 +174,26 @@ func TestFalsifiedFiltered(t *testing.T) {
 
 func TestProjectScoping(t *testing.T) {
 	e, _, ctx := fixture(t)
+	// A note tagged with another project must stay invisible to this scope;
+	// untagged notes are global and belong to every project's scope.
+	bare := &write.Indexer{Store: e.Store}
+	indexConcept(t, ctx, bare, "notes/beta-scoped.md", "beta",
+		"Where the index is stored, per project beta.")
 	rs, err := e.Run(ctx, queryText, query.Options{Project: "alpha"})
 	if err != nil {
 		t.Fatal(err)
 	}
+	var sawGlobal bool
 	for _, r := range rs {
-		if r.Path != "notes/scoped.md" && !strings.Contains(r.Path, "garden") {
-			t.Fatalf("out-of-project result %q leaked through scoping", r.Path)
+		if strings.Contains(r.Path, "beta") {
+			t.Fatalf("other-project result %q leaked through scoping", r.Path)
 		}
+		if r.Path == "entries/pg.md" {
+			sawGlobal = true
+		}
+	}
+	if !sawGlobal {
+		t.Error("untagged (global) note must appear under a project scope")
 	}
 }
 

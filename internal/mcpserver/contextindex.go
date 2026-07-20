@@ -75,6 +75,13 @@ func renderContext(metas []store.NoteMeta, project string, budget int) string {
 	// check). Measuring from base leaves the budget governing the index alone,
 	// exactly as it did before the preamble existed.
 	b.WriteString(contextPreamble)
+	if project != "" {
+		// Part of the budget-exempt framing, not the index: it must be written
+		// before base is taken. Dynamic because it names this repo's tag,
+		// which the static preamble cannot know.
+		fmt.Fprintf(&b, "Tag project-specific notes with `project: %s` in their frontmatter; "+
+			"leave knowledge that applies anywhere untagged (untagged notes are global).\n\n", project)
+	}
 	base := b.Len()
 	if project != "" {
 		fmt.Fprintf(&b, "# Cognosis knowledge index -- project %s\n\n", project)

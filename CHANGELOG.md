@@ -25,6 +25,18 @@ All notable changes to Cognosis are documented here. The format follows
   from `fts_fallback=true` alone; the `fts`/`fts_and` pair now measures it directly. Equal values mean
   no fallback replaced the result.
 
+### Changed
+
+- **Untagged notes are now global: a `project:`-less note is visible under every project scope, not
+  just the unscoped view.** Previously a project-scoped query, `list_notes`, `list_decaying`, and the
+  session index saw only notes carrying that exact project tag, so cross-cutting knowledge had to be
+  duplicated or left unscoped. The scope predicate widens to `project = $scope OR project = ''` across
+  the vector and keyword legs, the falsified-suppression count, and the note listings -- so a
+  project-scoped view is now that project's notes plus the global (untagged) ones. `write_note`'s
+  schema documents the contract directly: set `project:` to the repo's tag for project-specific
+  findings, omit it for knowledge that applies anywhere. The session index gains a budget-exempt
+  preamble line naming the repo's tag and restating the rule, so agents tag deliberately.
+
 ## [0.3.0] - 2026-07-19
 
 A recall and identity release, breaking once more. The keyword leg learns to fall back to OR when

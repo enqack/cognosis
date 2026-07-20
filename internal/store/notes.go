@@ -136,11 +136,13 @@ type NoteMeta struct {
 
 // ListNotes returns metadata for every note, optionally project-scoped,
 // newest-updated first. Never returns content -- that's GetNote's job.
+// A project scope always includes untagged notes: an empty project tag
+// means global knowledge, visible to every project.
 func (s *Store) ListNotes(ctx context.Context, project string) ([]NoteMeta, error) {
 	const op = "store.ListNotes"
 	rows, err := s.pool.Query(ctx, `
 		select path, id, project, category, status, updated, summary from notes
-		where ($1 = '' or project = $1)
+		where ($1 = '' or project = $1 or project = '')
 		order by updated desc, path`, project)
 	if err != nil {
 		return nil, cogerr.E(op, cogerr.Internal, err)
@@ -202,7 +204,7 @@ func (s *Store) ListDecaying(ctx context.Context, cutoff time.Time, project stri
 		where path like 'notes/%'
 		  and status not in ('falsified', 'paused')
 		  and not (frontmatter ? 'graduated_at')
-		  and ($2 = '' or project = $2)
+		  and ($2 = '' or project = $2 or project = '')
 		  and `+asserted+` <= $1
 		order by `+asserted,
 		cutoff.Format("2006-01-02 15:04:05"), project)

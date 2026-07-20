@@ -115,7 +115,7 @@ func vectorLegSQL(table string, exact bool) string {
 		from chunks c
 		join notes n on n.path = c.note_path
 		join %s e on e.chunk_id = c.id
-		where ($2 = '' or n.project = $2)
+		where ($2 = '' or n.project = $2 or n.project = '')
 		  and `+timeFilterSQL("$3", "$7", "$5", "$6")+`
 		order by %s
 		limit $4`, table, order)
@@ -194,7 +194,7 @@ func ftsLegSQLMode(mode TSQueryMode) string {
 		join notes n on n.path = c.note_path,
 		` + tsqueryExpr(mode) + ` q
 		where c.fts @@ q
-		  and ($2 = '' or n.project = $2)
+		  and ($2 = '' or n.project = $2 or n.project = '')
 		  and ` + timeFilterSQL("$3", "$7", "$5", "$6") + `
 		order by ts_rank_cd(c.fts, q) desc, n.path, c.ordinal
 		limit $4`
@@ -302,7 +302,7 @@ func (s *Store) CountSuppressedFalsified(ctx context.Context, text string, f Fil
 		websearch_to_tsquery('english', $1) q
 		where c.fts @@ q
 		  and n.status = 'falsified'
-		  and ($2 = '' or n.project = $2)`, text, f.Project).Scan(&n)
+		  and ($2 = '' or n.project = $2 or n.project = '')`, text, f.Project).Scan(&n)
 	if err != nil {
 		return 0, cogerr.E(op, cogerr.Internal, err)
 	}
