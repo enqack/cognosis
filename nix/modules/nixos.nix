@@ -36,11 +36,17 @@ in
       after = [ "network.target" ];
       wantedBy = [ "multi-user.target" ];
       environment = cfg.environment;
+      # Vault history shells out to git.
+      path = [ pkgs.git ];
       serviceConfig =
         {
           ExecStart = "${cfg.package}/bin/cognosis start --foreground";
           Restart = "on-failure";
           RestartSec = 5;
+        }
+        // lib.optionalAttrs (cfg.logFile != null) {
+          StandardOutput = "append:${cfg.logFile}";
+          StandardError = "append:${cfg.logFile}";
         }
         // lib.optionalAttrs (cfg.user != null) { User = cfg.user; }
         // lib.optionalAttrs (cfg.group != null) { Group = cfg.group; }

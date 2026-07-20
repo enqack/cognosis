@@ -60,7 +60,8 @@ New here? See [docs/setup-guide.md](docs/setup-guide.md) for full setup.
   history purge, and systemd/launchd service files.
 - **Nix flake**: `packages.default`/`apps.default` build and run the binary; `nixosModules.default`,
   `darwinModules.default`, and `homeManagerModules.default` declare the service (same unit `contrib/`
-  documents for manual installs) without provisioning Postgres/Ollama themselves.
+  documents for manual installs) without provisioning Postgres/Ollama themselves; the home-manager
+  module can additionally opt into a user-level Postgres+pgvector cluster via `provisionPostgres`.
 - **Embedding migration**: `cognosis embeddings migrate --from <n>/<m> --to <n>/<m>` switches
   providers/models with the system fully queryable throughout -- a background back-fill worker,
   lazy touch-migration of queried chunks, dual-embedding of new writes, and the query fan-out as

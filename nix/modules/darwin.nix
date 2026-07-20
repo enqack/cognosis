@@ -10,18 +10,27 @@ let
     inherit lib;
     defaultPackage = self.packages.${pkgs.system}.default;
   };
+
+  # Vault history shells out to git, and launchd's default PATH lacks it.
+  # A user-set environment.PATH replaces this default.
+  env = { PATH = "${lib.makeBinPath [ pkgs.git ]}:/usr/bin:/bin"; } // cfg.environment;
 in
 {
   options.services.cognosis = common;
 
   config = lib.mkIf cfg.enable {
     launchd.user.agents.cognosis = {
-      serviceConfig = {
-        ProgramArguments = [ "${cfg.package}/bin/cognosis" "start" "--foreground" ];
-        RunAtLoad = true;
-        KeepAlive.SuccessfulExit = false;
-        EnvironmentVariables = cfg.environment;
-      };
+      serviceConfig =
+        {
+          ProgramArguments = [ "${cfg.package}/bin/cognosis" "start" "--foreground" ];
+          RunAtLoad = true;
+          KeepAlive.SuccessfulExit = false;
+          EnvironmentVariables = env;
+        }
+        // lib.optionalAttrs (cfg.logFile != null) {
+          StandardOutPath = cfg.logFile;
+          StandardErrorPath = cfg.logFile;
+        };
     };
   };
 }

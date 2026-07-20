@@ -102,9 +102,11 @@ cognosis status
 ## Path C -- Nix flake install
 
 The flake also exposes a `cognosis` package/app and service modules, as an alternative to Path B for
-Nix users. It does **not** provision Postgres+pgvector or Ollama -- point the module's `environment` at
-whatever already makes those reachable (your own `services.postgresql`/`services.ollama`, or a remote
-endpoint), the same way `dsn`/`embedding.url` work in [Configuration](#configuration).
+Nix users. The modules do **not** provision Postgres+pgvector or Ollama -- point the module's
+`environment` at whatever already makes those reachable (your own
+`services.postgresql`/`services.ollama`, or a remote endpoint), the same way `dsn`/`embedding.url`
+work in [Configuration](#configuration). The one exception: the home-manager module can opt into
+`provisionPostgres`, because home-manager has no `services.postgresql` of its own (see below).
 
 **Just the binary**, no service management:
 
@@ -141,10 +143,22 @@ nix profile install github:enqack/cognosis            # onto PATH, no service
   imports = [ cognosis.homeManagerModules.default ];
   services.cognosis = {
     enable = true;
-    environment.COGNOSIS_DSN = "postgres://localhost/cognosis";
+    # Socket-only, trust-auth Postgres 16 + pgvector as a user service
+    # (initdb on first start, data under $XDG_STATE_HOME/cognosis/pg);
+    # defaults COGNOSIS_DSN to it. Or bring your own cluster and set
+    # environment.COGNOSIS_DSN instead.
+    provisionPostgres.enable = true;
+    # The daemon logs to stdout, which launchd otherwise discards.
+    logFile = "/Users/alice/.local/state/cognosis/daemon.log";
+    environment.COGNOSIS_EMBEDDING_URL = "http://localhost:11434";
   };
 }
 ```
+
+All three modules share `enable` / `package` / `environment` / `logFile`; `logFile` is what makes the
+launchd-managed daemon observable at all (systemd users can leave it `null` and read the journal).
+Every unit gets `git` on its `PATH` by default -- vault history shells out to it, and launchd's
+default PATH lacks it.
 
 All three modules generate the same `cognosis start --foreground` unit that
 [contrib/cognosis.service](../contrib/cognosis.service) / [contrib/com.enqack.cognosis.plist](../contrib/com.enqack.cognosis.plist)

@@ -8,6 +8,16 @@ All notable changes to Cognosis are documented here. The format follows
 
 ### Added
 
+- **The Nix service modules absorb the three lessons a real darwin home-manager deployment taught.**
+  A shared `services.cognosis.logFile` option wires `StandardOutPath`/`StandardErrorPath` (launchd)
+  or `append:` redirection (systemd) -- the daemon logs to stdout, which launchd silently discards.
+  Every unit now puts `git` on its `PATH` by default, since vault history shells out to git and
+  launchd's default PATH lacks it. And the home-manager module -- the only one of the three whose
+  platform offers no `services.postgresql` -- gains `services.cognosis.provisionPostgres`: a
+  socket-only, trust-auth Postgres 16 + pgvector cluster as a user service (initdb on first start,
+  data under `$XDG_STATE_HOME/cognosis/pg`, `KeepAlive = true` so a clean SIGTERM from an agent
+  reload does not leave the cluster down), with `COGNOSIS_DSN` defaulted to it.
+
 - **`query_knowledge` log lines carry `fts_and`, the keyword leg's pre-fallback count.** `fts` reports
   what the leg finally contributed, which is the disjunction's count whenever the OR fallback fired --
   so production logs could show *that* the conjunction starved but not *how badly*. Real-traffic
