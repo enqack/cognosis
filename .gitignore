@@ -3,6 +3,7 @@ dist/
 .pg-data/
 .pg-socket-path
 .cognosis-project
+.claude/settings.local.json
 *.test
 result
 result-*
