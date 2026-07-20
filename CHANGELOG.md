@@ -6,8 +6,29 @@ All notable changes to Cognosis are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-07-20
+
+The injected session preamble grows into a full embedded agent SOP, and release archives can no
+longer ship from a tree whose CI failed.
+
+### Fixed
+
+- **The advisory-lock probe tests no longer flake under the full parallel suite.** Advisory locks
+  are database-scoped, so the per-test schema isolation never covered `LockInstance`: whenever
+  `internal/daemon`'s tests booted a daemon against `cognosis_test` while `internal/cli` probed the
+  same lock, `TestRestoreWritesDirectlyWithNoDaemon` failed. `storetest` gains `NewDB` -- a migrated
+  store in a private throwaway database -- and the four `LockInstance`-sensitive tests move onto it,
+  their interference skips hardened into failures. CI never saw the flake because it does not set
+  `COGNOSIS_TEST_DSN`; only local full runs did.
+
 ### Changed
 
+- **Release archives are gated on the ci workflow passing for the same commit.** v0.4.1 fixed the
+  tree that v0.4.0 shipped red from, but the hole remained: `release-archives` never ran the gates,
+  so a tag on a failing commit still published. A `gate` job now polls the ci workflow's run for
+  `GITHUB_SHA` (up to 30 minutes) and refuses to build archives unless it concluded success. Polling
+  rather than `workflow_run` chaining keeps the tag context that `mage release` stamps versions
+  from.
 - **The injected session preamble is now a full agent SOP, not a one-paragraph frame.** `cognosis
   context inject` and the daemon's `/context` endpoint previously led with a short const string that
   named the tools and little else. The framing now lives in `internal/mcpserver/sop.md`, embedded via
@@ -519,7 +540,8 @@ Postgres index, and serves its memory over MCP (Streamable HTTP).
 
 - Slack/Discord bridge (explicitly post-v1).
 
-[unreleased]: https://github.com/enqack/cognosis/compare/v0.4.1...HEAD
+[unreleased]: https://github.com/enqack/cognosis/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/enqack/cognosis/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/enqack/cognosis/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/enqack/cognosis/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/enqack/cognosis/compare/v0.2.0...v0.3.0
