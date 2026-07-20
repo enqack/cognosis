@@ -128,7 +128,28 @@ func BenchmarkRunEndToEnd(b *testing.B) {
 	noFallback := *c.Engine
 	noFallback.Tuning = query.Tuning{FTSFallbackBelow: -1} // negative disables; 0 would mean "unset"
 
+	// OR-primary: one disjunction query, no AND pass -- the candidate design
+	// for the real-traffic profile where the conjunction starves on nearly
+	// every query and the two-phase engine's first query is pure overhead.
+	// Priced on both query sets: against starving/fallback the delta is the
+	// removed AND probe; against shipped/all it is what OR costs when AND
+	// would have been enough.
+	orPrimary := *c.Engine
+	orPrimary.Tuning = query.Tuning{FTSPrimaryOr: true}
+
 	assertFallbackFires(ctx, b, c)
+
+	b.Run("healthy/or-primary", func(b *testing.B) {
+		b.ReportAllocs()
+		i := 0
+		for b.Loop() {
+			q := c.Queries[i%len(c.Queries)]
+			i++
+			if _, err := orPrimary.Run(ctx, q.Text, query.Options{}); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
 
 	for _, tc := range []struct {
 		name string
@@ -136,6 +157,7 @@ func BenchmarkRunEndToEnd(b *testing.B) {
 	}{
 		{"starving/fallback", c.Engine},
 		{"starving/no-fallback", &noFallback},
+		{"starving/or-primary", &orPrimary},
 	} {
 		b.Run(tc.name, func(b *testing.B) {
 			b.ReportAllocs()

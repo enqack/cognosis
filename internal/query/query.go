@@ -134,6 +134,12 @@ type Tuning struct {
 	// -- zero means "unset, use the default", and the sweeps need an arm that is
 	// the pre-fallback engine.
 	FTSFallbackBelow int
+	// FTSPrimaryOr runs the keyword leg as a single OR query, no AND pass and
+	// no fallback -- the candidate design for a traffic profile where the AND
+	// conjunction starves on nearly every real query and the two-phase
+	// engine's first query is overhead. Exists so the harness can price that
+	// design against the shipped one; nothing in the request path sets it.
+	FTSPrimaryOr bool
 	// DisableGraph skips the graph leg entirely, which is NOT the same as
 	// GraphWeight=0 and is the distinction that matters for the "does the
 	// graph leg mask vector-leg truncation" experiment. FuseRRF accumulates
@@ -336,7 +342,11 @@ func (e *Engine) RunWithStats(ctx context.Context, text string, opts Options) ([
 	}
 	ftsIdx := len(providerLegs)
 	g.Go(func() error {
-		kw, err := e.Store.RankFTSMode(gctx, text, store.TSQueryWebsearch, opts.filter(), pool)
+		mode := store.TSQueryWebsearch
+		if e.Tuning.FTSPrimaryOr {
+			mode = store.TSQueryOr
+		}
+		kw, err := e.Store.RankFTSMode(gctx, text, mode, opts.filter(), pool)
 		if err != nil {
 			return err
 		}
@@ -345,8 +355,10 @@ func (e *Engine) RunWithStats(ctx context.Context, text string, opts Options) ([
 		// is sequential rather than speculative: firing both connectives on
 		// every query would double the keyword leg's database work to discard
 		// one result almost always, and this path is rare by construction.
+		// FTSPrimaryOr already ran the disjunction; retrying it would measure
+		// the same query twice and report the second run as a fallback.
 		fellBack := false
-		if below := e.Tuning.ftsFallbackBelow(); below > 0 && len(kw) < below {
+		if below := e.Tuning.ftsFallbackBelow(); !e.Tuning.FTSPrimaryOr && below > 0 && len(kw) < below {
 			alt, err := e.Store.RankFTSMode(gctx, text, store.TSQueryOr, opts.filter(), pool)
 			if err != nil {
 				return err
