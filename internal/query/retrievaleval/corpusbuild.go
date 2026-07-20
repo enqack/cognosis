@@ -285,19 +285,27 @@ func (c *Corpus) ScopeNames() []string {
 	return names
 }
 
-// analyzeCorpus refreshes planner statistics on the seeded tables. It opens a
-// direct connection because ANALYZE is a maintenance command with no business
-// on the Store API -- nothing in the daemon ever needs it.
+// analyzeCorpus refreshes planner statistics on the seeded tables and merges
+// index maintenance state. It opens a direct connection because these are
+// maintenance commands with no business on the Store API -- nothing in the
+// daemon ever needs them.
+//
+// VACUUM (ANALYZE) rather than plain ANALYZE: a manual ANALYZE does not merge
+// the GIN fast-update pending list on chunks_fts_idx, so keyword-leg queries
+// after a fresh seed pay a linear scan of pending pages until autovacuum
+// happens to run -- which made BenchmarkFTSLeg bimodal (2.3ms vs 1.5ms on the
+// same corpus, depending on autovacuum phase). VACUUM merges the list, so
+// measurements see the steady-state index deterministically.
 func analyzeCorpus(ctx context.Context, t testing.TB, dsn, table string) {
 	t.Helper()
 	conn, err := pgx.Connect(ctx, dsn)
 	if err != nil {
-		t.Fatalf("analyze: connect: %v", err)
+		t.Fatalf("vacuum analyze: connect: %v", err)
 	}
 	defer func() { _ = conn.Close(ctx) }()
 	for _, tbl := range []string{"notes", "chunks", "links", table} {
-		if _, err := conn.Exec(ctx, "analyze "+pgx.Identifier{tbl}.Sanitize()); err != nil {
-			t.Fatalf("analyze %s: %v", tbl, err)
+		if _, err := conn.Exec(ctx, "vacuum (analyze) "+pgx.Identifier{tbl}.Sanitize()); err != nil {
+			t.Fatalf("vacuum analyze %s: %v", tbl, err)
 		}
 	}
 }
