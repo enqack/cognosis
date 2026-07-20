@@ -108,8 +108,9 @@ That exposes `write_note`, `edit_note`, `query_knowledge`, `list_notes`, `list_d
 `get_migration_status` (see [docs/cli.md](docs/cli.md) for each tool's
 arguments).
 For automatic session context, wire up the hooks in `hooks/`
-(`settings.sample.json`) -- SessionStart injects a project-scoped index in
-repos carrying a `.cognosis-project` marker; unmarked repos are untouched.
+(`settings.sample.json`) -- SessionStart injects the embedded agent SOP
+followed by a project-scoped index in repos carrying a `.cognosis-project`
+marker; unmarked repos are untouched.
 The server binds loopback only by default; a non-loopback bind requires
 built-in TLS or a TLS-terminating reverse proxy -- see
 [docs/remote.md](docs/remote.md).
