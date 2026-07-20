@@ -6,6 +6,12 @@ All notable changes to Cognosis are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-20
+
+A consolidation release: no schema change, no rebuild. Untagged notes become global -- visible under
+every project scope, not just the unscoped view -- the lessons of a real darwin deployment land in
+the Nix service modules, and shutdown learns not to cancel the very write it is draining.
+
 ### Added
 
 - **The Nix service modules absorb the three lessons a real darwin home-manager deployment taught.**
@@ -36,6 +42,23 @@ All notable changes to Cognosis are documented here. The format follows
   schema documents the contract directly: set `project:` to the repo's tag for project-specific
   findings, omit it for knowledge that applies anywhere. The session index gains a budget-exempt
   preamble line naming the repo's tag and restating the rule, so agents tag deliberately.
+
+- **The tree is ASCII-only, and every source file sits under the 500-line limit.** Non-ASCII
+  punctuation across 149 files became ASCII equivalents, the two architecture diagrams are redrawn
+  as plain ASCII art, and the eight oversized source files were split along existing seams with
+  behavior unchanged. The one SQL migration edit is comment-only and migrations are not checksummed,
+  so applied databases are unaffected.
+
+### Fixed
+
+- **Shutdown no longer cancels the watcher write it is draining.** The drain added in 0.3.0 waited
+  for the watcher, but cancellation propagated *into* the write being waited for: the embedding HTTP
+  call died with the context, the index failed, and a hand-edit made just before shutdown was
+  dropped until the next boot's reconciliation. One atomic unit of watcher work -- a file's index
+  including its embedding call, plus the link repair and history commit that belong to it -- now
+  runs shielded from cancellation (10s bound, under the daemon's 15s drain). Cancellation is
+  honoured between units, never inside one, and the reconcile tail commit is shielded too, so files
+  already indexed reach vault history instead of leaving the tree dirty at exit.
 
 ## [0.3.0] - 2026-07-19
 
@@ -466,7 +489,8 @@ Postgres index, and serves its memory over MCP (Streamable HTTP).
 
 - Slack/Discord bridge (explicitly post-v1).
 
-[unreleased]: https://github.com/enqack/cognosis/compare/v0.3.0...HEAD
+[unreleased]: https://github.com/enqack/cognosis/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/enqack/cognosis/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/enqack/cognosis/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/enqack/cognosis/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/enqack/cognosis/compare/v0.1.1...v0.1.2
