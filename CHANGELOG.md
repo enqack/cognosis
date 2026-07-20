@@ -6,6 +6,24 @@ All notable changes to Cognosis are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-07-20
+
+A repair release: the v0.4.0 tag points at a tree whose CI fails. No functional change over 0.4.0.
+
+### Fixed
+
+- **The harness check's split-out source files are actually in the tree.** An unanchored `harness`
+  .gitignore pattern (meant for the binary go build drops in the repo root) also matched
+  `scripts/checks/harness/`, so the split's new `memoryloop.go` and `slices.go` were silently never
+  committed. Local gates stayed green off the working tree while CI's lint job typechecked a
+  `main.go` whose functions live in files it never received, failing the v0.4.0 release commit.
+  The pattern is now anchored to `/harness` and the two files are committed.
+
+### Changed
+
+- CI workflows move off the deprecated Node 20 action runtimes: `actions/checkout` v4 -> v5 and
+  `softprops/action-gh-release` v2 -> v3. Runtime-only bumps; no input changes.
+
 ## [0.4.0] - 2026-07-20
 
 A consolidation release: no schema change, no rebuild. Untagged notes become global -- visible under
@@ -489,7 +507,8 @@ Postgres index, and serves its memory over MCP (Streamable HTTP).
 
 - Slack/Discord bridge (explicitly post-v1).
 
-[unreleased]: https://github.com/enqack/cognosis/compare/v0.4.0...HEAD
+[unreleased]: https://github.com/enqack/cognosis/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/enqack/cognosis/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/enqack/cognosis/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/enqack/cognosis/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/enqack/cognosis/compare/v0.1.2...v0.2.0
