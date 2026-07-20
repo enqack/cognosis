@@ -87,7 +87,8 @@ Exposed over Streamable HTTP after registering the server with a bearer token (s
   -- hybrid RRF retrieval (vector + keyword + graph). `top_k` default 8. `include_archived` surfaces
   soft-deleted notes; `include_falsified` surfaces retained-but-invalidated ones; `persona_filter`
   reweights by a persona's category bias; `as_of` (`YYYY-MM-DD HH:MM:SS`) answers "what did the KB
-  believe at time T".
+  believe at time T". A `project`-scoped query returns that project's notes plus untagged (global)
+  ones; the same rule applies to `list_notes` and `list_decaying`.
 - **`get_note(path)`** -- full raw content (frontmatter + body) for one note.
 - **`list_notes(project?)`** -- browse notes (path, category, status, project, updated, summary) without
   content.
