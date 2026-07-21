@@ -44,6 +44,18 @@ func evalSpec(t testing.TB) CorpusSpec {
 		spec.Notes = 1600 // 8k chunks: past the seqscan threshold, ~7s to build
 	}
 
+	// LinkDegree is env-tunable for the same reason Notes is: the graph leg's
+	// contribution is a function of link density, and the real-traffic finding
+	// (a no-op on a young vault, ~+40% unique pool expansion on a mature one)
+	// predicts a regime change this corpus's default of 3 may sit below.
+	if v := os.Getenv("COGNOSIS_EVAL_LINKDEGREE"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			t.Fatalf("COGNOSIS_EVAL_LINKDEGREE=%q: %v", v, err)
+		}
+		spec.LinkDegree = n
+	}
+
 	// Clusters must not outnumber the notes that fill them. Queries are
 	// generated one per cluster, so with 40 clusters and 25 notes most queries
 	// ask for a cluster no note belongs to: the keyword leg reports EMPTY-Q for

@@ -111,7 +111,7 @@ self-triggers.
 `query_knowledge` fuses three rankers with reciprocal-rank fusion, computed in Go:
 
 - **vector** -- pgvector cosine distance, one leg per provisioned embedding provider;
-- **keyword** -- Postgres full-text search (`ts_rank_cd`), with an OR fallback (see below);
+- **keyword** -- Postgres full-text search (`ts_rank_cd`), with an AND-starvation fallback chain (see below);
 - **graph** -- one hop out along the link graph from the notes behind the other legs' candidates.
 
 The independent legs (vector + keyword) fan out concurrently; the graph leg runs after, since it's
@@ -120,48 +120,59 @@ order. Optional lenses ride on top without changing the contract: `as_of` (reaso
 timestamps -- "what did the KB believe at time T"), `persona_filter` (category-bias reweighting),
 project scoping, and cached one-line summaries returned with each hit.
 
-### The keyword leg's OR fallback
+### The keyword leg's AND-starvation fallback chain
 
-`websearch_to_tsquery` joins terms with **AND**, and chunking is per-heading. A query whose terms
-are spread across different sections of one note therefore matches none of its chunks, and the note
-is *absent* rather than demoted -- the keyword leg contributes membership rather than ordering, so a
-candidate it never produces cannot be recovered downstream.
+`websearch_to_tsquery` joins terms with **AND**, and `chunks.fts` is per-heading. A query whose
+terms are spread across different sections of one note therefore matches none of its chunks, and the
+note is *absent* rather than demoted -- the keyword leg contributes membership rather than ordering,
+so a candidate it never produces cannot be recovered downstream. On the live vault this starved the
+AND conjunction on 100% of logged real queries.
 
-When the conjunction returns fewer than `ftsFallbackBelow` (2) candidates, the leg re-runs with OR
-semantics and keeps that result only if it found more. The retry is sequential, not speculative:
-running both connectives on every query would double the leg's database work to discard one result
-almost always.
+When the conjunction returns fewer than `ftsFallbackBelow` (2) candidates, the leg escalates through
+a chain of increasing blast radius, keeping the first result that clears the threshold:
 
-The threshold is 2 rather than 1, and that is the whole of the choice. Firing only on an empty
-result is measurably insufficient -- the real-vault query that motivated this returned exactly one
+1. **note-level membership.** A stored `notes.fts` tsvector -- `to_tsvector` over the whole note
+   body (`notes.content`), GIN-indexed -- decides membership at the *note* level, so a note whose
+   terms are scattered across headings AND-matches even though no single chunk does. The surviving
+   notes' chunks are still ranked by the per-chunk `chunks.fts`. This recovers the scattered target
+   at roughly ten times the candidate precision of a bare OR, so it is tried first.
+2. **OR disjunction** -- the recall floor, reached only when note-level still starves (the terms are
+   genuinely absent from any one note as a set, not merely scattered within one). It can only add to
+   recall from here, never subtract, because it runs only when nothing better cleared the threshold.
+
+The retries are sequential, not speculative: on a healthy query AND saturates the pool and neither
+fires, so running the extra connectives every time would double the leg's database work to discard a
+result almost always.
+
+The threshold is 2 rather than 1, and that is the whole of the gate. Firing only on an empty result
+is measurably insufficient -- the real-vault query that motivated the chain returned exactly one
 candidate belonging to the wrong note, where a fire-on-empty rule is byte-identical to no fallback.
 
-Measured on the 8000-chunk corpus `scripts/checks/retrieval-eval.sh` builds, over the 15 queries
-whose conjunction returns exactly one (wrong) candidate:
+Measured on the 8000-chunk corpus `scripts/checks/retrieval-eval.sh` builds, target-note recall in
+the fused top-8 over the starving query sets:
 
-| arm | target note in candidates | target in fused top-8 |
+| keyword arm | totally starving | partially starving (one wrong candidate) |
 |---|---|---|
-| AND (shipped) | 0.000 | 0.067 |
-| `fallback@1` | 0.000 | 0.067 |
-| `fallback@2` and above | 0.667 | 0.400 |
+| AND (per-chunk) | 0.333 | 0.067 |
+| OR fallback (`fallback@2`) | 0.467 | 0.667 |
+| **note-level fallback** | **1.000** | **1.000** |
 
-`fallback@1` is identical to shipped, which is the point: one candidate is not fewer than one. On
-that same run the fallback fired on **zero** of the 30 healthy queries at every threshold up to 32
-(fused top-8 Jaccard 1.000 against the shipped arm), while switching to OR unconditionally moved
-every healthy query and cost roughly two thirds of the fused top-8 (Jaccard 0.365).
-
-Absolute recall is corpus-dependent and the direction is not: on a 125-chunk corpus the same
-comparison runs 0.500 to 0.917, because a specific note competes with far less for eight slots.
-The recorded artifact is `internal/query/retrievaleval/testdata/tsquery_or_fallback_sweep.txt`,
-which states its corpus size in the header -- read the numbers there rather than these, which are a
+Note-level reaches the target on every starving query, with ~10x the candidate precision of OR
+(a handful of on-target chunks versus fifty near-random ones), and leaves healthy queries
+byte-identical to the AND baseline (fused top-8 Jaccard 1.000 -- the chain never fires when AND
+saturates). The recorded artifacts are
+`internal/query/retrievaleval/testdata/note_level_membership.txt` and `tsquery_or_fallback_sweep.txt`,
+which state their corpus size in the header -- read the numbers there rather than these, which are a
 snapshot.
 
-`LegStats.FTSFallback` records when it fires, logged per query. This matters: `fts=35` looks like a
-healthy keyword leg whether it came from a conjunction that matched or a disjunction papering over
-one that did not, and the two have very different precision.
+`LegStats.FTSFallback` records when the chain fires and `FTSFallbackKind` records which arm produced
+the result (`note-level` or `or`), both logged per query. This matters: `fts=35` looks like a
+healthy keyword leg whether it came from a conjunction that matched, a precise note-level recovery,
+or a disjunction papering over a failed conjunction -- and the three have very different precision.
 
-The sweep is `internal/query/retrievaleval/tsqueryfallback_test.go`, run by
-`scripts/checks/retrieval-eval.sh`.
+The sweeps are `internal/query/retrievaleval/notelevelmembership_test.go` and
+`tsqueryfallback_test.go`, and the request-path wiring is pinned by
+`TestNoteLevelFallbackReachesRun` (`internal/query/note_level_wiring_test.go`).
 
 ### Scan settings for the vector leg
 
@@ -268,7 +279,7 @@ content. Non-loopback binds require TLS; see [remote.md](remote.md).
 
 MCP-originated log lines carry `token=<name>`, added by `auth.NewIdentityHandler` from the identity
 `auth.Middleware` puts in the request context. This is what makes per-leg retrieval telemetry --
-`query_knowledge`'s `vector`/`fts`/`fts_and`/`graph`/`sources`/`fts_fallback` counters, which live only in the log
+`query_knowledge`'s `vector`/`fts`/`fts_and`/`graph`/`sources`/`fts_fallback`/`fts_fallback_kind` counters, which live only in the log
 and never in `audit_log` -- separable by client.
 
 **A missing `token=` identifies daemon-internal work, not broken attribution.** The watcher, the

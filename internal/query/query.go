@@ -28,9 +28,10 @@ const (
 	DefaultTopK = 8
 	// graphWeight scales the graph leg: a booster, not a primary signal.
 	graphWeight = 0.5
-	// ftsFallbackBelow is the keyword leg's OR-fallback threshold: when the AND
-	// conjunction returns fewer than this many candidates, the leg is re-run
-	// with OR semantics.
+	// ftsFallbackBelow is the keyword leg's AND-starvation threshold: when the AND
+	// conjunction returns fewer than this many candidates, the leg escalates
+	// through the fallback chain -- note-level membership first, then a bare OR as
+	// the recall floor (see the chain in RunWithStats).
 	//
 	// websearch_to_tsquery ANDs its terms and chunking is per-heading, so a
 	// query whose terms are spread across a note's sections matches none of its
@@ -56,6 +57,14 @@ const (
 	// internal/query/retrievaleval/testdata/tsquery_or_fallback_sweep.txt,
 	// which states its corpus size in the header.
 	ftsFallbackBelow = 2
+	// FTSFallbackNoteLevel and FTSFallbackOr name which arm of the keyword leg's
+	// AND-starvation chain produced the final candidate set. "" means the AND
+	// conjunction stood on its own (or FTSPrimaryOr ran the disjunction as the
+	// primary, which is not a fallback). Recorded in LegStats.FTSFallbackKind and
+	// logged, so a note-level recovery and an OR floor-catch are distinguishable
+	// in telemetry rather than both reading as a bare "fell back".
+	FTSFallbackNoteLevel = "note-level"
+	FTSFallbackOr        = "or"
 	// archivedLinkPenalty severely discounts a fused chunk whose parent note
 	// links to a soft-deleted note -- a .9-similarity stale reflection about an
 	// archived concept is depressed out of the top-K rather than injected into
@@ -127,13 +136,22 @@ type Tuning struct {
 	// the caller surface, Tuning is the harness surface, and that precedence
 	// must not be ambiguous.
 	TopK int
-	// GraphWeight scales the graph leg; 0 keeps the package default.
+	// GraphWeight scales the graph leg; 0 keeps the package default. A
+	// negative value means weight zero, which zero cannot express -- and a
+	// zero-weighted leg is not DisableGraph: its items still enter the fused
+	// set at score 0 (see DisableGraph below).
 	GraphWeight float64
 	// FTSFallbackBelow overrides the keyword leg's OR-fallback threshold. A
 	// negative value disables the fallback entirely, which zero cannot express
 	// -- zero means "unset, use the default", and the sweeps need an arm that is
 	// the pre-fallback engine.
 	FTSFallbackBelow int
+	// DisableNoteLevel drops the note-level-membership arm from the starvation
+	// fallback chain, leaving the pre-note-level engine: AND, then a bare OR when
+	// AND starves. Exists so a sweep can measure what note-level membership is
+	// worth against the OR-only fallback it replaced; the request path leaves it
+	// false, so the zero Tuning keeps note-level enabled -- current production.
+	DisableNoteLevel bool
 	// FTSPrimaryOr runs the keyword leg as a single OR query, no AND pass and
 	// no fallback -- the candidate design for a traffic profile where the AND
 	// conjunction starves on nearly every real query and the two-phase
@@ -163,7 +181,13 @@ func (t Tuning) candidatePool() int {
 	return candidatePool
 }
 
+// graphWeight returns the graph leg's fusion weight; a negative override
+// means weight zero, which is how a sweep asks for a zero-weighted (but still
+// inserted) graph leg.
 func (t Tuning) graphWeight() float64 {
+	if t.GraphWeight < 0 {
+		return 0
+	}
 	if t.GraphWeight > 0 {
 		return t.GraphWeight
 	}
@@ -251,6 +275,13 @@ type LegStats struct {
 	// disjunction papering over one that did not. The two have very different
 	// precision, and telling them apart from counts alone is impossible.
 	FTSFallback bool
+
+	// FTSFallbackKind names which arm of the starvation chain produced the final
+	// set: FTSFallbackNoteLevel, FTSFallbackOr, or "" when the AND conjunction
+	// stood on its own. FTSFallback is the bool projection (kind != ""); the kind
+	// is what separates a precise note-level recovery from an OR floor-catch,
+	// which have different precision and want to be tracked apart on real traffic.
+	FTSFallbackKind string
 
 	// FTSPrimary is the candidate count of the keyword leg's first query,
 	// before any fallback: the AND conjunction's own result, or the
@@ -360,25 +391,46 @@ func (e *Engine) RunWithStats(ctx context.Context, text string, opts Options) ([
 			return err
 		}
 
-		// Fall back to OR when the conjunction came back near-empty. The retry
-		// is sequential rather than speculative: firing both connectives on
-		// every query would double the keyword leg's database work to discard
-		// one result almost always, and this path is rare by construction.
-		// FTSPrimaryOr already ran the disjunction; retrying it would measure
-		// the same query twice and report the second run as a fallback.
-		fellBack := false
+		// AND-starvation fallback chain. When the conjunction comes back below
+		// the threshold, escalate in increasing blast radius:
+		//
+		//   1. note-level membership -- a note whose terms are scattered across
+		//      its headings AND-matches at the note level (notes.fts) though no
+		//      single chunk does. Recovers the scattered target at ~10x the
+		//      candidate precision of a bare OR (see the note-level-membership
+		//      sweep), so it is tried first.
+		//   2. OR disjunction -- the recall floor, reached only when note-level
+		//      still starves (the terms are genuinely absent from any one note as
+		//      a set, not merely scattered within one). It can only ever add to
+		//      recall here, never subtract: it runs only when nothing better
+		//      cleared the threshold.
+		//
+		// The retries are sequential rather than speculative and rare by
+		// construction: on a healthy query AND saturates the pool and neither
+		// fires. FTSPrimaryOr already ran the disjunction, so it skips the chain
+		// -- retrying would measure the same query twice.
+		fallbackKind := ""
 		primaryCount := len(kw)
 		if below := e.Tuning.ftsFallbackBelow(); !e.Tuning.FTSPrimaryOr && below > 0 && len(kw) < below {
-			alt, err := e.Store.RankFTSMode(gctx, text, store.TSQueryOr, opts.filter(), pool)
-			if err != nil {
-				return err
+			if !e.Tuning.DisableNoteLevel {
+				nl, err := e.Store.RankFTSNoteLevel(gctx, text, opts.filter(), pool)
+				if err != nil {
+					return err
+				}
+				// Only take it if it actually found more; equal or worse means it
+				// bought nothing and reporting a fallback would mislead.
+				if len(nl) > len(kw) {
+					kw, fallbackKind = nl, FTSFallbackNoteLevel
+				}
 			}
-			// Only take the disjunction if it actually found more. Equal or
-			// worse means the terms are absent from the corpus rather than
-			// merely scattered across chunks, and swapping in an identical or
-			// emptier leg would report a fallback that bought nothing.
-			if len(alt) > len(kw) {
-				kw, fellBack = alt, true
+			if len(kw) < below {
+				alt, err := e.Store.RankFTSMode(gctx, text, store.TSQueryOr, opts.filter(), pool)
+				if err != nil {
+					return err
+				}
+				if len(alt) > len(kw) {
+					kw, fallbackKind = alt, FTSFallbackOr
+				}
 			}
 		}
 
@@ -386,7 +438,8 @@ func (e *Engine) RunWithStats(ctx context.Context, text string, opts Options) ([
 		statsMu.Lock()
 		stats.FTS = len(kw)
 		stats.FTSPrimary = primaryCount
-		stats.FTSFallback = fellBack
+		stats.FTSFallback = fallbackKind != ""
+		stats.FTSFallbackKind = fallbackKind
 		statsMu.Unlock()
 		return nil
 	})

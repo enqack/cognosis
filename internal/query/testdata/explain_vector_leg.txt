@@ -17,7 +17,7 @@ real. This artifact is the cheap structural check that the shapes are right.
 
 === scope: unscoped ===
 Limit  (cost=12.60..18.21 rows=10 width=200)
-  ->  Nested Loop  (cost=12.60..604.04 rows=1054 width=200)
+  ->  Nested Loop  (cost=12.60..604.05 rows=1054 width=200)
         ->  Nested Loop  (cost=12.46..291.21 rows=1070 width=144)
               ->  Index Scan using embeddings_stub_stub_model_hnsw_idx on embeddings_stub_stub_model e  (cost=12.31..66.72 rows=1070 width=48)
                     Order By: (embedding <=> '[1,0,0,0,0,0,0,0]'::vector)

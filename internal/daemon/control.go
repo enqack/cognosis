@@ -6,7 +6,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -36,8 +35,7 @@ func Daemonize(ctx context.Context, paths config.Paths) (int, error) {
 		return 0, cogerr.Ef(op, cogerr.Conflict,
 			"another cognosis daemon is running (pid %d, lock %s)", pid, paths.LockFile())
 	}
-	logPath := filepath.Join(paths.StateDir, "daemon.log")
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	logFile, err := os.OpenFile(paths.LogFile(), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		return 0, cogerr.E(op, cogerr.Internal, err)
 	}

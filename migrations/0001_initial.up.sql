@@ -21,12 +21,28 @@ create table if not exists notes (
   -- filter. The frontmatter `summary:` key is the source of truth; this column
   -- is derived like everything else in the index.
   summary      text not null default '',
+  -- Note-level full-text membership. chunks.fts is per chunk and chunks are per
+  -- heading, so websearch_to_tsquery's AND matches a note only when one chunk
+  -- holds every term; a note whose query terms are scattered across its H2
+  -- sections matches no chunk and is absent from the keyword leg entirely (not
+  -- demoted, gone). Measured on the real vault, that starved AND on 100% of
+  -- logged queries. content is the full body, so its tsvector is exactly
+  -- note-level membership -- every term across every heading. The keyword leg's
+  -- note-level fallback tests THIS column and still ranks surviving notes' chunks
+  -- by the per-chunk chunks.fts, recovering the scattered target at an order of
+  -- magnitude better precision than the OR fallback it replaces. Generated +
+  -- stored: a pure derivative of content, rebuilt with the index.
+  fts          tsvector generated always as (to_tsvector('english', content)) stored,
   -- reconciliation state: last known-good file identity
   mtime        timestamptz not null,
   size         bigint not null,
   blake3_hash  text not null,
   indexed_at   timestamptz not null default now()
 );
+
+-- GIN over the note-level tsvector: makes the keyword leg's note-level
+-- membership test a cheap index probe rather than a per-query re-tokenization.
+create index if not exists notes_fts_idx on notes using gin (fts);
 
 create table if not exists chunks (
   id           uuid primary key default gen_random_uuid(),

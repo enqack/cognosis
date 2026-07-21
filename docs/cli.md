@@ -55,6 +55,11 @@ lifecycle stays top-level.
 | `cognosis config get <key>` | Effective value (env > file > default). |
 | `cognosis config set <key> <value>` | Persist a key to `config.yaml`. |
 
+### Telemetry
+| Command | Purpose |
+|---|---|
+| `cognosis telemetry query [--window N] [logfile ...]` | Per-leg retrieval counts (`vector`/`fts`/`graph`/`fused`) from the daemon log's `query_knowledge` events, as a CSV series with rolling fallback-firing and AND-starvation rates. Reads the live `daemon.log` by default; `-` reads stdin. Read-only -- retrieval tuning deliberately has no CLI surface. |
+
 ### Hook / session helpers
 | Command | Purpose |
 |---|---|

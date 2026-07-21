@@ -200,6 +200,61 @@ func ftsLegSQLMode(mode TSQueryMode) string {
 		limit $4`
 }
 
+// ftsLegNoteLevelSQL renders the note-level-membership keyword leg. It is the
+// production fallback the request path reaches (through query.Engine) when the
+// per-chunk AND conjunction starves -- replacing the OR fallback with a
+// higher-precision one.
+//
+// The defect it targets: chunks.fts is per chunk and chunks are per heading, so
+// websearch_to_tsquery's AND matches only when one chunk holds every term. A
+// note whose terms are scattered across its H2 sections matches no chunk and is
+// absent, not demoted -- the regime the old OR fallback papered over at the cost
+// of admitting notes that match a single incidental term anywhere in the corpus.
+//
+// This leg instead admits a chunk when BOTH hold:
+//   - its note AND-matches at the note level (notes.fts, a stored tsvector over
+//     the whole note body), so every query term is present *somewhere* in the
+//     note even when no single chunk holds them all; and
+//   - the chunk itself matches at least one query term (the OR tsquery), so it
+//     carries a nonzero ts_rank_cd and the note is represented by its
+//     best-matching sections rather than every chunk it owns.
+//
+// Net: OR recall *within* the set of notes that AND-match at note level. The
+// scattered target is recovered; a note merely sharing one incidental term is
+// not. Membership is decided by the GIN-indexed notes.fts, ordering by the
+// per-chunk chunks.fts -- the same ts_rank_cd the shipped leg uses.
+func ftsLegNoteLevelSQL() string {
+	return `
+		select ` + rankedCols + `
+		from chunks c
+		join notes n on n.path = c.note_path,
+		` + tsqueryExpr(TSQueryOr) + ` q
+		where c.fts @@ q
+		  and n.fts @@ websearch_to_tsquery('english', $1)
+		  and ($2 = '' or n.project = $2 or n.project = '')
+		  and ` + timeFilterSQL("$3", "$7", "$5", "$6") + `
+		order by ts_rank_cd(c.fts, q) desc, n.path, c.ordinal
+		limit $4`
+}
+
+// RankFTSNoteLevel is the note-level-membership keyword leg on the request path:
+// the fallback query.Engine runs when the AND conjunction starves and before it
+// resorts to a bare OR. Same args and ranking as RankFTSMode; only the
+// membership rule differs (see ftsLegNoteLevelSQL).
+func (s *Store) RankFTSNoteLevel(ctx context.Context, text string,
+	f Filter, limit int) ([]RankedChunk, error) {
+	const op = "store.RankFTSNoteLevel"
+	rows, err := s.pool.Query(ctx, ftsLegNoteLevelSQL(), ftsLegArgs(text, f, limit)...)
+	if err != nil {
+		return nil, cogerr.E(op, cogerr.Internal, err)
+	}
+	out, err := scanRanked(rows)
+	if err != nil {
+		return nil, cogerr.E(op, cogerr.Internal, err)
+	}
+	return out, nil
+}
+
 // ftsLegArgs are the bind parameters for ftsLegSQL, in $1..$7 order.
 func ftsLegArgs(text string, f Filter, limit int) []any {
 	asOfTS, asOfText := asOfParams(f)

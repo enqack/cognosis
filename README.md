@@ -68,6 +68,10 @@ New here? See [docs/setup-guide.md](docs/setup-guide.md) for full setup.
   the fallback read. Pausable, resumable, rollback-able; the old table survives until an explicit
   `embeddings prune`. Progress via `embeddings status` or the `get_migration_status` MCP tool.
   Proven under load: a 5k-chunk corpus migrates while concurrent queries never once return empty.
+- **Retrieval telemetry**: `cognosis telemetry query` turns the daemon log's
+  per-leg `query_knowledge` counts into a CSV series with rolling
+  fallback-firing and keyword-starvation rates -- the retrieval-quality signal
+  as the vault grows, read-only by design (tuning has no CLI surface).
 - **Git commit capture** (opt-in): install `hooks/post-commit.sh` in a repo's
   `.git/hooks/` -- commits in `.cognosis-project`-marked repos land as
   structured vault entries.

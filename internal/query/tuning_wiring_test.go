@@ -39,6 +39,27 @@ func TestTuningDisableGraphDropsGraphOnlyNote(t *testing.T) {
 	}
 }
 
+// The negative sentinel is weight zero, not leg-off: the graph-only note must
+// STILL appear (FuseRRF inserts a zero-weighted leg's items at score 0), which
+// is exactly the distinction the test above pins from the other side. A sweep
+// arm at weight 0 relies on this; if the sentinel silently resolved to the
+// default 0.5 instead, that arm would measure the shipped configuration twice.
+func TestTuningGraphWeightZeroKeepsGraphOnlyNote(t *testing.T) {
+	e, _, ctx := fixture(t)
+
+	// Zero would mean "unset" and silently keep the default; negative is how
+	// a caller asks for weight zero.
+	e.Tuning = query.Tuning{GraphWeight: -1}
+	got, err := e.Run(ctx, queryText, query.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contains(paths(got), "entries/garden.md") {
+		t.Errorf("graph-only note absent with GraphWeight=-1: the sentinel dropped the "+
+			"leg instead of zero-weighting it (got %v)", paths(got))
+	}
+}
+
 // TopK from Tuning applies when the caller doesn't ask, and loses to
 // opts.TopK when they do. Options is the caller surface; Tuning is the
 // harness surface.

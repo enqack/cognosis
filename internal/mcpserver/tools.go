@@ -166,7 +166,7 @@ func (s *Server) addTools(srv *mcp.Server) {
 			"vector", stats.Vector, "fts", stats.FTS, "fts_and", stats.FTSPrimary,
 			"graph", stats.Graph, "fused", stats.Fused,
 			"fused_sources", stats.FusedSources, "sources", stats.Sources,
-			"fts_fallback", stats.FTSFallback)
+			"fts_fallback", stats.FTSFallback, "fts_fallback_kind", stats.FTSFallbackKind)
 
 		// Tell the agent when suppressed history exists. Falsified notes are
 		// retained deliberately, but the exclusion happens in SQL, so without

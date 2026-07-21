@@ -82,6 +82,7 @@ and says so, because "nothing was verified" must not look like "everything passe
 ```sh
 ./scripts/checks/retrieval-eval.sh          # also runs as part of mage check
 COGNOSIS_EVAL_NOTES=4000 ./scripts/checks/retrieval-eval.sh   # bigger corpus
+COGNOSIS_EVAL_LINKDEGREE=8 ./scripts/checks/retrieval-eval.sh # denser link graph (graph-leg sweeps)
 ```
 
 Postgres only -- no Ollama. The corpus uses the deterministic clustered `Synth` provider rather than
@@ -107,8 +108,9 @@ Each sweep runs over eight configurations, from `PRE-FIX(ef=40,off)` through
 
 ### What `mage check` does not run
 
-`retrieval-eval.sh` runs four sweeps: capacity, recall-vs-exact, fused overlap, and the ground-truth
-plan record. The keyword sweeps (`TestKeywordRankerCeiling`, `TestKeywordHeadroomVsPrecision`,
+`retrieval-eval.sh` runs seven sweeps: capacity, recall-vs-exact, fused overlap, the ground-truth
+plan record, the keyword OR-fallback sweep, and the two graph-leg sweeps (weight and unique
+contribution). The keyword sweeps (`TestKeywordRankerCeiling`, `TestKeywordHeadroomVsPrecision`,
 `TestKeywordANDvsOR`) and `TestAllLegCapacityAtShippedSettings` are **not** in that filter.
 
 This is deliberate: they answer questions listed as closed below, and re-running them on every
@@ -139,7 +141,7 @@ shipped. The delta is what the fix costs as an agent experiences it.
 
 ## Artifacts
 
-Sweeps write eight files into `internal/query/retrievaleval/testdata/`:
+Sweeps write eleven files into `internal/query/retrievaleval/testdata/`:
 
 | File | Written by |
 |---|---|
@@ -147,6 +149,9 @@ Sweeps write eight files into `internal/query/retrievaleval/testdata/`:
 | `vector_recall.txt` | `TestVectorLegRecallVsExact` |
 | `fused_overlap.txt` | `TestFusedTopKUnderCorrectedScan` |
 | `explain_vector_exact.txt` | `TestRecordExactProbePlan` |
+| `tsquery_or_fallback_sweep.txt` | `TestKeywordORFallbackSweep` |
+| `graph_weight_sweep.txt` | `TestGraphWeightSweep` |
+| `graph_leg_contribution.txt` | `TestGraphLegContribution` |
 | `all_legs_capacity.txt` | `TestAllLegCapacityAtShippedSettings` |
 | `keyword_ceiling.txt` | `TestKeywordRankerCeiling` |
 | `keyword_precision_sweep.txt` | `TestKeywordHeadroomVsPrecision` |

@@ -53,6 +53,9 @@ func TestTuningGraphWeightOverrides(t *testing.T) {
 	if got := (Tuning{GraphWeight: 0}).graphWeight(); got != graphWeight {
 		t.Errorf("graphWeight() = %v with 0, want default %v", got, graphWeight)
 	}
+	if got := (Tuning{GraphWeight: -1}).graphWeight(); got != 0 {
+		t.Errorf("graphWeight() = %v with -1, want 0 (negative is the weight-zero sentinel)", got)
+	}
 }
 
 // Negative and zero scalar fields fall back to the defaults rather than

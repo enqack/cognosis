@@ -158,6 +158,17 @@ func (s *Store) ProbeFTSMode(ctx context.Context, text string, mode TSQueryMode,
 	return s.runProbe(ctx, op, ftsLegSQLMode(mode), ftsLegArgs(text, f, limit), limit, set, explain)
 }
 
+// ProbeFTSNoteLevel is the instrumented form of the note-level-membership
+// keyword leg (RankFTSNoteLevel / ftsLegNoteLevelSQL) -- the production fallback,
+// probed so the harness can price it against AND/OR. Args and limit match
+// ProbeFTSMode exactly, so a difference in results is attributable to the
+// membership rule alone.
+func (s *Store) ProbeFTSNoteLevel(ctx context.Context, text string, f Filter,
+	limit int, set SessionSettings, explain bool) (Probe, error) {
+	const op = "store.ProbeFTSNoteLevel"
+	return s.runProbe(ctx, op, ftsLegNoteLevelSQL(), ftsLegArgs(text, f, limit), limit, set, explain)
+}
+
 // ProbeGraph runs the production graph leg under the given session settings.
 func (s *Store) ProbeGraph(ctx context.Context, seeds []uuid.UUID, f Filter, limit int,
 	set SessionSettings, explain bool) (Probe, error) {

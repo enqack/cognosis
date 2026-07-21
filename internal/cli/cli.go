@@ -31,6 +31,7 @@ func newRoot() *cobra.Command {
 		newTokenCmd(),
 		newConfigCmd(),
 		newContextCmd(),
+		newTelemetryCmd(),
 		newHookCmd(),
 		newVersionCmd(),
 	)

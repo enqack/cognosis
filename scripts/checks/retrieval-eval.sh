@@ -30,10 +30,10 @@ echo "running retrieval evaluation sweeps (corpus size: ${COGNOSIS_EVAL_NOTES:-1
 # the vocabulary could do silently -- text generation has quietly emptied a
 # fixture property twice before.
 go test ./internal/query/retrievaleval/ -v -timeout 30m \
-  -run 'TestVectorLegCapacity|TestVectorLegRecallVsExact|TestFusedTopKUnderCorrectedScan|TestRecordExactProbePlan|TestKeywordORFallbackSweep' \
+  -run 'TestVectorLegCapacity|TestVectorLegRecallVsExact|TestFusedTopKUnderCorrectedScan|TestRecordExactProbePlan|TestKeywordORFallbackSweep|TestNoteLevelMembershipSweep|TestGraphWeightSweep|TestGraphLegContribution' \
   || fail "retrieval evaluation sweeps failed"
 
-pass "capacity, recall-vs-exact, fused-overlap, ground-truth plan and OR-fallback sweep recorded"
+pass "capacity, recall-vs-exact, fused-overlap, ground-truth plan, OR-fallback, note-level-membership, graph-weight and graph-contribution sweeps recorded"
 
 echo
 echo "recorded artifacts:"

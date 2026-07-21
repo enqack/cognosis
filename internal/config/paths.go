@@ -40,6 +40,7 @@ func (p Paths) KBDir() string       { return filepath.Join(p.DataDir, "kb") }
 func (p Paths) PersonasDir() string { return filepath.Join(p.DataDir, "personas") }
 func (p Paths) LockFile() string    { return filepath.Join(p.StateDir, "daemon.lock") }
 func (p Paths) TokenFile() string   { return filepath.Join(p.StateDir, "local-token") }
+func (p Paths) LogFile() string     { return filepath.Join(p.StateDir, "daemon.log") }
 
 // EnsureDirs creates all four XDG-scoped directories plus the vault dir; first
 // daemon start calls this rather than assuming they pre-exist.

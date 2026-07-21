@@ -6,6 +6,39 @@ All notable changes to Cognosis are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Note-level full-text membership replaces the keyword leg's OR fallback.** The keyword leg's
+  tsvector is per chunk and chunks are per heading, so `websearch_to_tsquery`'s AND matched a note
+  only when one chunk held every term; a note whose query terms were scattered across its H2
+  sections was absent from the leg entirely (measured: AND starved on 100% of logged real queries).
+  The AND-starvation fallback now escalates AND -> note-level -> OR: a new stored `notes.fts`
+  tsvector over the whole note body (GIN-indexed) decides membership at the note level while the
+  per-chunk `chunks.fts` still orders, and a bare OR remains only as the recall floor. On the
+  8000-chunk eval corpus this lifts target-note recall from 0.47-0.67 (OR fallback) to 1.00 at
+  ~10x the candidate precision, and leaves healthy queries byte-identical (the chain never fires
+  when AND saturates). `LegStats.FTSFallbackKind` and the `fts_fallback_kind` log attr record which
+  arm fired; `Tuning.DisableNoteLevel` reverts to the OR-only fallback for measurement.
+- **`cognosis telemetry query`** parses the daemon log's `query_knowledge` events into a per-event
+  CSV series with rolling-window columns: OR-fallback firing rate, AND-starvation rate, and
+  `graph_min_unique` (a stated lower bound on graph-only candidates). Handles all three attr
+  vintages the log accumulated; events predating the per-leg counts are skipped and counted, never
+  silently zeroed. Read-only -- retrieval tuning deliberately keeps no CLI surface.
+- **Graph-leg sweeps join the retrieval-eval harness.** `TestGraphWeightSweep` varies
+  `Tuning.GraphWeight` (previously an unexamined 0.5) through the real engine and records top-8
+  overlap plus the graph-admitted/displaced trade; `TestGraphLegContribution` records the leg's
+  unique-candidate contribution per corpus cell, with `COGNOSIS_EVAL_LINKDEGREE` joining
+  `COGNOSIS_EVAL_NOTES` as a corpus override. First recordings: 0.5 sits on a flat plateau, and the
+  fixture's uniform-random links cannot reproduce the mature-vault regime where the leg earns its
+  keep -- a documented fixture limitation, not a verdict on the leg.
+
+### Fixed
+
+- **`Tuning.GraphWeight` can now express weight zero.** The accessor read `> 0` as "set", so a 0.0
+  arm silently measured the shipped 0.5. A negative value now means weight zero (the same sentinel
+  `FTSFallbackBelow` uses), which is not `DisableGraph`: a zero-weighted leg still inserts its
+  items into the fused set at score 0, and a wiring test pins the distinction.
+
 ## [0.4.2] - 2026-07-20
 
 The injected session preamble grows into a full embedded agent SOP, and release archives can no
