@@ -154,8 +154,8 @@ go test ./internal/query/retrievaleval/ -v -timeout 30m \
   -run 'TestGraphWeightRealVault|TestDiversityRealVault|TestSpreadingActivation|TestRetrievability|TestContextPrior|TestContextRelevance'
 ```
 
-The graphweight and diversity real-vault sweeps print to the test log; the other four write
-artifacts (below).
+The graphweight and diversity real-vault sweeps print to the test log; the other four write the six
+artifacts listed under Artifacts below (SpreadingActivation writes two, ContextRelevance writes two).
 
 ---
 

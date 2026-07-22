@@ -147,7 +147,7 @@ boots a daemon in a sandbox against the dev Postgres + Ollama:
 ```
 
 `mage bench` runs the retrieval benchmarks (local-only, never with `-race`). See
-[docs/benchmarking.md](docs/benchmarking.md) for the measurement tiers, the three DSN variables,
+[docs/benchmarking.md](docs/benchmarking.md) for the measurement tiers, the four DSN variables,
 the corpus knobs, and which retrieval questions are already settled.
 
 Integration tests need `COGNOSIS_TEST_DSN` pointing at a Postgres with
