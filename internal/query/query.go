@@ -29,6 +29,18 @@ const (
 	DefaultTopK = 8
 	// graphWeight scales the graph leg: a booster, not a primary signal.
 	graphWeight = 0.5
+	// graphDepth is the shipped graph-leg hop count: one hop out along links
+	// from the seed notes. The multi-hop leg (store.RankGraphMulti) at depth 1
+	// reproduces the one-hop RankGraph exactly, so this default preserves shipped
+	// behavior; the spreading-activation sweep varies it.
+	graphDepth = 1
+	// graphDecay is the per-hop geometric discount the multi-hop graph leg
+	// applies: a note reached at distance d contributes decay^(d-1) per seed, so
+	// at depth 1 the sole term is decay^0 = 1 and the value is inert (shipped
+	// behavior). At depth >= 2 it sets how sharply farther notes are discounted;
+	// 0.5 halves each additional hop, the ACT-R spreading-activation reading of
+	// link distance. Only consulted when graphDepth > 1.
+	graphDecay = 0.5
 	// ftsFallbackBelow is the keyword leg's AND-starvation threshold: when the AND
 	// conjunction returns fewer than this many candidates, the leg escalates
 	// through the fallback chain -- note-level membership first, then a bare OR as
@@ -183,6 +195,44 @@ type Tuning struct {
 	// the "off" arm the sweep compares against, which zero cannot express since
 	// zero means "unset". A value in (0,1] is the decay applied per repeated note.
 	DiversityDecay float64
+	// GraphDepth overrides the graph leg's hop count. Zero keeps the package
+	// default (1 -- the shipped one-hop leg); a positive value is the maximum
+	// hop distance the multi-hop leg (store.RankGraphMulti) expands to. No
+	// negative sentinel: unlike GraphWeight, depth has no special value below
+	// its floor that zero cannot express -- the natural minimum (1) is the
+	// default, so 0 = unset and any positive value is the override.
+	GraphDepth int
+	// GraphDecay overrides the multi-hop graph leg's per-hop geometric discount.
+	// Zero keeps the package default; a negative value means decay zero -- which
+	// zero cannot express (zero means "unset") -- collapsing every hop past the
+	// first to weight 0. This discounts by hop, it does not gate by hop: a depth>1
+	// leg with a negative decay still ADMITS deeper-hop notes, they just score 0
+	// and sort last within the limit; it ranks by one-hop weight rather than
+	// restricting the candidate set to one hop (use GraphDepth 1 for that). A
+	// value in (0,1] is the decay applied per extra hop. Inert at GraphDepth 1,
+	// where the only term is decay^0 = 1.
+	GraphDecay float64
+	// ContextProject is the encoding-specificity seam: when set, fused chunks
+	// whose parent note carries this project have their score multiplied by
+	// ContextWeight, softly preferring candidates encoded in the query's project.
+	// Empty disables it -- the zero Tuning applies no context prior, and the
+	// request path has no query-project notion, so this never touches production.
+	// Distinct from Filter.Project, which is a hard scope: this is a soft boost
+	// over an unscoped pool, for measuring whether same-project preference re-ranks
+	// anything the graph leg does not already.
+	//
+	// Deliberately kept a harness seam, never wired to the request path. Measured
+	// 2026-07: the boost is real and orthogonal to the graph leg but, under a
+	// mismatched context, catastrophically demotes minority-project answers
+	// (analytica targets lost 0.556 retrievability@8 at weight 2.0) -- and since a
+	// caller is usually in the majority project, that is the common case, not an
+	// edge. The safe same-project preference is the hard Filter.Project scope,
+	// which the caller opts into deliberately. See the cross-project-harm sweep in
+	// internal/query/retrievaleval/contextrelevance_test.go.
+	ContextProject string
+	// ContextWeight is the multiplier applied to same-ContextProject chunks. 0 or
+	// 1 is a no-op; >1 boosts, (0,1) demotes. Inert unless ContextProject is set.
+	ContextWeight float64
 }
 
 func (t Tuning) rrfK() int {
@@ -210,6 +260,31 @@ func (t Tuning) graphWeight() float64 {
 		return t.GraphWeight
 	}
 	return graphWeight
+}
+
+// graphDepth returns the graph leg's hop count; zero means unset (the shipped
+// one-hop default), any positive value is the override. Mirrors candidatePool's
+// positive-or-default form -- depth has no below-floor special value, so there
+// is no negative sentinel here.
+func (t Tuning) graphDepth() int {
+	if t.GraphDepth > 0 {
+		return t.GraphDepth
+	}
+	return graphDepth
+}
+
+// graphDecay returns the multi-hop graph leg's per-hop discount; a negative
+// override means decay zero (every hop past the first weights 0), which is how
+// a sweep asks for one-hop-only ranking at depth > 1. Mirrors graphWeight's
+// negative-is-zero sentinel, since zero the field means "unset, use default".
+func (t Tuning) graphDecay() float64 {
+	if t.GraphDecay < 0 {
+		return 0
+	}
+	if t.GraphDecay > 0 {
+		return t.GraphDecay
+	}
+	return graphDecay
 }
 
 // ftsFallbackBelow returns the threshold; a negative override disables the
@@ -513,7 +588,11 @@ func (e *Engine) RunWithStats(ctx context.Context, text string, opts Options) ([
 		}
 	}
 	if !e.Tuning.DisableGraph {
-		graph, err := e.Store.RankGraph(ctx, seeds, opts.filter(), pool)
+		// Multi-hop graph leg. At the default depth (graphDepth()==1) this is
+		// byte-identical to the shipped one-hop RankGraph: RankGraphMulti at
+		// maxDepth=1 reduces to graphLegSQL's count-distinct ranking, decay
+		// inert. Deeper hops are the spreading-activation seam (Tuning.GraphDepth).
+		graph, err := e.Store.RankGraphMulti(ctx, seeds, e.Tuning.graphDepth(), e.Tuning.graphDecay(), opts.filter(), pool)
 		if err != nil {
 			return nil, stats, err
 		}
@@ -554,6 +633,30 @@ func (e *Engine) RunWithStats(ctx context.Context, text string, opts Options) ([
 		for i := range fused {
 			if w, ok := opts.CategoryBias[fused[i].Item.Category]; ok {
 				fused[i].Score *= w
+			}
+		}
+		sort.SliceStable(fused, func(i, j int) bool { return fused[i].Score > fused[j].Score })
+	}
+	// Context prior (encoding specificity): softly boost chunks whose note shares
+	// the query's project. Harness seam -- ContextProject is empty on the request
+	// path, so this is a no-op in production. A score rewrite like the ones above,
+	// placed before the diversity penalty so that stays the last rewrite.
+	if e.Tuning.ContextProject != "" && e.Tuning.ContextWeight > 0 && e.Tuning.ContextWeight != 1 {
+		seen := map[uuid.UUID]bool{}
+		noteIDs := make([]uuid.UUID, 0, len(fused))
+		for _, f := range fused {
+			if id := f.Item.NoteID; !seen[id] {
+				seen[id] = true
+				noteIDs = append(noteIDs, id)
+			}
+		}
+		proj, err := e.Store.NoteProjects(ctx, noteIDs)
+		if err != nil {
+			return nil, stats, err
+		}
+		for i := range fused {
+			if proj[fused[i].Item.NoteID] == e.Tuning.ContextProject {
+				fused[i].Score *= e.Tuning.ContextWeight
 			}
 		}
 		sort.SliceStable(fused, func(i, j int) bool { return fused[i].Score > fused[j].Score })
