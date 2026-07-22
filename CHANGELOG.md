@@ -23,6 +23,15 @@ All notable changes to Cognosis are documented here. The format follows
 
 ### Added
 
+- **Fan-effect diversity penalty in fusion.** Fusion is chunk-level with no per-note constraint, so
+  one long note's chunks could crowd the answer while a shorter relevant note never placed -- measured
+  on the real vault, the top-8 returned only ~5.3 distinct notes of 8, one note owning 7 slots. A
+  fourth score rewrite (after the archived-link penalty and category bias, before the top-K cut)
+  scales a note's n-th chunk by `diversityDecay^n` (`0.5`), capping a note at ~2 top-8 slots and
+  lifting distinct sources to ~7.9 while a genuinely dominant note keeps a second slot. It reorders
+  one query's fused list only -- no note state, no invariant touched. `Tuning.DiversityDecay`
+  (negative = off) is the harness seam; `TestDiversityRerankSweep` swept the decay and confirmed
+  cluster-relevance held flat (`TOPK-REL` 1.000 -> 0.996) on the labelled corpus.
 - **Note-level full-text membership replaces the keyword leg's OR fallback.** The keyword leg's
   tsvector is per chunk and chunks are per heading, so `websearch_to_tsquery`'s AND matched a note
   only when one chunk held every term; a note whose query terms were scattered across its H2

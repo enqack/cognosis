@@ -120,6 +120,17 @@ order. Optional lenses ride on top without changing the contract: `as_of` (reaso
 timestamps -- "what did the KB believe at time T"), `persona_filter` (category-bias reweighting),
 project scoping, and cached one-line summaries returned with each hit.
 
+The fused list passes through three score rewrites before the top-K cut, in order: the archived-link
+penalty (see Soft-delete hygiene), the persona category bias, and a **fan-effect diversity penalty**.
+Fusion is chunk-level with no per-note constraint, so one long note's chunks can crowd the answer
+while a shorter relevant note never places (measured on the real vault: the un-penalized top-8
+returned only ~5.3 distinct notes of 8, one note owning 7 slots). The penalty scales a note's n-th
+chunk (in score order) by `diversityDecay^n` (`0.5`), so its best chunk competes at full strength
+while each extra yields ground -- capping a note at roughly two top-8 slots and lifting distinct
+sources to ~7.9, while a note that genuinely out-scores everything keeps a second slot. It reorders
+one query's fused list only; it touches no note state. `LegStats.Sources`/`FusedSources` instrument
+it, and `TestDiversityRerankSweep` swept the decay (relevance held flat on the labelled corpus).
+
 ### The keyword leg's AND-starvation fallback chain
 
 `websearch_to_tsquery` joins terms with **AND**, and `chunks.fts` is per-heading. A query whose

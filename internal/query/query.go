@@ -7,6 +7,7 @@ package query
 
 import (
 	"context"
+	"math"
 	"sort"
 	"sync"
 	"time"
@@ -70,6 +71,18 @@ const (
 	// archived concept is depressed out of the top-K rather than injected into
 	// context as current truth. The append-only text stays intact.
 	archivedLinkPenalty = 0.15
+	// diversityDecay is the per-note fan-effect penalty: in fused score order, a
+	// note's n-th chunk is scaled by diversityDecay^n, so its best chunk competes
+	// at full strength while its redundant chunks yield top-K slots to other
+	// notes. Fusion is chunk-level with no per-note constraint, so without this one
+	// long note's chunks can crowd an answer a shorter relevant note never places
+	// in -- measured on the real vault, the off arm returned only 5.3 distinct
+	// notes of 8, one note owning 7 slots. 0.5 was the swept knee: it caps a note
+	// at ~2 top-8 slots (lifting distinct sources 5.3->7.9) while still letting a
+	// note that genuinely out-scores everything keep a second slot, and it left
+	// cluster-relevance flat on the labelled corpus (TOPK-REL 1.000->0.996). A
+	// note's n-th chunk is scaled by 0.5^n; see TestDiversityRerankSweep.
+	diversityDecay = 0.5
 )
 
 // Result is one fused retrieval hit.
@@ -165,6 +178,11 @@ type Tuning struct {
 	// the fused set at score 0 -- they contribute nothing yet still occupy
 	// top-K slots. Only skipping the leg removes them.
 	DisableGraph bool
+	// DiversityDecay overrides the per-note fan-effect penalty. Zero keeps the
+	// package default; a negative value disables it (factor 1.0, no penalty) --
+	// the "off" arm the sweep compares against, which zero cannot express since
+	// zero means "unset". A value in (0,1] is the decay applied per repeated note.
+	DiversityDecay float64
 }
 
 func (t Tuning) rrfK() int {
@@ -201,6 +219,19 @@ func (t Tuning) ftsFallbackBelow() int {
 		return t.FTSFallbackBelow
 	}
 	return ftsFallbackBelow
+}
+
+// diversityDecay returns the per-note fan-effect penalty; a negative override
+// disables it (factor 1.0), which is how a sweep asks for the un-diversified
+// ordering, and which zero -- meaning "unset" -- cannot express.
+func (t Tuning) diversityDecay() float64 {
+	if t.DiversityDecay < 0 {
+		return 1.0
+	}
+	if t.DiversityDecay > 0 {
+		return t.DiversityDecay
+	}
+	return diversityDecay
 }
 
 func (t Tuning) topK() int {
@@ -313,6 +344,27 @@ type LegStats struct {
 	// often enough on real traffic to be worth building that fixture for.
 	FusedSources int
 	Sources      int
+}
+
+// applyDiversityPenalty demotes a note's redundant chunks so one over-associated
+// source cannot crowd the fused top-K -- the fan effect. Walking in score order,
+// a note's n-th chunk (n counted from 0) is scaled by decay^n, so its best chunk
+// competes at full strength while each extra yields ground to other notes; the
+// list is re-sorted stably afterward. decay >= 1 is a no-op and returns early, so
+// the shipped default (1.0) costs nothing until the sweep sets a real value.
+func applyDiversityPenalty[T any](fused []Scored[T], noteID func(T) uuid.UUID, decay float64) {
+	if decay >= 1.0 || len(fused) == 0 {
+		return
+	}
+	seen := make(map[uuid.UUID]int, len(fused))
+	for i := range fused {
+		id := noteID(fused[i].Item)
+		if c := seen[id]; c > 0 {
+			fused[i].Score *= math.Pow(decay, float64(c))
+		}
+		seen[id]++
+	}
+	sort.SliceStable(fused, func(i, j int) bool { return fused[i].Score > fused[j].Score })
 }
 
 // countSources counts distinct notes among fused candidates.
@@ -505,6 +557,11 @@ func (e *Engine) RunWithStats(ctx context.Context, text string, opts Options) ([
 		}
 		sort.SliceStable(fused, func(i, j int) bool { return fused[i].Score > fused[j].Score })
 	}
+	// Fan-effect diversity: demote a note's redundant chunks so one over-associated
+	// source cannot crowd the top-K. Last of the score rewrites, so it acts on the
+	// ordering the caller receives -- after the archived-link penalty and category
+	// bias, and just before the cut the Sources counts describe.
+	applyDiversityPenalty(fused, func(c store.RankedChunk) uuid.UUID { return c.NoteID }, e.Tuning.diversityDecay())
 	// Before the cut, and after: the pair is what separates "the cut
 	// concentrated the answer" from "retrieval never offered anything else".
 	// Taken after the archived-link penalty and the category bias, so both
