@@ -6,6 +6,30 @@ All notable changes to Cognosis are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **A multi-hop graph leg joins the retrieval-eval harness, default-off.** The graph leg was a single
+  hop out along links from the seed notes; `store.RankGraphMulti` generalizes it to N hops with a
+  per-hop geometric decay, and at the shipped depth (1) it is byte-identical to the old one-hop
+  `RankGraph` -- decay inert, count-distinct ranking unchanged -- so the request path does not move.
+  `Tuning.GraphDepth` and `Tuning.GraphDecay` are the harness seams (zero = shipped default; a
+  negative decay means decay zero -- deeper hops are still admitted but scored 0, so the leg ranks
+  by one-hop weight rather than restricting the candidate set to one hop).
+  Three new real-vault sweeps exercise it -- `TestSpreadingActivation` and
+  `TestSpreadingActivationDepthWeight` sweep depth against decay and weight, and `TestRetrievability`
+  records retrievability@8 -- all on an isolated vault dump (`COGNOSIS_GRAPHTUNE_DSN`) and manual-only
+  like the existing real-vault sweeps, deliberately out of `retrieval-eval.sh`.
+- **A context-prior (encoding-specificity) seam, measured and deliberately not wired.** A new
+  `Tuning.ContextProject`/`Tuning.ContextWeight` pair softly boosts fused chunks whose parent note
+  shares the query's project (a batch `store.NoteProjects` lookup backs it), a score rewrite placed
+  before the diversity penalty. It is a harness seam only: `ContextProject` is empty on the request
+  path, which has no query-project notion, so it is a no-op in production. Measured 2026-07, the boost
+  is real and orthogonal to the graph leg but under a mismatched context catastrophically demotes
+  minority-project answers (analytica targets lost 0.556 retrievability@8 at weight 2.0) -- and a
+  caller is usually in the majority project, so that is the common case, not an edge. The safe
+  same-project preference remains the hard `Filter.Project` scope. `TestContextPrior` and
+  `TestContextRelevance` record it, both gated on `COGNOSIS_GRAPHTUNE_DSN`.
+
 ## [0.5.0] - 2026-07-21
 
 Read-time forgetting-curve decay, a note-level keyword fallback, and a fan-effect diversity
