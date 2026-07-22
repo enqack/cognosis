@@ -1,18 +1,13 @@
 package retrievaleval
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-
-	"github.com/enqack/cognosis/internal/embed"
 	"github.com/enqack/cognosis/internal/query"
-	"github.com/enqack/cognosis/internal/store"
 )
 
 // TestContextRelevance closes the ship/no-ship question the context-prior sweep
@@ -29,29 +24,8 @@ import (
 // targets, where majority-project notes crowd the pool, and be near-inert for
 // majority (cognosis) targets. Gated on COGNOSIS_GRAPHTUNE_DSN + Ollama.
 func TestContextRelevance(t *testing.T) {
-	dsn := os.Getenv("COGNOSIS_GRAPHTUNE_DSN")
-	if dsn == "" {
-		t.Skip("set COGNOSIS_GRAPHTUNE_DSN to an isolated multi-project real-vault dump")
-	}
-	ctx := context.Background()
-
-	s, err := store.Connect(ctx, dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	prov := embed.NewOllama(envOr("OLLAMA_URL", "http://localhost:11434"),
-		envOr("OLLAMA_MODEL", "nomic-embed-text:v1.5"))
-	if err := prov.Health(ctx); err != nil {
-		t.Fatalf("ollama health: %v", err)
-	}
-	e := &query.Engine{Store: s, Providers: []query.ProviderLeg{
-		{Provider: prov, Table: "embeddings_ollama_nomic_embed_text_v1_5"}}}
-
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer pool.Close()
+	rv := realVaultSetup(t)
+	ctx, e, pool := rv.ctx, rv.e, rv.pool
 
 	notes := loadRetrievabilityNotes(ctx, t, pool)
 	if len(notes) == 0 {

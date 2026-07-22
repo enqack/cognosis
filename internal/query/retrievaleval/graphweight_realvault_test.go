@@ -1,16 +1,13 @@
 package retrievaleval
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/enqack/cognosis/internal/embed"
 	"github.com/enqack/cognosis/internal/query"
 	"github.com/enqack/cognosis/internal/store"
 )
@@ -21,47 +18,10 @@ import (
 // COGNOSIS_GRAPHTUNE_DSN (an isolated dump, never the live DB); skipped in CI.
 // Query set is the notes' own summaries -- real text over the real topology.
 func TestGraphWeightRealVault(t *testing.T) {
-	dsn := os.Getenv("COGNOSIS_GRAPHTUNE_DSN")
-	if dsn == "" {
-		t.Skip("set COGNOSIS_GRAPHTUNE_DSN to an isolated real-vault dump")
-	}
-	ctx := context.Background()
-
-	s, err := store.Connect(ctx, dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	url := envOr("OLLAMA_URL", "http://localhost:11434")
-	model := envOr("OLLAMA_MODEL", "nomic-embed-text:v1.5")
-	table := "embeddings_ollama_nomic_embed_text_v1_5"
-	prov := embed.NewOllama(url, model)
-	if err := prov.Health(ctx); err != nil {
-		t.Fatalf("ollama health: %v", err)
-	}
-	e := &query.Engine{Store: s, Providers: []query.ProviderLeg{{Provider: prov, Table: table}}}
-
-	// Query set: every note's summary.
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer pool.Close()
-	rows, err := pool.Query(ctx, "select summary from notes where summary <> '' order by path")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var queries []string
-	for rows.Next() {
-		var sum string
-		if err := rows.Scan(&sum); err != nil {
-			t.Fatal(err)
-		}
-		queries = append(queries, sum)
-	}
-	rows.Close()
-	if len(queries) == 0 {
-		t.Fatal("no note summaries to query with")
-	}
+	rv := realVaultSetup(t)
+	ctx, s, prov, e := rv.ctx, rv.s, rv.prov, rv.e
+	table := ollamaTable
+	queries := rv.summaryQueries(t)
 
 	const poolN = 50
 	filter := store.Filter{}
