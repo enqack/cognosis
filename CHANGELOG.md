@@ -6,6 +6,8 @@ All notable changes to Cognosis are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-22
+
 ### Added
 
 - **A multi-hop graph leg joins the retrieval-eval harness, default-off.** The graph leg was a single
@@ -638,7 +640,8 @@ Postgres index, and serves its memory over MCP (Streamable HTTP).
 
 - Slack/Discord bridge (explicitly post-v1).
 
-[unreleased]: https://github.com/enqack/cognosis/compare/v0.5.0...HEAD
+[unreleased]: https://github.com/enqack/cognosis/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/enqack/cognosis/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/enqack/cognosis/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/enqack/cognosis/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/enqack/cognosis/compare/v0.4.0...v0.4.1
