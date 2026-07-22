@@ -8,9 +8,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
-	"time"
 
 	"github.com/zeebo/blake3"
 
@@ -223,16 +221,6 @@ func appendUnique(xs []string, x string) []string {
 
 func wikiname(path string) string {
 	return strings.TrimSuffix(filepath.Base(path), ".md")
-}
-
-// roundDays renders a duration in whole days for report lines -- "43d" reads
-// better than "1032h0m0s" in a log an agent has to skim.
-func roundDays(d time.Duration) string {
-	days := int(d.Round(24*time.Hour) / (24 * time.Hour))
-	if days < 1 {
-		return "under a day"
-	}
-	return strconv.Itoa(days) + "d"
 }
 
 // round1 snaps a confidence value to one decimal place.

@@ -7,65 +7,62 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/enqack/cognosis/internal/vault"
 )
 
 func TestPassiveRefreshBudgetExhausts(t *testing.T) {
 	e, _, root, ctx := testEngine(t)
-	base := now.Add(-365 * 24 * time.Hour)
 
-	// Confidence high enough to survive several decays without hitting
-	// archived-faded, which would move the note out of notes/ and end the run.
+	// Anchored within the budget (100d since the last explicit reinforce) but
+	// ancient by last hand edit: citation is the only thing keeping it in notes/.
 	writeSpec(t, root, "notes/theory.md", noteSpec{
-		created: base, lastReinf: base, lastExplicit: base, confidence: "0.9",
+		confidence: "0.4", stability: "14.00",
+		created:      now.Add(-300 * 24 * time.Hour),
+		updated:      now.Add(-300 * 24 * time.Hour),
+		lastExplicit: now.Add(-100 * 24 * time.Hour),
 	})
-	citerID := uuid.Must(uuid.NewV7()).String()
-
-	var refreshed, decayed int
-	for i := 1; i <= 11; i++ {
-		at := base.Add(time.Duration(i) * 31 * 24 * time.Hour)
-		// Re-write the citer fresh each pass so it always shields and never
-		// decays into the action list itself.
+	// A healthy citer, rewritten fresh each pass so it never archives itself.
+	citer := func(at time.Time) {
 		writeSpec(t, root, "notes/citer.md", noteSpec{
-			id: citerID, created: base, updated: at.Add(-time.Hour),
-			lastReinf: at.Add(-time.Hour), lastExplicit: at.Add(-time.Hour),
+			confidence: "1.0", stability: "14.00",
+			created: at.Add(-2 * time.Hour), updated: at.Add(-time.Hour), lastExplicit: at.Add(-time.Hour),
 			body: "Still building on [[theory]] today.\n",
 		})
-		r, err := e.Run(ctx, Options{Now: at})
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, a := range r.Actions {
-			if a.Note != "theory" {
-				continue
-			}
-			switch a.Kind {
-			case "refreshed":
-				refreshed++
-			case "decayed":
-				decayed++
-			}
-		}
 	}
 
-	if refreshed == 0 {
-		t.Error("no passive refresh happened at all; the citation shield is not working")
+	// In budget: citation shields the ancient-archival move.
+	citer(now)
+	r, err := e.Run(ctx, Options{Now: now})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if decayed == 0 {
-		t.Error("the note refreshed forever -- the passive-refresh budget never expired")
+	for _, a := range r.Actions {
+		if a.Note == "theory" && strings.HasPrefix(a.Kind, "archived") {
+			t.Fatalf("cited note archived while in budget: %v", kinds(r))
+		}
 	}
-	fm := reparse(t, root, "notes/theory.md").Frontmatter
-	if got := toFloat(fm["confidence"]); got >= 0.9 {
-		t.Errorf("confidence %v never dropped despite the budget expiring", got)
-	}
-	// The budget gates decay, not archival: a still-cited note must not be
-	// silently moved out from under the agent.
 	if _, err := os.Stat(filepath.Join(root, "notes", "theory.md")); err != nil {
-		t.Errorf("note left notes/ -- budget expiry must decay, not archive: %v", err)
+		t.Fatalf("note left notes/ while cited and in budget: %v", err)
 	}
-	t.Logf("over 11 runs: %d refreshed, %d decayed", refreshed, decayed)
+
+	// Past the budget (190d since the last explicit reinforce): citation no
+	// longer shields, and the ancient note is archived. Silence stops counting
+	// as assent at exactly one horizon.
+	past := now.Add(90 * 24 * time.Hour)
+	citer(past)
+	r, err = e.Run(ctx, Options{Now: past})
+	if err != nil {
+		t.Fatal(err)
+	}
+	archived := false
+	for _, a := range r.Actions {
+		if a.Note == "theory" && a.Kind == "archived-ancient" {
+			archived = true
+		}
+	}
+	if !archived {
+		t.Fatalf("cited note not archived after the budget expired: %v", kinds(r))
+	}
 }
 
 // A note predating last_explicit_reinforce falls back to created. One created
@@ -137,28 +134,32 @@ func TestDisputeDoesNotStampAnchor(t *testing.T) {
 	}
 }
 
-// Decay must step once per staleAfter, not once per compile run. Before this,
-// decay left last_reinforced untouched, so the note stayed stale and decayed
-// again on every subsequent run -- making the decay rate a function of how
-// often the agent happened to compile.
+// Decay is a pure function of time since the anchor, not an accumulation, so
+// running the compile pass many times at the same instant must not compound the
+// decay. This is the read-time model's central guarantee: the decay rate cannot
+// depend on how often the agent happens to compile.
 func TestDecayIsTimeBasedNotPerRun(t *testing.T) {
 	e, _, root, ctx := testEngine(t)
 	writeSpec(t, root, "notes/theory.md", noteSpec{
-		confidence: "0.9", lastReinf: now.Add(-31 * 24 * time.Hour),
+		confidence: "0.9", stability: "14.00", lastExplicit: now.Add(-60 * 24 * time.Hour),
 	})
-	// Three runs inside a single staleAfter window.
-	for i := range 3 {
-		if _, err := e.Run(ctx, Options{Now: now.Add(time.Duration(i) * time.Hour)}); err != nil {
+	if _, err := e.Run(ctx, Options{Now: now}); err != nil {
+		t.Fatal(err)
+	}
+	after1 := toFloat(reparse(t, root, "notes/theory.md").Frontmatter["confidence"])
+	if after1 >= 0.9 {
+		t.Errorf("confidence %v -- the note never decayed at all", after1)
+	}
+	// Two more runs at the same instant: the value must not move.
+	for range 2 {
+		if _, err := e.Run(ctx, Options{Now: now}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	got := toFloat(reparse(t, root, "notes/theory.md").Frontmatter["confidence"])
-	if got < 0.8 {
-		t.Errorf("confidence %v -- decayed more than once in one staleAfter window "+
-			"(three compile runs should not mean three decays)", got)
-	}
-	if got >= 0.9 {
-		t.Errorf("confidence %v -- the note never decayed at all", got)
+	after3 := toFloat(reparse(t, root, "notes/theory.md").Frontmatter["confidence"])
+	if after1 != after3 {
+		t.Errorf("confidence %v after one run, %v after three: decay compounded per run "+
+			"instead of tracking time", after1, after3)
 	}
 }
 

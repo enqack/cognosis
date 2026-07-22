@@ -211,9 +211,13 @@ warning and retrieval degrades to the previous under-returning behavior rather t
 `compile_lifecycle` is an explicit, agent-driven pass (never a timer). It reinforces, decays,
 archives, and -- on explicit request -- falsifies, disputes, supersedes, or graduates notes:
 
-- **decay** -- a note not reinforced within the staleness window loses confidence; at zero it's archived;
-- **citation-refresh** -- a note cited by a recently-updated note has its decay clock reset (no fake
-  reinforcement needed);
+- **decay** -- confidence is a read-time function of time since the last explicit reinforce, not a
+  per-run decrement (see below); a note that fades below the archival floor is archived;
+- **reinforce** -- an assertion of belief: confidence returns to its peak and the note's stability
+  grows, so each review widens the interval before it fades again (the spacing effect);
+- **citation-refresh** -- a note cited by a recently-updated note is shielded from the archival *move*
+  (within a budget past the last explicit reinforce); citation is evidence of use, not belief, so it
+  never touches confidence;
 - **falsify** -- terminal: wrong, retained, frozen, excluded from default retrieval;
 - **dispute** -- non-terminal: contested, keeps decaying; a later reinforce clears it;
 - **graduate** -- in-place canonization via a `graduated_at` frontmatter stamp (the layout has no canon
@@ -223,6 +227,22 @@ archives, and -- on explicit request -- falsifies, disputes, supersedes, or grad
 
 Each run is one revertible history commit and appends its report to `log.md`; `dry_run` computes the
 same report and writes nothing.
+
+### Read-time decay
+
+Confidence follows a power-law forgetting curve, `confidence(t) = (1 + t/S)^-0.5`, where `t` is the
+time since the note's last explicit reinforce and `S` is a per-note **stability** (days), stored in
+frontmatter. The pass evaluates the curve fresh every run, so confidence is a pure function of time
+and never an accumulation -- the decay rate cannot depend on how often the agent happens to compile,
+which the previous flat-then-staircase model got wrong.
+
+Stability is the memory of reinforcement: a fresh note starts at 14 days (half-life ~42d, volatile
+enough to signal "reinforce me"), each explicit reinforce multiplies it by 1.9 (the spacing effect),
+and promotion to `stable` multiplies it by 4 (semantic consolidation -- canon gets an effectively
+permanent tail). So a well-reinforced note barely moves over a year while an unreinforced one crosses
+the archival floor (`0.2`) around 336 days. Notes written before stability was tracked reconstruct it
+from their reinforcement history on the first pass. Paused and graduated notes are frozen, exempt from
+the curve entirely.
 
 ## Soft-delete hygiene
 

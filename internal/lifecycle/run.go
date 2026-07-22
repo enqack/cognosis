@@ -123,127 +123,119 @@ func (e *Engine) run(ctx context.Context, opts Options) (*Report, error) {
 			continue
 		}
 
-		conf := toFloat(n.Frontmatter["confidence"])
+		oldConf := toFloat(n.Frontmatter["confidence"])
 		count := toInt(n.Frontmatter["reinforce_count"])
 		maturity, _ := n.Frontmatter["maturity"].(string)
-		last, err := vault.TimeOf(n.Frontmatter["last_reinforced"])
+		// The decay anchor is the last EXPLICIT reinforce; confidence is a pure
+		// function of the time since it. Notes predating that field anchor from
+		// creation -- the same fallback passiveBudgetLeft uses -- never from
+		// last_reinforced, which the pass itself writes.
+		anchor, err := vault.TimeOf(n.Frontmatter["last_explicit_reinforce"])
 		if err != nil {
-			return nil, cogerr.Ef(op, cogerr.Validation, "%s: last_reinforced: %v", n.Path, err)
+			if anchor, err = vault.TimeOf(n.Frontmatter["created"]); err != nil {
+				return nil, cogerr.Ef(op, cogerr.Validation, "%s: last_explicit_reinforce/created: %v", n.Path, err)
+			}
 		}
 		updated, err := vault.TimeOf(n.Frontmatter["updated"])
 		if err != nil {
 			return nil, cogerr.Ef(op, cogerr.Validation, "%s: updated: %v", n.Path, err)
 		}
+		stability, hadStability := stabilityOf(n, count, maturity)
+		origStability := stability
 
 		reinforced := reinforce[n.ID()] || reinforce[n.Path]
 		_, graduatedAlready := n.Frontmatter["graduated_at"]
 		paused := n.Status() == "paused"
 
-		// Two shields, not one, because the two sites they gate mean different
-		// things. Citation shielding is budgeted for decay (a reversible
-		// confidence slide) but not for archival (a file move): decay keys on
-		// belief, archival keys on `updated`, which the lifecycle never writes
-		// and which is therefore a true last-agent-edit signal. A note that is
-		// cited AND was edited recently is not abandoned by any reading, and a
-		// move triggered by the mere absence of a reinforce is the transition
-		// most worth requiring two independent signals for.
+		// Citation shields the archival MOVE (a note in use is not abandoned) but
+		// never confidence: belief decays from the last explicit reinforce however
+		// often the note is cited -- citation is evidence of use, not of belief.
+		// moveShielded also keys on `updated`, the true last-hand-edit signal the
+		// pass never writes. Confidence is frozen only for paused and graduated
+		// (canon) notes, which are exempt from decay outright.
 		budgetLeft := passiveBudgetLeft(n, opts.Now)
 		citedAndInBudget := recentlyCited[n.ID()] && budgetLeft > 0
-		decayShielded := paused || graduatedAlready || citedAndInBudget
-		moveShielded := paused || graduatedAlready || recentlyCited[n.ID()]
+		moveShielded := paused || graduatedAlready || citedAndInBudget
+		confFrozen := paused || graduatedAlready
 
 		clearDispute := false
-		changed := false
 		stampExplicit := false
+		promoted := "" // promotion detail, reported after the reinforced line
 
-		// Reinforce (wins over decay in the same run).
+		// Reinforce: an assertion of belief. Stability grows (the spacing effect --
+		// each review widens the interval to the next) and confidence returns to
+		// its peak, because the anchor moves to now. Maturity advances here and
+		// only here; promotion to stable adds a one-time consolidation bump to S.
 		if reinforced {
-			old := conf
-			// Confidence is a one-decimal quantity; round after arithmetic so
-			// 0.7+0.1 actually reaches the 0.8 promotion threshold instead of
-			// landing at 0.7999....
-			conf = round1(min(1.0, conf+reinforceDelta))
+			stability *= stabilityGrowth
 			count++
-			last = opts.Now
-			// Only an explicit reinforce moves the budget anchor. Stamping it
-			// anywhere `changed` is true (refresh, decay) would make the
-			// budget renew itself -- the same self-renewing loop that
-			// disqualifies last_reinforced as the anchor.
+			anchor = opts.Now
 			stampExplicit = true
-			changed = true
-			report.Actions = append(report.Actions, Action{"reinforced", name, fmt.Sprintf("%.1f->%.1f", old, conf)})
+			if maturity == "seed" {
+				maturity = "developing"
+				promoted = "seed->developing"
+			} else if maturity == "developing" && count >= stableMinRuns {
+				maturity = "stable"
+				stability *= stableStabilityFactor
+				promoted = "developing->stable"
+			}
 			if n.Status() == "disputed" {
 				clearDispute = true
-				report.Actions = append(report.Actions, Action{"dispute-cleared", name, "(reinforced)"})
-			}
-			// Maturity only advances on reinforcement.
-			if maturity == "seed" && conf >= developingAt {
-				maturity = "developing"
-				report.Actions = append(report.Actions, Action{"promoted", name, "seed->developing"})
-			} else if maturity == "developing" && conf >= stableAt && count >= stableMinRuns {
-				maturity = "stable"
-				report.Actions = append(report.Actions, Action{"promoted", name, "developing->stable"})
-			}
-		} else if opts.Now.Sub(last) > staleAfter {
-			if decayShielded {
-				var cause string
-				switch {
-				case paused:
-					cause = "paused"
-				case graduatedAlready:
-					cause = "graduated canon"
-				default:
-					// Citation is the only budgeted cause, so it is the only
-					// one that can warn. Refresh is lazy -- it fires at most
-					// once per staleAfter -- so a budget smaller than that
-					// window means this is very likely the last refresh this
-					// note gets. Say so while a reinforce can still help.
-					cause = fmt.Sprintf("cited recently; %s of passive budget left",
-						roundDays(budgetLeft))
-					if budgetLeft < staleAfter {
-						cause += fmt.Sprintf(" -- reinforce before %s or it starts decaying",
-							opts.Now.Add(budgetLeft).Format(vault.TimeLayout))
-					}
-				}
-				last = opts.Now
-				changed = true
-				report.Actions = append(report.Actions, Action{"refreshed", name, "(" + cause + ")"})
-			} else {
-				old := conf
-				conf = round1(max(0.0, conf-decayDelta))
-				// Reset the clock so decay steps once per staleAfter. Without
-				// this the note stays stale and decays again on every
-				// subsequent compile run, making the decay rate a function of
-				// how often the agent happens to compile rather than of time.
-				last = opts.Now
-				changed = true
-				detail := fmt.Sprintf("%.1f->%.1f (last_reinforced %s)", old, conf, last.Format(vault.TimeLayout))
-				if recentlyCited[n.ID()] {
-					// Still cited, so the shield is not missing -- it expired.
-					// Without saying so, this reads as the refresh mechanism
-					// having silently broken.
-					detail = fmt.Sprintf("%.1f->%.1f (still cited, but the passive-refresh budget "+
-						"expired -- only an explicit reinforce revives it)", old, conf)
-				}
-				report.Actions = append(report.Actions, Action{"decayed", name, detail})
 			}
 		}
 
-		// Whether an archival move will follow. The frontmatter edits below are
-		// staged either way, but the *write* is deferred when a move is coming:
-		// writing here and then moving would touch the file twice, index it
-		// twice, and leave an intermediate state in vault history that never
-		// meaningfully existed.
-		willArchive := conf <= 0 ||
-			(!reinforced && !moveShielded && opts.Now.Sub(updated) > ancientAfter)
+		// Read-time confidence: recomputed every run from (now - anchor) and the
+		// note's stability. A pure function of time, never an accumulation, so
+		// decay no longer depends on how often the compile pass happens to run.
+		// Frozen notes keep their stored confidence.
+		rawConf := oldConf
+		if !confFrozen {
+			rawConf = decayConfidence(opts.Now.Sub(anchor), stability)
+		}
+		conf := round1(rawConf)
+
+		changed := reinforced || conf != round1(oldConf) || !hadStability || stability != origStability
+
+		switch {
+		case reinforced:
+			report.Actions = append(report.Actions, Action{"reinforced", name,
+				fmt.Sprintf("%.1f->%.1f (stability %.0f->%.0fd)", oldConf, conf, origStability, stability)})
+			if promoted != "" {
+				report.Actions = append(report.Actions, Action{"promoted", name, promoted})
+			}
+			if clearDispute {
+				report.Actions = append(report.Actions, Action{"dispute-cleared", name, "(reinforced)"})
+			}
+		case !confFrozen && conf < round1(oldConf):
+			detail := fmt.Sprintf("%.1f->%.1f (stability %.0fd, %s since reinforce)",
+				round1(oldConf), conf, stability, opts.Now.Sub(anchor).Round(24*time.Hour))
+			if recentlyCited[n.ID()] {
+				detail += " -- still cited, but citation shields archival, not belief"
+			}
+			report.Actions = append(report.Actions, Action{"decayed", name, detail})
+		case changed:
+			// First-run backfill of the stability field, or a stored confidence the
+			// curve disagrees with -- a one-time realignment, not an ongoing move.
+			report.Actions = append(report.Actions, Action{"recalibrated", name,
+				fmt.Sprintf("%.1f->%.1f (stability %.0fd)", round1(oldConf), conf, stability)})
+		}
+
+		// A move is coming when the note faded below the archival floor (belief
+		// gone, not merely low) with no live citation to shield it, or its last
+		// hand edit is ancient. Frontmatter edits are staged either way; the write
+		// is deferred to the move so the file is not touched and indexed twice.
+		willArchiveFaded := !confFrozen && !citedAndInBudget && rawConf < archiveBelow
+		willArchiveAncient := !reinforced && !moveShielded && opts.Now.Sub(updated) > ancientAfter
+		willArchive := willArchiveFaded || willArchiveAncient
 
 		if changed {
 			n.SetFM("confidence", fmt.Sprintf("%.1f", conf))
 			n.SetFM("maturity", maturity)
-			n.SetFM("last_reinforced", last.Format(vault.TimeLayout))
+			n.SetFM("stability", fmt.Sprintf("%.2f", stability))
 			n.SetFM("reinforce_count", strconv.Itoa(count))
 			if stampExplicit {
 				n.SetFM("last_explicit_reinforce", opts.Now.Format(vault.TimeLayout))
+				n.SetFM("last_reinforced", opts.Now.Format(vault.TimeLayout))
 			}
 			if clearDispute {
 				n.SetFM("status", "active")
@@ -285,8 +277,9 @@ func (e *Engine) run(ctx context.Context, opts Options) (*Report, error) {
 		// Archive: faded (confidence hit zero) or ancient (updated timestamp
 		// abandoned). Both are moves into archive/; the id survives. The move
 		// writes the staged frontmatter above in one go.
-		if conf <= 0 {
-			report.Actions = append(report.Actions, Action{"archived-faded", name, fmt.Sprintf("(confidence %.1f)", conf)})
+		if willArchiveFaded {
+			report.Actions = append(report.Actions, Action{"archived-faded", name,
+				fmt.Sprintf("(confidence %.1f, faded below %.1f)", conf, archiveBelow)})
 			if !opts.DryRun {
 				n.SetFM("status", vault.StatusFaded)
 				n.SetFM("archived_at", opts.Now.Format(vault.TimeLayout))
@@ -310,7 +303,7 @@ func (e *Engine) run(ctx context.Context, opts Options) (*Report, error) {
 			}
 			continue
 		}
-		if !reinforced && !moveShielded && opts.Now.Sub(updated) > ancientAfter {
+		if willArchiveAncient {
 			report.Actions = append(report.Actions, Action{"archived-ancient", name,
 				fmt.Sprintf("(updated %s ago)", opts.Now.Sub(updated).Round(24*time.Hour))})
 			if !opts.DryRun {

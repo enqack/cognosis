@@ -6,6 +6,21 @@ All notable changes to Cognosis are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **Note decay is now a read-time forgetting curve, not a per-run staircase.** Confidence is
+  `(1 + t/S)^-0.5` in the time `t` since a note's last explicit reinforce, with a per-note
+  **stability** `S` (days, stored in frontmatter) -- evaluated fresh every compile pass, so the decay
+  rate is a pure function of time and no longer depends on how often the agent compiles (the old
+  flat-30d-then-`-0.1`-per-window model coupled it to cadence and inverted consolidation). Reinforce
+  grows `S` by 1.9 (the spacing effect -- each review widens the interval before the note fades) and
+  promotion to `stable` grows it by 4 (canon gets a near-permanent tail); a fresh note starts at
+  `S=14d` (half-life ~42d) and crosses the archival floor (`0.2`) near 336 days. Citation now shields
+  only the archival *move*, within a budget past the last explicit reinforce -- it never refreshes
+  confidence, since citation is evidence of use, not belief. Existing notes reconstruct `S` from their
+  reinforcement history on the first pass; paused and graduated notes are frozen. No schema change --
+  stability lives in the frontmatter the pass already writes.
+
 ### Added
 
 - **Note-level full-text membership replaces the keyword leg's OR fallback.** The keyword leg's

@@ -14,6 +14,7 @@ package lifecycle
 import (
 	"context"
 	"log/slog"
+	"math"
 	"strings"
 	"time"
 
@@ -24,31 +25,87 @@ import (
 )
 
 const (
-	reinforceDelta = 0.1
-	decayDelta     = 0.1
-	// staleAfter: a note not reinforced for this long starts decaying.
-	staleAfter = 30 * 24 * time.Hour
-	// ancientAfter: a note whose `updated` timestamp is older than this is
-	// archived as abandoned (frontmatter timestamps are the staleness source).
+	// Read-time decay curve: confidence(t) = (1 + t/S)^-decayExponent, where t is
+	// the time since last_explicit_reinforce and S is the note's stability in
+	// days. The curve is evaluated fresh from time alone every run -- there is no
+	// per-run accumulation, so decay no longer depends on how often the compile
+	// pass happens to run (the defect the old flat-then-staircase model had). A
+	// power law, not an exponential (b=0.5 is the Ebbinghaus fit), so
+	// well-reinforced knowledge keeps a long tail instead of falling off a cliff.
+	decayExponent = 0.5
+	// freshStability is S for a brand-new, never-reinforced note (days). It sets
+	// how volatile an unreinforced note is: at 14d a fresh note reads ~0.56 at
+	// 30d and half-lives at 42d -- volatile enough to signal "reinforce me", not
+	// so volatile that a hard-won note evaporates before it is revisited.
+	freshStability = 14.0
+	// stabilityGrowth multiplies S on every explicit reinforce -- the spacing
+	// effect. One reinforce roughly doubles a note's half-life, so the interval
+	// to the next needed reinforcement widens as belief is repeatedly asserted.
+	stabilityGrowth = 1.9
+	// stableStabilityFactor multiplies S once on promotion to `stable`: semantic
+	// consolidation. Canon gets an effectively permanent tail.
+	stableStabilityFactor = 4.0
+	// archiveBelow is the (unrounded) confidence at which a faded note is
+	// archived. At freshStability and b=0.5 an unreinforced note crosses it around
+	// 336 days -- close to the old model's horizon -- while a high-S note never
+	// reaches it, so archival is tied to belief, and belief to reinforcement
+	// history, rather than to a flat age cutoff.
+	archiveBelow = 0.2
+
+	// ancientAfter: a note whose `updated` timestamp (last hand edit, not decay)
+	// is older than this is archived as abandoned -- orthogonal to belief.
 	ancientAfter = 6 * 30 * 24 * time.Hour
-	// refreshWithin: a note cited by a note updated this recently is still in
-	// use -- its decay clock resets without an explicit reinforce.
+	// refreshWithin: a note cited by a note updated this recently is still in use.
 	refreshWithin = 7 * 24 * time.Hour
-	// passiveRefreshBudget: citation is evidence a note is *used*, not that it
-	// is *believed*. Passive refresh may therefore extend a note's life only
-	// this far past the last explicit reinforce; after that the note decays
-	// even while cited, and an agent must assert belief to revive it.
-	//
-	// Tied to ancientAfter deliberately, so the vault has exactly one horizon
-	// at which silence stops counting as assent. That is six staleAfter
-	// windows, and refresh is lazy (it fires only once a note is already
-	// stale), so a cited note emits roughly six `refreshed` lines -- each
-	// carrying the remaining budget -- before it starts decaying.
+	// passiveRefreshBudget: citation is evidence a note is *used*, not that it is
+	// *believed*. It shields the archival move only this far past the last
+	// explicit reinforce; after that, silence stops counting as use and a
+	// cited-but-unreinforced note may archive. Confidence itself decays from the
+	// anchor regardless of citation -- citation never touches belief.
 	passiveRefreshBudget = ancientAfter
-	stableMinRuns        = 3
-	developingAt         = 0.8
-	stableAt             = 0.9
+	// stableMinRuns: promotion to `stable` requires at least this many reinforces.
+	stableMinRuns = 3
 )
+
+// decayConfidence evaluates the read-time decay curve: confidence as a function
+// of time since the last explicit reinforce and the note's stability S (days).
+// A power law, so it is heavy-tailed -- a large S (well-reinforced or canonized
+// note) barely moves over a year, while a fresh note (small S) is volatile.
+func decayConfidence(elapsed time.Duration, stabilityDays float64) float64 {
+	if stabilityDays <= 0 {
+		stabilityDays = freshStability
+	}
+	t := elapsed.Hours() / 24.0
+	if t < 0 {
+		t = 0
+	}
+	return math.Pow(1.0+t/stabilityDays, -decayExponent)
+}
+
+// initStability reconstructs a note's stability from its reinforcement history,
+// for notes written before stability was tracked. It mirrors what the compile
+// pass would have accumulated -- freshStability grown once per reinforce, with
+// the stable-promotion bump folded in -- so an existing developing/stable note
+// starts where its history earned it rather than reset to a fresh, volatile S.
+func initStability(reinforceCount int, maturity string) float64 {
+	s := freshStability * math.Pow(stabilityGrowth, float64(reinforceCount))
+	if maturity == "stable" {
+		s *= stableStabilityFactor
+	}
+	return s
+}
+
+// stabilityOf reads the stored stability, or reconstructs it from history when
+// absent (every note written before the read-time model). The bool reports
+// whether it was stored, so the caller knows to persist a reconstructed value.
+func stabilityOf(n *vault.Note, reinforceCount int, maturity string) (float64, bool) {
+	if v, ok := n.Frontmatter["stability"]; ok {
+		if s := toFloat(v); s > 0 {
+			return s, true
+		}
+	}
+	return initStability(reinforceCount, maturity), false
+}
 
 // passiveBudgetLeft reports how much passive-refresh budget a note has left.
 // A non-positive result means citation no longer shields it.

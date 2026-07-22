@@ -81,7 +81,10 @@ func TestOneCommitPerRun(t *testing.T) {
 // restores the pre-run state end to end (the vault-history recovery promise).
 func TestRevertRunRestores(t *testing.T) {
 	e, s, root, ctx := testEngine(t)
-	id := writeSpec(t, root, "notes/subject.md", noteSpec{confidence: "0.5", lastReinf: now.Add(-31 * 24 * time.Hour)})
+	// Anchor 60d back at S=14 puts the curve at ~0.44 -> 0.4, one decay step
+	// below the stored 0.5.
+	id := writeSpec(t, root, "notes/subject.md", noteSpec{
+		confidence: "0.5", stability: "14.00", lastExplicit: now.Add(-60 * 24 * time.Hour)})
 
 	// Baseline commit so the run's commit has a parent to revert to.
 	if err := e.Hist.CommitAll(ctx, "baseline"); err != nil {
@@ -145,12 +148,22 @@ func TestConcurrentRunRejected(t *testing.T) {
 	}
 }
 
-// TestCitationRefresh -- a stale note cited by a recently-updated note
-// refreshes instead of decaying.
-func TestCitationRefresh(t *testing.T) {
+// TestCitationShieldsArchivalNotBelief -- in the read-time model citation no
+// longer refreshes confidence: belief decays from the last explicit reinforce
+// however often the note is cited. What citation still buys is the archival
+// MOVE -- a note in use is not swept out from under the agent -- so an
+// ancient-by-edit note that is cited stays in notes/ while its confidence keeps
+// tracking the curve.
+func TestCitationShieldsArchivalNotBelief(t *testing.T) {
 	e, _, root, ctx := testEngine(t)
-	writeSpec(t, root, "notes/theory.md", noteSpec{lastReinf: now.Add(-31 * 24 * time.Hour)})
-	// A fresh entry citing it.
+	// Ancient by last edit (would archive-ancient) and anchored 60d back (S=14
+	// -> the curve has fallen to ~0.44), so both effects are in play at once.
+	writeSpec(t, root, "notes/theory.md", noteSpec{
+		confidence: "0.5", stability: "14.00",
+		lastExplicit: now.Add(-60 * 24 * time.Hour),
+		updated:      now.Add(-200 * 24 * time.Hour),
+	})
+	// A fresh entry citing it -- the archival shield.
 	writeSpec(t, root, "notes/citer.md", noteSpec{
 		updated: now.Add(-time.Hour),
 		body:    "Still building on [[theory]] today.\n",
@@ -159,21 +172,33 @@ func TestCitationRefresh(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var decayed bool
 	for _, a := range r.Actions {
-		if a.Note == "theory" && a.Kind == "refreshed" {
-			return
+		if a.Note != "theory" {
+			continue
 		}
-		if a.Note == "theory" && a.Kind == "decayed" {
-			t.Fatal("cited note decayed instead of refreshing")
+		switch a.Kind {
+		case "refreshed":
+			t.Fatal("citation refreshed confidence; it must shield archival, not belief")
+		case "archived-ancient", "archived-faded":
+			t.Fatalf("cited note was archived (%s); citation must shield the move", a.Kind)
+		case "decayed":
+			decayed = true
 		}
 	}
-	t.Fatalf("no refresh recorded for the cited note: %v", kinds(r))
+	if !decayed {
+		t.Fatalf("cited note did not decay; belief must track the curve regardless of citation: %v", kinds(r))
+	}
+	if _, err := os.Stat(filepath.Join(root, "notes", "theory.md")); err != nil {
+		t.Errorf("cited note left notes/ -- citation must shield the archival move: %v", err)
+	}
 }
 
 // TestLogAppended -- a real run appends its report to the vault's log.md.
 func TestLogAppended(t *testing.T) {
 	e, _, root, ctx := testEngine(t)
-	writeSpec(t, root, "notes/a.md", noteSpec{lastReinf: now.Add(-31 * 24 * time.Hour)})
+	writeSpec(t, root, "notes/a.md", noteSpec{
+		confidence: "0.9", stability: "14.00", lastExplicit: now.Add(-60 * 24 * time.Hour)})
 	if _, err := e.Run(ctx, Options{Now: now}); err != nil {
 		t.Fatal(err)
 	}

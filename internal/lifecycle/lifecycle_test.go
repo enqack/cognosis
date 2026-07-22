@@ -60,6 +60,7 @@ type noteSpec struct {
 	lastExplicit time.Time
 	status       string
 	count        int
+	stability    string // when set, written as the stored per-note stability
 	extra        string
 	body         string
 }
@@ -102,6 +103,9 @@ sources:
 		sp.confidence, sp.maturity, sp.lastReinf.Format(vault.TimeLayout), sp.count)
 	if !sp.lastExplicit.IsZero() {
 		fm += "last_explicit_reinforce: \"" + sp.lastExplicit.Format(vault.TimeLayout) + "\"\n"
+	}
+	if sp.stability != "" {
+		fm += "stability: \"" + sp.stability + "\"\n"
 	}
 	if sp.status != "" {
 		fm += "status: " + sp.status + "\n"
@@ -147,63 +151,79 @@ func TestTransitions(t *testing.T) {
 		wantErr string   // substring of the rejection, when illegal
 	}{
 		{
+			// A developing note reinforced once, not enough runs to promote:
+			// confidence returns to its peak, stability grows, no maturity change.
 			name: "reinforce raises confidence",
-			spec: noteSpec{confidence: "0.5"},
-			ops:  func(id string) Options { return Options{Reinforce: []string{id}} },
+			spec: noteSpec{confidence: "0.9", maturity: "developing", count: 1, stability: "26.60"},
+			ops:  func(id string) Options { return Options{Reinforce: []string{id}, Now: now} },
 			want: []string{"reinforced"},
 		},
 		{
-			name: "reinforce promotes seed to developing at threshold",
-			spec: noteSpec{confidence: "0.7", maturity: "seed"},
-			ops:  func(id string) Options { return Options{Reinforce: []string{id}} },
+			// First reinforce graduates a seed to developing (count-based now that
+			// confidence is curve-derived and 1.0 at the moment of reinforce).
+			name: "reinforce promotes seed to developing",
+			spec: noteSpec{confidence: "0.6", maturity: "seed"},
+			ops:  func(id string) Options { return Options{Reinforce: []string{id}, Now: now} },
 			want: []string{"reinforced", "promoted"},
 		},
 		{
 			name: "reinforce promotes developing to stable with enough runs",
-			spec: noteSpec{confidence: "0.8", maturity: "developing", count: 2},
-			ops:  func(id string) Options { return Options{Reinforce: []string{id}} },
+			spec: noteSpec{confidence: "1.0", maturity: "developing", count: 2, stability: "50.54"},
+			ops:  func(id string) Options { return Options{Reinforce: []string{id}, Now: now} },
 			want: []string{"reinforced", "promoted"},
 		},
 		{
 			name: "developing stays without enough runs",
-			spec: noteSpec{confidence: "0.8", maturity: "developing", count: 1},
-			ops:  func(id string) Options { return Options{Reinforce: []string{id}} },
+			spec: noteSpec{confidence: "1.0", maturity: "developing", count: 1, stability: "26.60"},
+			ops:  func(id string) Options { return Options{Reinforce: []string{id}, Now: now} },
 			want: []string{"reinforced"},
 		},
 		{
+			// Stored confidence above the curve value for a 60d-old anchor (S=26.6
+			// -> 0.55): the read-time recompute decays it.
 			name: "stale note decays",
-			spec: noteSpec{confidence: "0.5", lastReinf: now.Add(-31 * 24 * time.Hour)},
-			ops:  func(string) Options { return Options{} },
+			spec: noteSpec{confidence: "0.9", maturity: "developing", count: 1, stability: "26.60",
+				lastExplicit: now.Add(-60 * 24 * time.Hour)},
+			ops:  func(string) Options { return Options{Now: now} },
 			want: []string{"decayed"},
 		},
 		{
-			name: "fresh note untouched",
-			spec: noteSpec{confidence: "0.5", lastReinf: now.Add(-24 * time.Hour)},
-			ops:  func(string) Options { return Options{} },
+			// Confidence already equals the curve value and stability is stored:
+			// the recompute is a no-op.
+			name: "note at equilibrium untouched",
+			spec: noteSpec{confidence: "1.0", stability: "14.00", lastExplicit: now.Add(-time.Hour)},
+			ops:  func(string) Options { return Options{Now: now} },
 			want: nil,
 		},
 		{
-			name: "paused note refreshes instead of decaying",
-			spec: noteSpec{status: "paused", lastReinf: now.Add(-31 * 24 * time.Hour)},
-			ops:  func(string) Options { return Options{} },
-			want: []string{"refreshed"},
+			name: "paused note does not decay",
+			spec: noteSpec{status: "paused", confidence: "0.5", stability: "14.00",
+				lastExplicit: now.Add(-60 * 24 * time.Hour)},
+			ops:  func(string) Options { return Options{Now: now} },
+			want: nil,
 		},
 		{
-			name: "graduated note refreshes instead of decaying",
-			spec: noteSpec{maturity: "stable", lastReinf: now.Add(-31 * 24 * time.Hour), extra: "graduated_at: \"2026-07-01 00:00:00\"\n"},
-			ops:  func(string) Options { return Options{} },
-			want: []string{"refreshed"},
+			name: "graduated note does not decay",
+			spec: noteSpec{maturity: "stable", confidence: "0.9", stability: "224.00",
+				lastExplicit: now.Add(-60 * 24 * time.Hour), extra: "graduated_at: \"2026-07-01 00:00:00\"\n"},
+			ops:  func(string) Options { return Options{Now: now} },
+			want: nil,
 		},
 		{
-			name: "confidence zero archives as faded",
-			spec: noteSpec{confidence: "0.1", lastReinf: now.Add(-31 * 24 * time.Hour)},
-			ops:  func(string) Options { return Options{} },
+			// Anchor 400d old at S=14 puts the curve below the archival floor.
+			name: "faded note archives as faded",
+			spec: noteSpec{confidence: "0.3", stability: "14.00", lastExplicit: now.Add(-400 * 24 * time.Hour)},
+			ops:  func(string) Options { return Options{Now: now} },
 			want: []string{"decayed", "archived-faded"},
 		},
 		{
+			// High-enough confidence to escape the faded floor, but the last hand
+			// edit is ancient: archived as abandoned, orthogonal to belief.
 			name: "abandoned note archives as ancient",
-			spec: noteSpec{confidence: "0.5", updated: now.Add(-200 * 24 * time.Hour)},
-			ops:  func(string) Options { return Options{} },
+			spec: noteSpec{confidence: "0.3", stability: "14.00",
+				created: now.Add(-200 * 24 * time.Hour), updated: now.Add(-200 * 24 * time.Hour),
+				lastExplicit: now.Add(-200 * 24 * time.Hour)},
+			ops:  func(string) Options { return Options{Now: now} },
 			want: []string{"archived-ancient"},
 		},
 		{
@@ -232,8 +252,9 @@ func TestTransitions(t *testing.T) {
 		},
 		{
 			name: "reinforce clears a dispute",
-			spec: noteSpec{status: "disputed", extra: "disputed_reason: earlier doubt\ndisputed_at: \"2026-07-10 00:00:00\"\n"},
-			ops:  func(id string) Options { return Options{Reinforce: []string{id}} },
+			spec: noteSpec{status: "disputed", maturity: "developing", count: 1, confidence: "1.0", stability: "26.60",
+				extra: "disputed_reason: earlier doubt\ndisputed_at: \"2026-07-10 00:00:00\"\n"},
+			ops:  func(id string) Options { return Options{Reinforce: []string{id}, Now: now} },
 			want: []string{"reinforced", "dispute-cleared"},
 		},
 		{
@@ -256,8 +277,8 @@ func TestTransitions(t *testing.T) {
 		},
 		{
 			name: "graduate stable canonizes in place",
-			spec: noteSpec{maturity: "stable"},
-			ops:  func(id string) Options { return Options{Graduate: []string{id}} },
+			spec: noteSpec{maturity: "stable", confidence: "1.0", stability: "56.00", lastExplicit: now.Add(-time.Hour)},
+			ops:  func(id string) Options { return Options{Graduate: []string{id}, Now: now} },
 			want: []string{"graduated"},
 		},
 		{
