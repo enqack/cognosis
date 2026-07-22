@@ -41,7 +41,7 @@ must not *reduce* recall; the candidate pool must not exceed scan capacity
 
 ---
 
-## The three DSN variables
+## The four DSN variables
 
 They are not interchangeable, and mixing them up is the most common way to get a confusing skip.
 
@@ -50,6 +50,7 @@ They are not interchangeable, and mixing them up is the most common way to get a
 | `COGNOSIS_TEST_DSN` | Go integration tests (`internal/store/storetest`) | test skips |
 | `COGNOSIS_DSN` | `scripts/checks/*.sh` | check **skips** (exit 2) |
 | `COGNOSIS_EVAL_DSN` | `requireEval` in the sweeps | sweep skips |
+| `COGNOSIS_GRAPHTUNE_DSN` | the real-vault sweeps (see "The real-vault tier") | those sweeps skip |
 
 Exact skip messages, so you can match what you see:
 
@@ -108,10 +109,11 @@ Each sweep runs over eight configurations, from `PRE-FIX(ef=40,off)` through
 
 ### What `mage check` does not run
 
-`retrieval-eval.sh` runs seven sweeps: capacity, recall-vs-exact, fused overlap, the ground-truth
-plan record, the keyword OR-fallback sweep, and the two graph-leg sweeps (weight and unique
-contribution). The keyword sweeps (`TestKeywordRankerCeiling`, `TestKeywordHeadroomVsPrecision`,
-`TestKeywordANDvsOR`) and `TestAllLegCapacityAtShippedSettings` are **not** in that filter.
+`retrieval-eval.sh` runs nine sweeps: capacity, recall-vs-exact, fused overlap, the ground-truth
+plan record, the keyword OR-fallback sweep, the note-level membership sweep, the diversity-rerank
+sweep, and the two graph-leg sweeps (weight and unique contribution). The keyword sweeps
+(`TestKeywordRankerCeiling`, `TestKeywordHeadroomVsPrecision`, `TestKeywordANDvsOR`) and
+`TestAllLegCapacityAtShippedSettings` are **not** in that filter.
 
 This is deliberate: they answer questions listed as closed below, and re-running them on every
 `mage check` costs minutes to reproduce a result nobody is asking for. Run them by hand if you are
@@ -120,6 +122,40 @@ reopening one:
 ```sh
 go test ./internal/query/retrievaleval/ -v -timeout 30m -run 'TestKeyword'
 ```
+
+### The real-vault tier
+
+The synthetic corpus cannot exercise everything. Its links are uniform-random, its projects are
+round-robin, and its embeddings come from the deterministic `Synth` provider -- so the graph leg
+looks inert, project context looks flat, and nothing tests a mature link topology. A second tier
+runs the real engine against an **isolated `pg_dump` of a real vault** (never the live DB), with
+real Ollama embeddings.
+
+`COGNOSIS_GRAPHTUNE_DSN` points at that dump. Unlike `COGNOSIS_EVAL_DSN` it is a genuine connection
+string, and these sweeps also need Ollama. They are manual-only and deliberately out of
+`retrieval-eval.sh` -- a shared runner cannot carry a vault snapshot -- the same treatment
+`TestGraphWeightRealVault` has always had. Six sweeps run here:
+
+- `TestGraphWeightRealVault` -- the graph leg's fusion weight over a mature link graph.
+- `TestDiversityRealVault` -- the fan-effect diversity penalty on real crowding.
+- `TestSpreadingActivation` / `TestSpreadingActivationDepthWeight` -- multi-hop graph depth against
+  per-hop decay and against fusion weight.
+- `TestRetrievability` -- P(a note returns for a self-cue drawn from its own text), the
+  cue-dependent-forgetting probe.
+- `TestContextPrior` -- whether a same-project boost re-ranks anything the graph leg does not.
+- `TestContextRelevance` -- that boost's benefit (right context) and cross-project harm (wrong
+  context).
+
+```sh
+# an isolated dump, never postgres:///cognosis
+export COGNOSIS_GRAPHTUNE_DSN="postgres:///cognosis_dump?host=...&sslmode=disable"
+export OLLAMA_MODEL=nomic-embed-text:v1.5   # must match the dump's embedding table
+go test ./internal/query/retrievaleval/ -v -timeout 30m \
+  -run 'TestGraphWeightRealVault|TestDiversityRealVault|TestSpreadingActivation|TestRetrievability|TestContextPrior|TestContextRelevance'
+```
+
+The graphweight and diversity real-vault sweeps print to the test log; the other four write
+artifacts (below).
 
 ---
 
@@ -141,7 +177,7 @@ shipped. The delta is what the fix costs as an agent experiences it.
 
 ## Artifacts
 
-Sweeps write eleven files into `internal/query/retrievaleval/testdata/`:
+The synthetic-corpus sweeps write thirteen files into `internal/query/retrievaleval/testdata/`:
 
 | File | Written by |
 |---|---|
@@ -156,6 +192,12 @@ Sweeps write eleven files into `internal/query/retrievaleval/testdata/`:
 | `keyword_ceiling.txt` | `TestKeywordRankerCeiling` |
 | `keyword_precision_sweep.txt` | `TestKeywordHeadroomVsPrecision` |
 | `tsquery_and_vs_or.txt` | `TestKeywordANDvsOR` |
+| `note_level_membership.txt` | `TestNoteLevelMembershipSweep` |
+| `diversity_rerank_sweep.txt` | `TestDiversityRerankSweep` |
+
+The real-vault tier writes six more into the same directory: `spreading_activation_sweep.txt`,
+`spreading_activation_weight_sweep.txt`, `retrievability_sweep.txt`, `context_prior_sweep.txt`,
+`context_relevance_sweep.txt`, and `context_crossproject_sweep.txt`.
 
 **That directory is gitignored.** Per `.gitignore`: the sweeps rewrite them on every run, they are
 "recorded measurements for a human to read, never diffed or asserted against", and a committed copy
@@ -216,9 +258,10 @@ Comparing against an OR count over the same corpus is what separates them.
 
 **BM25 (`pg_textsearch`, `pg_search`, `vchord_bm25`) -- not worth it.**
 RRF consumes rank, so any keyword ranker can only permute the candidate list. Ordering that list by
-ground truth is better than any real ranker can be, and it moves the fused top-8 by ~2 queries in
-30. Two explanations for that flatness were tested and refuted: RRF damping (swept `k` from 1 to 60,
-flat) and corpus precision (swept 1.00 to 0.87, flat, while the oracle permuted up to 78% of slots).
+ground truth is better than any real ranker can be, and it moves the fused top-8 by about two
+queries in thirty. Two explanations for that flatness were tested and refuted: RRF damping (swept
+`k` from 1 to 60, flat) and corpus precision (swept 1.00 to 0.87, flat, while the oracle permuted up
+to 78% of slots).
 *Reopens if:* the keyword leg's candidate set stops being the bottleneck -- i.e. after an AND/OR
 change -- or if measured production keyword precision is far below 0.87.
 
