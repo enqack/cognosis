@@ -329,6 +329,120 @@ func (s *Store) RankGraph(ctx context.Context, seeds []uuid.UUID,
 	return out, nil
 }
 
+// graphLegMultiSQL renders the multi-hop graph leg: a bounded breadth-first
+// expansion from the seed notes along outbound links, each reached note scored
+// by the sum over seeds of decay^(hop-1). At maxDepth=1 this reduces exactly to
+// graphLegSQL's `count(distinct src)` ranking -- decay^0 = 1 contributed once
+// per reaching seed -- so the shipped one-hop leg is the depth-1 special case.
+// Deeper hops surface notes no single hop reaches, discounted geometrically by
+// link distance: the ACT-R spreading-activation reading of the link graph.
+//
+// Shelved notes do not conduct. The recursive term re-applies timeFilterSQL to
+// the note it steps THROUGH (the intermediate), with the same
+// falsified/archived/as-of params as the final candidate filter, so a soft-
+// deleted or not-yet-created note cannot route activation to a live note it
+// links to. Without this the leg would derive a reachability signal from a note
+// whose own chunks the filter excludes -- the graph edges leaking where the
+// content cannot (honoring IncludeArchived/IncludeFalsified, activation
+// conducts through shelved notes exactly when the caller has asked to see them).
+// The base case does not filter the seeds: they arrive already scoped by the
+// other legs, matching the one-hop leg, which also filters only its dsts.
+//
+// The recursive term is bounded by $7 (dist strictly increases each hop), so it
+// terminates on cyclic link graphs; `union` (not `union all`) dedups each
+// (seed, note, dist) triple as it is produced, so the CTE enumerates shortest-
+// hop reach, not every walk -- bounding row growth to |seeds| x |notes| x depth
+// rather than exponential in depth. `best` then keeps the shortest hop per
+// (seed, note) pair, so a cycle inflates neither a note's score nor the row
+// count. Parameters mirror graphLegArgs ($1..$6) plus $7 = max depth (int),
+// $8 = decay (float8).
+func graphLegMultiSQL() string {
+	return `
+		with recursive reach(seed, note_id, dist) as (
+			select l.src_note_id, l.dst_note_id, 1
+			from links l
+			where l.src_note_id = any($1)
+		  union
+			select r.seed, l.dst_note_id, r.dist + 1
+			from reach r
+			join notes n on n.id = r.note_id
+			join links l on l.src_note_id = r.note_id
+			where r.dist < $7
+			  and ` + timeFilterSQL("$2", "$6", "$4", "$5") + `
+		),
+		best as (
+			select seed, note_id, min(dist) as dist
+			from reach
+			group by seed, note_id
+		),
+		scored as (
+			select note_id, sum(power($8, dist - 1)) as w
+			from best
+			group by note_id
+		)
+		select ` + rankedCols + `, s.w
+		from scored s
+		join notes n on n.id = s.note_id
+		join chunks c on c.note_path = n.path
+		where ` + timeFilterSQL("$2", "$6", "$4", "$5") + `
+		order by s.w desc, n.path, c.ordinal
+		limit $3`
+}
+
+// graphLegMultiArgs are the bind parameters for graphLegMultiSQL, $1..$8.
+func graphLegMultiArgs(seeds []uuid.UUID, f Filter, limit, maxDepth int, decay float64) []any {
+	asOfTS, asOfText := asOfParams(f)
+	return []any{seeds, f.IncludeFalsified, limit, asOfTS, asOfText,
+		f.IncludeArchived, maxDepth, decay}
+}
+
+// RankGraphMulti is the multi-hop graph leg: a bounded breadth-first expansion
+// out along links from the seed notes, each reached note scored by the sum over
+// seeds of decay^(hop-1). maxDepth=1 with any decay reproduces RankGraph's
+// one-hop ranking exactly (see graphLegMultiSQL). It is the harness seam for the
+// spreading-activation depth sweep; the request path still uses RankGraph until
+// a depth is chosen. Project scoping is deliberately absent (inherited through
+// the seeds); the temporal and falsified filters apply.
+func (s *Store) RankGraphMulti(ctx context.Context, seeds []uuid.UUID,
+	maxDepth int, decay float64, f Filter, limit int) ([]RankedChunk, error) {
+	const op = "store.RankGraphMulti"
+	if len(seeds) == 0 {
+		return nil, nil
+	}
+	if maxDepth < 1 {
+		maxDepth = 1
+	}
+	rows, err := s.pool.Query(ctx, graphLegMultiSQL(),
+		graphLegMultiArgs(seeds, f, limit, maxDepth, decay)...)
+	if err != nil {
+		return nil, cogerr.E(op, cogerr.Internal, err)
+	}
+	out, err := scanRankedW(rows)
+	if err != nil {
+		return nil, cogerr.E(op, cogerr.Internal, err)
+	}
+	return out, nil
+}
+
+// scanRankedW scans the multi-hop leg's rows, which carry a trailing score
+// column (s.w) after rankedCols. The score is discarded here -- fusion consumes
+// rank (position), not the raw weight -- but selecting it lets the ORDER BY use
+// it; scanRanked's fixed column set cannot.
+func scanRankedW(rows pgx.Rows) ([]RankedChunk, error) {
+	defer rows.Close()
+	var out []RankedChunk
+	for rows.Next() {
+		var r RankedChunk
+		var w float64
+		if err := rows.Scan(&r.ChunkID, &r.NoteID, &r.NotePath, &r.Category,
+			&r.HeadingPath, &r.Content, &r.Summary, &w); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
 // CountSuppressedFalsified reports how many falsified notes the keyword leg
 // would have matched but the default filter excluded.
 //
@@ -392,6 +506,32 @@ func (s *Store) ArchivedLinkers(ctx context.Context, noteIDs []uuid.UUID) (map[u
 			return nil, cogerr.E(op, cogerr.Internal, err)
 		}
 		out[id] = true
+	}
+	return out, rows.Err()
+}
+
+// NoteProjects returns the project tag of each given note id (empty string for a
+// global/untagged note). The context-prior re-rank uses it to boost fused chunks
+// whose note shares the query's project. Batched like ArchivedLinkers: one query,
+// no per-chunk round trip.
+func (s *Store) NoteProjects(ctx context.Context, noteIDs []uuid.UUID) (map[uuid.UUID]string, error) {
+	const op = "store.NoteProjects"
+	out := map[uuid.UUID]string{}
+	if len(noteIDs) == 0 {
+		return out, nil
+	}
+	rows, err := s.pool.Query(ctx, `select id, coalesce(project, '') from notes where id = any($1)`, noteIDs)
+	if err != nil {
+		return nil, cogerr.E(op, cogerr.Internal, err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id uuid.UUID
+		var proj string
+		if err := rows.Scan(&id, &proj); err != nil {
+			return nil, cogerr.E(op, cogerr.Internal, err)
+		}
+		out[id] = proj
 	}
 	return out, rows.Err()
 }
