@@ -100,7 +100,12 @@ func knowledge(ctx context.Context) error {
 	}
 	defer func() { _ = s.Close() }()
 
-	stale := time.Now().Add(-35 * 24 * time.Hour).Format("2006-01-02 15:04:05")
+	// Old enough that the read-time decay curve has dropped the stored 0.5 below
+	// it: a fresh note (reinforce_count 0 -> stability 14d) reads
+	// (1+70/14)^-0.5 = 0.41 -> 0.4 at 70 days, so the compile pass reports a real
+	// decay rather than a no-op recalibration. (Under the old flat-30d staircase
+	// any age past 30d sufficed; the curve needs the anchor genuinely aged.)
+	stale := time.Now().Add(-70 * 24 * time.Hour).Format("2006-01-02 15:04:05")
 	now := time.Now().Format("2006-01-02 15:04:05")
 
 	// A related entry so the verify pass has related-context to surface.

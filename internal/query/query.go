@@ -350,8 +350,9 @@ type LegStats struct {
 // source cannot crowd the fused top-K -- the fan effect. Walking in score order,
 // a note's n-th chunk (n counted from 0) is scaled by decay^n, so its best chunk
 // competes at full strength while each extra yields ground to other notes; the
-// list is re-sorted stably afterward. decay >= 1 is a no-op and returns early, so
-// the shipped default (1.0) costs nothing until the sweep sets a real value.
+// list is re-sorted stably afterward. The shipped default is 0.5 and active on
+// every request; decay >= 1 is the no-op early return, reachable only via
+// Tuning.DiversityDecay < 0 (the sweep's "off" arm).
 func applyDiversityPenalty[T any](fused []Scored[T], noteID func(T) uuid.UUID, decay float64) {
 	if decay >= 1.0 || len(fused) == 0 {
 		return

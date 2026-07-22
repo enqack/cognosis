@@ -211,6 +211,7 @@ The full key reference is in [configuration.md](configuration.md).
 | `$XDG_DATA_HOME/cognosis/personas/` | operator-added persona files |
 | `$XDG_STATE_HOME/cognosis/local-token` | zero-config local bearer token (mode 0600) |
 | `$XDG_STATE_HOME/cognosis/daemon.lock` | local single-instance PID lock |
+| `$XDG_STATE_HOME/cognosis/daemon.log` | daemon log; the default input to `cognosis telemetry query` |
 
 ---
 

@@ -106,6 +106,7 @@ Resolved via the XDG Base Directory spec (env var first, platform default second
 | `$XDG_DATA_HOME/cognosis/personas/` | operator-added persona files |
 | `$XDG_STATE_HOME/cognosis/local-token` | zero-config local bearer token (mode 0600) |
 | `$XDG_STATE_HOME/cognosis/daemon.lock` | local single-instance PID lock |
+| `$XDG_STATE_HOME/cognosis/daemon.log` | daemon log; the default input to `cognosis telemetry query` |
 | `$XDG_CACHE_HOME/cognosis/` | reserved (unused in v1) |
 
 All directories are created on first daemon start.
