@@ -3,8 +3,6 @@ package retrievaleval
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -39,18 +37,17 @@ func TestRetrievability(t *testing.T) {
 		t.Fatal("no notes with cues to probe")
 	}
 
-	// K levels we score each cue at. topK=8 is DefaultTopK; @1/@3 are stricter
+	// K levels we score each cue at. The cap is DefaultTopK; @1/@3 are stricter
 	// slices of the same ranked list.
-	const kTop = 8
 	kLevels := []int{1, 3, 8}
 
 	type noteScore struct {
-		path       string
-		conf       float64
-		confNull   bool
-		maturity   string
-		nCues      int
-		hitsAtK    map[int]int // K -> count of cues that returned the note @K
+		path     string
+		conf     float64
+		confNull bool
+		maturity string
+		nCues    int
+		hitsAtK  map[int]int // K -> count of cues that returned the note @K
 	}
 
 	scores := make([]noteScore, 0, len(notes))
@@ -62,7 +59,7 @@ func TestRetrievability(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			top := capK(res, kTop)
+			top := capK(res)
 			// Best rank at which this note's own path appears (1-based); 0 = absent.
 			best := 0
 			for i, r := range top {
@@ -184,14 +181,8 @@ func TestRetrievability(t *testing.T) {
 			rAt(scores[i], 8), confStr(scores[i].confNull, scores[i].conf))
 	}
 
-	if err := os.MkdirAll("testdata", 0o755); err != nil {
-		t.Fatal(err)
-	}
-	art := filepath.Join("testdata", "retrievability_sweep.txt")
-	if err := os.WriteFile(art, []byte(b.String()), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("wrote %s\n\n%s", art, b.String())
+	t.Log("\n" + b.String())
+	writeArtifact(t, "retrievability_sweep.txt", b.String())
 }
 
 type retrievabilityNote struct {

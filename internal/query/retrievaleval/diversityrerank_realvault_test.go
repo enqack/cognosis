@@ -35,7 +35,7 @@ func TestDiversityRealVault(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			top := capK(res, query.DefaultTopK)
+			top := capK(res)
 			sumSources += float64(distinctNotes(top))
 			if c := maxPerNote(top); c > worst {
 				worst = c

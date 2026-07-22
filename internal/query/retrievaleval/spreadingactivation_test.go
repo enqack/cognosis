@@ -3,8 +3,6 @@ package retrievaleval
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -189,9 +187,7 @@ func TestSpreadingActivation(t *testing.T) {
 		"decay as a control: decay is inert at one hop (only term is decay^0 = 1)."
 	out := runSweep(t, fx, "spreading-activation depth x decay sweep", legend, arms)
 	t.Log("\n" + out)
-	if err := os.WriteFile(filepath.Join("testdata", "spreading_activation_sweep.txt"), []byte(out), 0o644); err != nil {
-		t.Fatalf("write artifact: %v", err)
-	}
+	writeArtifact(t, "spreading_activation_sweep.txt", out)
 }
 
 // TestSpreadingActivationDepthWeight sweeps hop depth {1,2} x graph fusion weight
@@ -222,7 +218,5 @@ func TestSpreadingActivationDepthWeight(t *testing.T) {
 		"the relevance cost of the higher weight."
 	out := runSweep(t, fx, "spreading-activation depth x graph-weight sweep", legend, arms)
 	t.Log("\n" + out)
-	if err := os.WriteFile(filepath.Join("testdata", "spreading_activation_weight_sweep.txt"), []byte(out), 0o644); err != nil {
-		t.Fatalf("write artifact: %v", err)
-	}
+	writeArtifact(t, "spreading_activation_weight_sweep.txt", out)
 }

@@ -53,7 +53,7 @@ func TestDiversityRerankSweep(t *testing.T) {
 			t.Fatal(err)
 		}
 		off[i] = res
-		top := capK(res, query.DefaultTopK)
+		top := capK(res)
 		if distinctNotes(top) < len(top) {
 			crowdedQueries++
 		}
@@ -85,7 +85,7 @@ func TestDiversityRerankSweep(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			top := capK(res, query.DefaultTopK)
+			top := capK(res)
 			sumSources += float64(distinctNotes(top))
 			rel := 0
 			for _, r := range top {
@@ -113,9 +113,11 @@ func TestDiversityRerankSweep(t *testing.T) {
 	t.Log("\n" + b.String())
 }
 
-func capK(res []query.Result, k int) []query.Result {
-	if len(res) > k {
-		return res[:k]
+// capK returns the fused top-K slice a caller compares against: DefaultTopK is
+// the only cap any sweep uses, so it is not a parameter.
+func capK(res []query.Result) []query.Result {
+	if len(res) > query.DefaultTopK {
+		return res[:query.DefaultTopK]
 	}
 	return res
 }

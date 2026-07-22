@@ -2,8 +2,6 @@ package retrievaleval
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -20,11 +18,13 @@ import (
 // top-8 sets: baseline (no graph, no prior), graph (default), context (prior
 // only, graph off), both. Then, over queries where the prior actually changed
 // the top-8:
-//   OVERLAP  = mean Jaccard(items the prior promotes over baseline,
-//                           items the graph leg promotes over baseline)
-//              -- high means the prior re-ranks what the graph leg already does.
-//   CTX-ADDS = mean top-8 items the prior adds ON TOP of the graph leg
-//              -- ~0 means the prior is subsumed by the graph leg.
+//
+//	OVERLAP  = mean Jaccard(items the prior promotes over baseline,
+//	                        items the graph leg promotes over baseline)
+//	           -- high means the prior re-ranks what the graph leg already does.
+//	CTX-ADDS = mean top-8 items the prior adds ON TOP of the graph leg
+//	           -- ~0 means the prior is subsumed by the graph leg.
+//
 // Split by query project, since the effect concentrates on the minority project.
 //
 // Gated on COGNOSIS_GRAPHTUNE_DSN (an isolated MULTI-PROJECT dump); skipped in CI.
@@ -173,9 +173,7 @@ func TestContextPrior(t *testing.T) {
 
 	out := b.String()
 	t.Log("\n" + out)
-	if err := os.WriteFile(filepath.Join("testdata", "context_prior_sweep.txt"), []byte(out), 0o644); err != nil {
-		t.Fatalf("write artifact: %v", err)
-	}
+	writeArtifact(t, "context_prior_sweep.txt", out)
 }
 
 // jaccardChanged reports whether two top-8 content sets differ at all.

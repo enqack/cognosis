@@ -2,8 +2,6 @@ package retrievaleval
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -32,7 +30,6 @@ func TestContextRelevance(t *testing.T) {
 		t.Fatal("no notes with cues to probe")
 	}
 
-	const kTop = 8
 	kLevels := []int{1, 3, 8}
 
 	// One flat cue record per (note, self-cue).
@@ -50,7 +47,7 @@ func TestContextRelevance(t *testing.T) {
 
 	// hitAtK: best 1-based rank of path in the top-kTop, and whether <= each k.
 	targetRank := func(res []query.Result, path string) int {
-		top := capK(res, kTop)
+		top := capK(res)
 		for i, r := range top {
 			if r.Path == path {
 				return i + 1
@@ -60,7 +57,7 @@ func TestContextRelevance(t *testing.T) {
 	}
 	top8Set := func(res []query.Result) map[string]bool {
 		m := map[string]bool{}
-		for _, r := range capK(res, kTop) {
+		for _, r := range capK(res) {
 			m[r.Content] = true
 		}
 		return m
@@ -94,14 +91,14 @@ func TestContextRelevance(t *testing.T) {
 	}
 
 	type acc struct {
-		n        int            // cues in this scope (all arms)
-		baseHit  map[int]int    // target @k under baseline, over all n
-		priorHit map[int]int    // target @k under RIGHT context, over all n
-		churn    float64        // baseline top-8 evicted by the right context
-		nWrong   int            // cues with a defined wrong context
-		baseHitW map[int]int    // target @k under baseline, over the nWrong cues
-		wrongHit map[int]int    // target @k under WRONG context, over nWrong
-		churnW   float64        // baseline top-8 evicted by the wrong context
+		n        int         // cues in this scope (all arms)
+		baseHit  map[int]int // target @k under baseline, over all n
+		priorHit map[int]int // target @k under RIGHT context, over all n
+		churn    float64     // baseline top-8 evicted by the right context
+		nWrong   int         // cues with a defined wrong context
+		baseHitW map[int]int // target @k under baseline, over the nWrong cues
+		wrongHit map[int]int // target @k under WRONG context, over nWrong
+		churnW   float64     // baseline top-8 evicted by the wrong context
 	}
 	newAcc := func() *acc {
 		return &acc{baseHit: map[int]int{}, priorHit: map[int]int{},
@@ -230,12 +227,8 @@ func TestContextRelevance(t *testing.T) {
 
 	out := b.String()
 	t.Log("\n" + out + "\n" + hb.String())
-	if err := os.WriteFile(filepath.Join("testdata", "context_relevance_sweep.txt"), []byte(out), 0o644); err != nil {
-		t.Fatalf("write artifact: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join("testdata", "context_crossproject_sweep.txt"), []byte(hb.String()), 0o644); err != nil {
-		t.Fatalf("write harm artifact: %v", err)
-	}
+	writeArtifact(t, "context_relevance_sweep.txt", out)
+	writeArtifact(t, "context_crossproject_sweep.txt", hb.String())
 }
 
 func scopeLabel(project string) string {
