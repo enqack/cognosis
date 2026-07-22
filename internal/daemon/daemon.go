@@ -73,6 +73,12 @@ func Run(ctx context.Context, cfg *config.Config, log *slog.Logger, opts Options
 	if err := store.Migrate(dsn); err != nil {
 		return fmt.Errorf("startup: schema migration: %w", err)
 	}
+	// A column folded into an already-applied migration (notes.fts) is never
+	// added on upgrade; catch a derived index that predates it here, fatally,
+	// rather than per query deep in serving.
+	if err := s.VerifyDerivedSchema(ctx); err != nil {
+		return fmt.Errorf("startup: %w", err)
+	}
 	log.Info("schema current")
 
 	// History repo exists before reconciliation so drift commits have

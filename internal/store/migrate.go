@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"io/fs"
@@ -16,6 +17,37 @@ import (
 	"github.com/enqack/cognosis/internal/cogerr"
 	"github.com/enqack/cognosis/migrations"
 )
+
+// VerifyDerivedSchema fails when the derived index predates a column the current
+// code requires. Migrations are version-tracked, so a column folded into an
+// already-applied migration -- notes.fts, added for the note-level keyword leg --
+// is never applied on upgrade, and the query path would otherwise error once per
+// request deep in the serve phase. Called at boot, right after Migrate, so a
+// stale index is one fatal, actionable failure instead of a silent footgun.
+func (s *Store) VerifyDerivedSchema(ctx context.Context) error {
+	const op = "store.VerifyDerivedSchema"
+	// Resolve `notes` through the connection's search_path (to_regclass) and check
+	// that relation specifically -- a bare information_schema scan is schema-blind
+	// and would match the column in any other schema, which the per-schema test
+	// isolation makes visible.
+	var exists bool
+	if err := s.pool.QueryRow(ctx,
+		`select exists (select 1 from pg_attribute
+		   where attrelid = to_regclass('notes')
+		     and attname = 'fts' and not attisdropped)`).Scan(&exists); err != nil {
+		return cogerr.E(op, cogerr.Internal, err)
+	}
+	if !exists {
+		return cogerr.Ef(op, cogerr.Validation,
+			"derived index predates note-level full-text search: notes.fts is missing. This release "+
+				"folded the column into the initial migration, so an already-migrated database will not "+
+				"gain it on upgrade. Rebuild the derived index: run `drop schema public cascade; create "+
+				"schema public;` on the database, then restart -- boot reconciliation re-indexes from the "+
+				"vault (the markdown is untouched), and the tokens table is recreated so re-read "+
+				"local-token afterward")
+	}
+	return nil
+}
 
 // Migrate applies pending schema migrations. Runs at daemon startup
 // before MCP connections are accepted; idempotent when current.
