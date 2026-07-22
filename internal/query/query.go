@@ -443,6 +443,39 @@ func applyDiversityPenalty[T any](fused []Scored[T], noteID func(T) uuid.UUID, d
 	sort.SliceStable(fused, func(i, j int) bool { return fused[i].Score > fused[j].Score })
 }
 
+// distinctNoteIDs returns the unique note ids across the fused items, in first-seen
+// order -- the batch key set for a store lookup (ArchivedLinkers, NoteProjects).
+func distinctNoteIDs[T any](fused []Scored[T], noteID func(T) uuid.UUID) []uuid.UUID {
+	seen := make(map[uuid.UUID]bool, len(fused))
+	out := make([]uuid.UUID, 0, len(fused))
+	for i := range fused {
+		if id := noteID(fused[i].Item); !seen[id] {
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// rescore multiplies each fused item's score by factor(item) and restabilises the
+// order iff any score moved -- factor returns 1 for items it does not touch. A stable
+// sort of an already-score-ordered slice preserves order, so skipping the sort when
+// nothing changed is identical to an unconditional one. This is the shared tail of the
+// post-fusion re-rank passes (archived-link penalty, category bias, context prior);
+// the fan-effect penalty is separate -- its factor is stateful per note, not per item.
+func rescore[T any](fused []Scored[T], factor func(T) float64) {
+	changed := false
+	for i := range fused {
+		if f := factor(fused[i].Item); f != 1 {
+			fused[i].Score *= f
+			changed = true
+		}
+	}
+	if changed {
+		sort.SliceStable(fused, func(i, j int) bool { return fused[i].Score > fused[j].Score })
+	}
+}
+
 // countSources counts distinct notes among fused candidates.
 func countSources[T any](fused []Scored[T], noteID func(T) uuid.UUID) int {
 	seen := make(map[uuid.UUID]struct{}, len(fused))
@@ -603,74 +636,57 @@ func (e *Engine) RunWithStats(ctx context.Context, text string, opts Options) ([
 	fused := FuseRRF(e.Tuning.rrfK(), func(c store.RankedChunk) uuid.UUID { return c.ChunkID }, legs)
 	stats.Fused = len(fused)
 
+	noteOf := func(c store.RankedChunk) uuid.UUID { return c.NoteID }
+
 	// Archived-link penalty: a chunk whose parent note still references a
 	// soft-deleted note is depressed so a dense stale description of a shelved
 	// concept cannot bypass the soft-delete filter via reflections/entries.
 	if len(fused) > 0 {
-		seen := map[uuid.UUID]bool{}
-		noteIDs := make([]uuid.UUID, 0, len(fused))
-		for _, f := range fused {
-			if id := f.Item.NoteID; !seen[id] {
-				seen[id] = true
-				noteIDs = append(noteIDs, id)
-			}
-		}
-		penalized, err := e.Store.ArchivedLinkers(ctx, noteIDs)
+		penalized, err := e.Store.ArchivedLinkers(ctx, distinctNoteIDs(fused, noteOf))
 		if err != nil {
 			return nil, stats, err
 		}
-		if len(penalized) > 0 {
-			for i := range fused {
-				if penalized[fused[i].Item.NoteID] {
-					fused[i].Score *= archivedLinkPenalty
-				}
+		rescore(fused, func(c store.RankedChunk) float64 {
+			if penalized[c.NoteID] {
+				return archivedLinkPenalty
 			}
-			sort.SliceStable(fused, func(i, j int) bool { return fused[i].Score > fused[j].Score })
-		}
+			return 1
+		})
 	}
 
 	if len(opts.CategoryBias) > 0 {
-		for i := range fused {
-			if w, ok := opts.CategoryBias[fused[i].Item.Category]; ok {
-				fused[i].Score *= w
+		rescore(fused, func(c store.RankedChunk) float64 {
+			if w, ok := opts.CategoryBias[c.Category]; ok {
+				return w
 			}
-		}
-		sort.SliceStable(fused, func(i, j int) bool { return fused[i].Score > fused[j].Score })
+			return 1
+		})
 	}
 	// Context prior (encoding specificity): softly boost chunks whose note shares
 	// the query's project. Harness seam -- ContextProject is empty on the request
 	// path, so this is a no-op in production. A score rewrite like the ones above,
 	// placed before the diversity penalty so that stays the last rewrite.
 	if e.Tuning.ContextProject != "" && e.Tuning.ContextWeight > 0 && e.Tuning.ContextWeight != 1 {
-		seen := map[uuid.UUID]bool{}
-		noteIDs := make([]uuid.UUID, 0, len(fused))
-		for _, f := range fused {
-			if id := f.Item.NoteID; !seen[id] {
-				seen[id] = true
-				noteIDs = append(noteIDs, id)
-			}
-		}
-		proj, err := e.Store.NoteProjects(ctx, noteIDs)
+		proj, err := e.Store.NoteProjects(ctx, distinctNoteIDs(fused, noteOf))
 		if err != nil {
 			return nil, stats, err
 		}
-		for i := range fused {
-			if proj[fused[i].Item.NoteID] == e.Tuning.ContextProject {
-				fused[i].Score *= e.Tuning.ContextWeight
+		rescore(fused, func(c store.RankedChunk) float64 {
+			if proj[c.NoteID] == e.Tuning.ContextProject {
+				return e.Tuning.ContextWeight
 			}
-		}
-		sort.SliceStable(fused, func(i, j int) bool { return fused[i].Score > fused[j].Score })
+			return 1
+		})
 	}
 	// Fan-effect diversity: demote a note's redundant chunks so one over-associated
 	// source cannot crowd the top-K. Last of the score rewrites, so it acts on the
 	// ordering the caller receives -- after the archived-link penalty and category
 	// bias, and just before the cut the Sources counts describe.
-	applyDiversityPenalty(fused, func(c store.RankedChunk) uuid.UUID { return c.NoteID }, e.Tuning.diversityDecay())
+	applyDiversityPenalty(fused, noteOf, e.Tuning.diversityDecay())
 	// Before the cut, and after: the pair is what separates "the cut
 	// concentrated the answer" from "retrieval never offered anything else".
 	// Taken after the archived-link penalty and the category bias, so both
 	// describe the ordering the caller actually received.
-	noteOf := func(c store.RankedChunk) uuid.UUID { return c.NoteID }
 	stats.FusedSources = countSources(fused, noteOf)
 	if len(fused) > topK {
 		fused = fused[:topK]
