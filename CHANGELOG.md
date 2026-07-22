@@ -6,6 +6,23 @@ All notable changes to Cognosis are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-21
+
+Read-time forgetting-curve decay, a note-level keyword fallback, and a fan-effect diversity
+re-rank -- the lifecycle and retrieval models both move closer to how human memory actually
+works -- plus a read-only query-telemetry command.
+
+**Upgrade -- existing databases must rebuild the derived index.** This release adds a `notes.fts`
+generated column to the initial migration rather than a new one, so an already-migrated database
+will not gain it on upgrade. The daemon now checks for the column at startup and **refuses to boot**
+with a rebuild instruction if it is missing, rather than failing per query -- so a missed rebuild is
+one clear startup error, not silent breakage. Rebuild before restarting: run `drop schema public
+cascade; create schema public;` on the database -- boot reconciliation then re-indexes from the
+vault, whose markdown is untouched. The rebuild drops the `tokens` table, so re-read `local-token`
+afterward and update any client holding a copy. Fresh installs need no action. No vault migration is
+required: the new `stability` frontmatter field is optional and is reconstructed from each note's
+reinforcement history on the first `compile_lifecycle` pass.
+
 ### Changed
 
 - **Note decay is now a read-time forgetting curve, not a per-run staircase.** Confidence is
@@ -597,7 +614,8 @@ Postgres index, and serves its memory over MCP (Streamable HTTP).
 
 - Slack/Discord bridge (explicitly post-v1).
 
-[unreleased]: https://github.com/enqack/cognosis/compare/v0.4.2...HEAD
+[unreleased]: https://github.com/enqack/cognosis/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/enqack/cognosis/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/enqack/cognosis/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/enqack/cognosis/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/enqack/cognosis/compare/v0.3.0...v0.4.0
